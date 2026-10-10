@@ -11,7 +11,7 @@ UTFRide é um aplicativo de caronas universitárias, que conecta estudantes que 
 ## Documentação Técnica
 
 - [PRD](docs/prd.md) · [Architecture/SSD](docs/architecture.md) · [Checklist](docs/checklist.md)
-- **Protótipo (Stitch/Figma/Repo):** [Link](https://www.figma.com/design/QWpCo1rfJqA466WFe8khU2/Sem-t%25C3%25ADtulo?node-id=0-1&p=f&t=vU1DkUN95OiedBgn-0) ou [Link] (https://kowalczykedu.github.io/Prototipo-UTFRide/)
+- **Protótipo (Stitch/Figma/Repo):** [Link](https://www.figma.com/design/QWpCo1rfJqA466WFe8khU2/Sem-t%25C3%25ADtulo?node-id=0-1&p=f&t=vU1DkUN95OiedBgn-0) ou [Link](https://kowalczykedu.github.io/Prototipo-UTFRide/)
 
 ## Stack
 
