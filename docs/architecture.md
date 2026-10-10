@@ -137,14 +137,20 @@ UTFRide/
 
 ## 📖 5. Glossário Técnico e Modelo de Domínio (PT → EN)
 
-| Termo PRD (PT) | Entidade (EN) | Atributos e Tipos TypeScript |
-| :--- | :--- | :--- |
-| **Aluno / Usuário** | `User` | `id: string`<br>`name: string`<br>`email: string`<br>`registrationNumber: string`<br>`role: 'student' \| 'support'`<br>`isBlocked: boolean`<br>`ratingAverage: number`<br>`createdAt: string` |
-| **Oferta de Carona** | `Ride` | `id: string`<br>`driverId: string`<br>`origin: string`<br>`destination: string`<br>`departureTime: string`<br>`availableSeats: number`<br>`totalSeats: number`<br>`pricePerSeat: number`<br>`status: 'active' \| 'full' \| 'completed' \| 'cancelled'`<br>`notes?: string`<br>`createdAt: string` |
-| **Solicitação de Vaga**| `RideRequest` | `id: string`<br>`rideId: string`<br>`passengerId: string`<br>`status: 'pending' \| 'accepted' \| 'rejected' \| 'cancelled'`<br>`createdAt: string` |
-| **Busca de Carona** | `RideSearch` | `id: string`<br>`passengerId: string`<br>`origin: string`<br>`destination: string`<br>`desiredTime: string`<br>`status: 'active' \| 'fulfilled' \| 'cancelled'`<br>`contactInfo: string`<br>`createdAt: string` |
-| **Feedback / Avaliação**| `Review` | `id: string`<br>`rideId: string`<br>`reviewerId: string`<br>`reviewedId: string`<br>`rating: number` *(1 a 5)*<br>`comment?: string`<br>`createdAt: string` |
-| **Denúncia / Moderação**| `Report` | `id: string`<br>`reporterId: string`<br>`reportedUserId: string`<br>`rideId?: string`<br>`reason: string`<br>`status: 'pending' \| 'resolved' \| 'dismissed'`<br>`resolutionNotes?: string`<br>`createdAt: string` |
+Para garantir consistência e evitar ambiguidades conceituais, todos os termos ubíquos definidos no [`docs/prd.md`] possuem correspondência direta no código:
+
+| Termo PRD (PT) | Equivalente Técnico (EN) | Natureza no Código | Atributos e Tipos TypeScript / Detalhes |
+| :--- | :--- | :--- | :--- |
+| **Aluno** | `User` (`role: 'student'`) | Entidade / Modelo | `id: string`<br>`name: string`<br>`email: string`<br>`registrationNumber: string`<br>`role: 'student' \| 'support'`<br>`isBlocked: boolean`<br>`ratingAverage: number`<br>`createdAt: string` |
+| **Motorista** | `driverId` | Papel contextual do `User` | Identificador do aluno autor de uma oferta (`driverId: string` em `Ride`) |
+| **Passageiro** | `passengerId` | Papel contextual do `User` | Identificador do aluno solicitante (`passengerId: string` em `RideRequest` e `RideSearch`) |
+| **Oferta de Carona** / **Carona** | `Ride` | Entidade / Ciclo de vida | `id: string`<br>`driverId: string`<br>`origin: string`<br>`destination: string`<br>`departureTime: string`<br>`availableSeats: number`<br>`totalSeats: number`<br>`pricePerSeat: number`<br>`status: 'active' \| 'full' \| 'completed' \| 'cancelled'`<br>`notes?: string`<br>`createdAt: string`<br>*Nota: "Oferta de Carona" (anúncio aberto com vagas) evolui para "Carona" (viagem confirmada) através da máquina de estados do atributo `status`.* |
+| **Vaga** | `availableSeats` / `totalSeats` | Atributos de capacidade | Controlam assentos individuais disponíveis e totais no objeto `Ride` |
+| **Solicitação de Carona** | `RideRequest` | Entidade | `id: string`<br>`rideId: string`<br>`passengerId: string`<br>`status: 'pending' \| 'accepted' \| 'rejected' \| 'cancelled'`<br>`createdAt: string` |
+| **Busca de Carona** | `RideSearch` | Entidade | `id: string`<br>`passengerId: string`<br>`origin: string`<br>`destination: string`<br>`desiredTime: string`<br>`status: 'active' \| 'fulfilled' \| 'cancelled'`<br>`contactInfo: string`<br>`createdAt: string` |
+| **Feedback** | `Review` | Entidade | `id: string`<br>`rideId: string`<br>`reviewerId: string`<br>`reviewedId: string`<br>`rating: number` *(1 a 5)*<br>`comment?: string`<br>`createdAt: string` |
+| **Denúncia** | `Report` | Entidade | `id: string`<br>`reporterId: string`<br>`reportedUserId: string`<br>`rideId?: string`<br>`reason: string`<br>`status: 'pending' \| 'resolved' \| 'dismissed'`<br>`resolutionNotes?: string`<br>`createdAt: string` |
+| **Suporte** | `role: 'support'` | Perfil / Permissão | Representado pelo valor de `role` no `User`, protegido por `supportGuard` na rota `/support` |
 
 ---
 
@@ -183,6 +189,7 @@ erDiagram
         number total_seats
         number price_per_seat
         string status
+        string notes
         datetime created_at
     }
 
@@ -201,6 +208,7 @@ erDiagram
         string destination
         datetime desired_time
         string status
+        string contact_info
         datetime created_at
     }
 
@@ -221,6 +229,7 @@ erDiagram
         string ride_id FK
         string reason
         string status
+        string resolution_notes
         datetime created_at
     }
 ```
