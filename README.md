@@ -16,8 +16,8 @@ UTFRide é um aplicativo de caronas universitárias, que conecta estudantes que 
 ## Stack
 
 - **Frontend:** Angular
-- **Framework CSS:** [Tailwind, PrimeNG, …]
-- **Dados:** json-server (MVP/E2) → [Supabase, PocketBase, …] (E3)
+- **Framework CSS:** Tailwind
+- **Dados:** json-server → Supabase
 - **Bibliotecas:** [lista]
 
 ## Em produção
