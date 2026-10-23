@@ -1,8 +1,8 @@
 # 🏗️ Especificação de Arquitetura Técnica (Architecture / SSD)
 
 **Projeto:** UTFRide  
-**Versão:** 1.0.0  
-**Data:** 2026-10-07  
+**Versão:** 1.0.1<br>
+**Data:** 2026-10-23<br>
 **Status:** Aprovado  
 
 > 🤖 **Este documento é a régua arquitetural e técnica do UTFRide.** Ele estabelece os padrões estruturais, a organização do código, o modelo de dados e os contratos de integração que o `/utf-setup`, os implementadores e os revisores devem seguir rigorosamente durante todo o ciclo de desenvolvimento.
@@ -12,11 +12,11 @@
 ## 💻 1. Stack Tecnológica e Padrões do Frontend (IDs 4 a 19)
 
 ### 1.1 Stack Principal
-- **Framework Frontend:** **Angular 20+**
+- **Framework Frontend:** **Angular 22** (setup com Angular 22.2.3 e Angular CLI 22.2.4; versões resolvidas no `package-lock.json`).
 - **Paradigma de Componentização:** Arquitetura 100% **Standalone** (sem nenhum `NgModule`).
 - **Framework CSS:** **Tailwind CSS** com sistema de tokens semânticos definido em [`docs/design-tokens.md`](file:///c:/Users/duduk/Documents/UTFRide/docs/design-tokens.md).
 - **Gerenciamento de Estado:** **Signals** nativos do Angular (`signal()`, `computed()`, `model()`, `effect()`).
-- **Testes Unitários:** **Vitest** com TDD estrito.
+- **Testes Unitários:** **Vitest** com TDD estrito, integrado ao builder `@angular/build:unit-test` do Angular CLI.
 - **Linter:** **ESLint** (`@angular-eslint`).
 
 ### 1.2 Padrões de Código e UI Declarativa
@@ -93,7 +93,7 @@ UTFRide/
 ├── apps/
 │   ├── api/                     # API / Persistência do MVP
 │   │   └── db.json              # Mock de dados para o json-server
-│   └── web/                     # Frontend Angular 20+ Standalone
+│   └── web/                     # Frontend Angular 22 Standalone
 │       ├── public/              # Assets estáticos, manifest.webmanifest e ícones PWA
 │       └── src/
 │           ├── app/
@@ -115,7 +115,9 @@ UTFRide/
 │           │   │   └── support/
 │           │   ├── app.config.ts # Provedores funcionais (provideRouter, provideHttpClient)
 │           │   ├── app.routes.ts # Definição central de rotas com lazy loading
-│           │   └── app.component.ts
+│           │   ├── app.ts        # Componente raiz (nomes padrão do Angular CLI atual)
+│           │   ├── app.html      # Template do componente raiz
+│           │   └── app.css       # Estilos do componente raiz
 │           ├── index.html
 │           ├── main.ts
 │           └── styles.css       # Configurações do Tailwind CSS e Design Tokens
@@ -256,7 +258,7 @@ Todos os comandos são padronizados e executados a partir da raiz do monorepo:
 | :--- | :--- |
 | `npm run dev` / `npm start` | Inicia o servidor frontend Angular local (`http://localhost:4200`) |
 | `npm run server` | Inicia a API REST simulada com `json-server` (`http://localhost:3000`) |
-| `npm test` | Executa a suíte de testes unitários com **Vitest** (`vitest run`) |
+| `npm test` | Executa a suíte **Vitest** pelo Angular CLI (`ng test --watch=false` no workspace `apps/web`) |
 | `npm run lint` | Executa a validação estática de código com **ESLint** |
 | `npm run build` | Gera o build de produção otimizado em `apps/web/dist` |
 
@@ -275,7 +277,7 @@ Todos os comandos são padronizados e executados a partir da raiz do monorepo:
 
 ## 🔍 10. Garantia do Setup (Quatro Declarações Obrigatórias do Passo 0)
 
-1. **Framework do Frontend:** Angular 20+ Standalone, Signals, Tailwind CSS, sintaxe de templates moderna.
+1. **Framework do Frontend:** Angular 22 Standalone, Signals, Tailwind CSS, sintaxe de templates moderna.
 2. **Fonte de Dados:** MVP via `json-server` (`apps/api/db.json`); Fase E3 via **Supabase** (PostgreSQL + JWT Auth).
 3. **Estrutura de Pastas:** Monorepo com `apps/web` (Angular), `apps/api` (mock/reservada) e separação `core/`, `shared/` e `features/`.
 4. **Comandos de Teste e Lint:** `npm test` (Vitest) e `npm run lint` (ESLint) a partir da raiz.

@@ -1,0 +1,56 @@
+@import 'tailwindcss';
+
+/* Fonte da verdade: docs/design-tokens.md. */
+@theme {
+  --color-primaria: #ffcc00;
+  --color-primaria-hover: #f1c100;
+  --color-primaria-escura: #745b00;
+  --color-secundaria: #111111;
+  --color-superficie: #ffffff;
+  --color-fundo: #f4f4f5;
+  --color-borda: #e4e4e7;
+  --color-trilho: #d4d4d8;
+  --color-texto: #111111;
+  --color-texto-suave: #71717a;
+  --color-perigo: #dc2626;
+  --color-perigo-fundo: #fee2e2;
+  --color-sucesso: #16a34a;
+  --color-sucesso-fundo: #dcfce7;
+  --color-pendente: #d97706;
+  --color-pendente-fundo: #fef3c7;
+  --color-desabilitado: #e4e4e7;
+
+  --font-sans: 'Inter', sans-serif;
+  --text-display-currency: 26px;
+  --text-display-currency--font-weight: 700;
+  --text-headline-lg: 24px;
+  --text-headline-lg--font-weight: 700;
+  --text-headline-md: 20px;
+  --text-headline-md--font-weight: 700;
+  --text-headline-sm: 18px;
+  --text-headline-sm--font-weight: 600;
+  --text-body-lg: 16px;
+  --text-body-lg--font-weight: 500;
+  --text-body-md: 14px;
+  --text-body-md--font-weight: 400;
+  --text-body-sm: 12px;
+  --text-body-sm--font-weight: 400;
+  --text-label-lg: 14px;
+  --text-label-lg--font-weight: 600;
+  --text-label-md: 12px;
+  --text-label-md--font-weight: 600;
+  --text-label-pill: 11px;
+  --text-label-pill--font-weight: 700;
+
+  --spacing: 4px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+}
