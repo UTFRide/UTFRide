@@ -1,0 +1,930 @@
+<!doctype html>
+<html
+  class="light"
+  lang="pt-BR"
+  style="min-height: 100%; height: auto"
+  data-stitch-orig-opacity="0"
+  data-stitch-anim-opacity="true"
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+      name="viewport"
+    />
+    <meta content="mobile_tab" name="shell-type" />
+    <title>UTFRide</title>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              primary: '#745b00',
+              tertiary: '#5d5e60',
+              'surface-container-low': '#f4f2fd',
+              'secondary-container': '#e5e2e1',
+              'on-primary-fixed-variant': '#584400',
+              'on-error': '#ffffff',
+              'on-tertiary': '#ffffff',
+              'surface-bright': '#fbf8ff',
+              'tertiary-fixed-dim': '#c6c6c7',
+              'surface-container-highest': '#e3e1ec',
+              'primary-fixed': '#ffe08b',
+              'outline-variant': '#d2c5ab',
+              'secondary-fixed-dim': '#c8c6c5',
+              secondary: '#5f5e5e',
+              'on-primary': '#ffffff',
+              'surface-dim': '#dad9e3',
+              'on-primary-container': '#6f5700',
+              'on-secondary-container': '#656464',
+              'on-tertiary-container': '#595a5b',
+              outline: '#80765f',
+              'inverse-primary': '#f1c100',
+              'surface-container': '#eeedf7',
+              'inverse-on-surface': '#f1effa',
+              'on-error-container': '#93000a',
+              'tertiary-container': '#d2d2d3',
+              'on-secondary': '#ffffff',
+              'surface-container-high': '#e8e7f1',
+              'primary-fixed-dim': '#f1c100',
+              'on-primary-fixed': '#241a00',
+              background: '#fbf8ff',
+              surface: '#fbf8ff',
+              'on-secondary-fixed-variant': '#474646',
+              'on-surface-variant': '#4e4632',
+              'surface-container-lowest': '#ffffff',
+              'on-secondary-fixed': '#1c1b1b',
+              'tertiary-fixed': '#e2e2e3',
+              'on-tertiary-fixed': '#1a1c1d',
+              'on-background': '#1a1b22',
+              'inverse-surface': '#2f3038',
+              error: '#ba1a1a',
+              'error-container': '#ffdad6',
+              'secondary-fixed': '#e5e2e1',
+              'on-surface': '#1a1b22',
+              'on-tertiary-fixed-variant': '#454748',
+              'surface-variant': '#e3e1ec',
+              'surface-tint': '#745b00',
+              'primary-container': '#ffcc00',
+            },
+            borderRadius: {
+              DEFAULT: '0.25rem',
+              lg: '0.5rem',
+              xl: '0.75rem',
+              full: '9999px',
+            },
+            spacing: {
+              'space-lg': '1rem',
+              'space-xs': '0.25rem',
+              'space-md': '0.75rem',
+              'space-xl': '1.5rem',
+              gutter: '1rem',
+              margin: '1rem',
+              'space-sm': '0.5rem',
+            },
+            fontFamily: {
+              'headline-md': ['Inter'],
+              'label-pill': ['Inter'],
+              'body-md': ['Inter'],
+              'body-lg': ['Inter'],
+              'body-sm': ['Inter'],
+              'label-lg': ['Inter'],
+              'label-md': ['Inter'],
+              'headline-sm': ['Inter'],
+              'headline-lg': ['Inter'],
+              'display-currency': ['Inter'],
+            },
+            fontSize: {
+              'headline-md': [
+                '20px',
+                {
+                  lineHeight: '28px',
+                  letterSpacing: '-0.01em',
+                  fontWeight: '700',
+                },
+              ],
+              'label-pill': [
+                '11px',
+                {
+                  lineHeight: '14px',
+                  letterSpacing: '0.03em',
+                  fontWeight: '700',
+                },
+              ],
+              'body-md': ['14px', { lineHeight: '20px', fontWeight: '400' }],
+              'body-lg': ['16px', { lineHeight: '24px', fontWeight: '500' }],
+              'body-sm': ['12px', { lineHeight: '16px', fontWeight: '400' }],
+              'label-lg': [
+                '14px',
+                {
+                  lineHeight: '20px',
+                  letterSpacing: '0.01em',
+                  fontWeight: '600',
+                },
+              ],
+              'label-md': [
+                '12px',
+                {
+                  lineHeight: '16px',
+                  letterSpacing: '0.02em',
+                  fontWeight: '600',
+                },
+              ],
+              'headline-sm': [
+                '18px',
+                { lineHeight: '24px', fontWeight: '600' },
+              ],
+              'headline-lg': [
+                '24px',
+                {
+                  lineHeight: '32px',
+                  letterSpacing: '-0.015em',
+                  fontWeight: '700',
+                },
+              ],
+              'display-currency': [
+                '26px',
+                {
+                  lineHeight: '32px',
+                  letterSpacing: '-0.02em',
+                  fontWeight: '700',
+                },
+              ],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      @layer base {
+        html,
+        body {
+          width: 100%;
+          margin: 0;
+          padding: 0;
+        }
+        body {
+          overscroll-behavior-y: none;
+        }
+        .pb-safe {
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        .pt-safe {
+          padding-top: env(safe-area-inset-top, 0px);
+        }
+        main > :first-child {
+          margin-top: 0 !important;
+        }
+        main > :last-child {
+          margin-bottom: 0 !important;
+        }
+      }
+      ::-webkit-scrollbar {
+        display: none;
+      }
+    </style>
+    <style>
+      body {
+        min-height: max(884px, 100dvh);
+      }
+    </style>
+  </head>
+  <body
+    class="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen"
+    style="min-height: 100vh; height: auto; opacity: 1"
+  >
+    <header
+      class="fixed top-0 w-full z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
+    >
+      <div
+        class="h-16 px-4 sm:px-6 flex items-center justify-between max-w-2xl lg:max-w-3xl mx-auto w-full"
+      >
+        <div class="flex items-center gap-space-sm">
+          <img
+            alt="Logo UTFRide"
+            class="h-8 w-auto object-contain"
+            src="../logo.png"
+          /><span
+            class="font-headline-sm text-headline-sm text-on-surface tracking-tight font-bold"
+            >UTFRide</span
+          >
+        </div>
+        <div class="flex items-center gap-space-md">
+          <span
+            class="hidden xs:inline-block font-label-md text-label-md text-on-surface-variant font-medium"
+            >Buscar Caronas</span
+          ><a
+            class="flex items-center justify-center p-0.5 rounded-full hover:opacity-90 active:scale-95 transition-all"
+            data-path="perfil"
+            href="./1._landing_page_visitante.html"
+            ><img
+              alt="Profile"
+              class="w-8 h-8 rounded-full object-cover"
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDKC8HBOkLE7EvieuqoVrCwtb4ixVRhaqQGNv855IzmUIrANFiQdQngReaGnVWXcMjBgRDNgSoEzdI6fwhCyTcAhqs79IJ54PolaJlZVxTXJfOfX7KADiqjaAcSamGPlrhfjtZR2caBqf7W_AQHL9wcxc6k2u1EWo4SEKr02BTRmzFF0HPto49OPsT0Y-VxUdMvP00T2Vf_Cmw326hgEIe1CArLwqAREaIOoSm_0n83nxXp5m4TkaPE"
+          /></a>
+        </div>
+      </div>
+    </header>
+    <main
+      class="flex-1 w-full bg-surface pt-16 px-4 sm:px-6 flex flex-col"
+      style="padding-bottom: 80px; min-height: 100vh; height: auto"
+    >
+      <div class="flex flex-col w-full max-w-lg lg:max-w-2xl mx-auto">
+        <!-- Seção de Busca Estilo 99/Uber com Alta Hierarquia -->
+        <section
+          class="bg-surface-container-lowest rounded-xl shadow-md p-space-lg mb-space-lg"
+        >
+          <div class="flex items-center justify-between mb-space-md">
+            <h2 class="font-headline-md text-headline-md text-on-surface">
+              Para onde você vai?
+            </h2>
+            <span
+              class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-container text-on-primary-container font-label-pill text-label-pill"
+            >
+              <span
+                class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"
+              ></span>
+              UTFPR ao vivo
+            </span>
+          </div>
+          <a
+            class="w-full h-[52px] bg-primary-container text-on-primary-container font-headline-sm text-headline-sm rounded-xl flex items-center justify-center gap-2 active:scale-[0.99] transition-transform shadow-sm"
+            href="./9._mural_de_buscas_passageiro.html"
+          >
+            <span class="material-symbols-outlined text-[22px]">search</span>
+            Buscar caronas
+          </a>
+        </section>
+        <!-- Chips de Atalho com Rolagem Horizontal -->
+        <div
+          class="flex items-center gap-2 overflow-x-auto pb-space-sm mb-space-md no-scrollbar"
+        >
+          <button
+            class="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-surface-container-lowest shadow-sm text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors"
+            type="button"
+          >
+            <span class="">🏫</span>
+            <span class="">Câmpus UTFPR</span>
+          </button>
+          <button
+            class="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-surface-container-lowest shadow-sm text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors"
+            type="button"
+          >
+            <span class="">🏠</span>
+            <span class="">Casa</span>
+          </button>
+          <button
+            class="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-surface-container-lowest shadow-sm text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors"
+            type="button"
+          >
+            <span class="">🕒</span>
+            <span class="">Recentes</span>
+          </button>
+          <button
+            class="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-surface-container-lowest shadow-sm text-on-surface font-label-md text-label-md hover:bg-surface-container transition-colors"
+            type="button"
+          >
+            <span class="">📌</span>
+            <span class="">Sede Neoville</span>
+          </button>
+        </div>
+        <!-- Cabeçalho de Resultados -->
+        <div class="flex items-center justify-between mb-space-sm px-1">
+          <div class="flex items-center gap-1.5">
+            <span class="font-headline-sm text-headline-sm text-on-surface"
+              >Caronas Disponíveis</span
+            >
+            <span
+              class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-pill text-label-pill"
+              >4 ativas</span
+            >
+          </div>
+          <button
+            class="flex items-center gap-1 font-label-md text-label-md text-primary font-semibold"
+            type="button"
+          >
+            <span class="material-symbols-outlined text-[18px]">tune</span>
+            Filtros
+          </button>
+        </div>
+        <!-- Lista de Viagens -->
+        <div class="flex flex-col gap-space-md mb-space-xl">
+          <!-- Card 1: Confirmada & Rápida -->
+          <article
+            class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow"
+          >
+            <!-- Topo: Motorista & Badge -->
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2.5">
+                <div class="relative">
+                  <img
+                    class="w-11 h-11 rounded-full object-cover"
+                    data-alt="Close-up portrait of Gabriel Silva, a smiling Brazilian university engineering student wearing glasses and a casual dark blue jacket, crisp morning daylight, collegiate campus setting."
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuAgDaVPCdd9aLEV__Qi-aZ03hIaT1GWhCdMT-WYaiSZlmrBWRpfxQs4xzbHK5diPVAxzbVc9DdWFZEcOwiCjnrRPH7oFcYe0mYlLiZwBjP4FQndpHr6m3yY6LMx8oaR-R_JwmmfK4ODOWJU1RSPK1EIMCsb0GBdCOafuoaFNgPbqPld0PKGBhOXp0lbDYLbE_OPAYDgS5PFl78OBPRaTOUC2WeJe0NBgqnjH4Q99tYIeO9TWugspHCI"
+                  />
+                  <span
+                    class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center text-on-primary text-[10px]"
+                  >
+                    <span class="material-symbols-outlined text-[12px]"
+                      >verified</span
+                    >
+                  </span>
+                </div>
+                <div class="flex flex-col">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-label-lg text-label-lg text-on-surface"
+                      >Gabriel Silva</span
+                    >
+                    <span
+                      class="px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-label-pill text-label-pill"
+                      >Eng. Civil</span
+                    >
+                  </div>
+                  <div
+                    class="flex items-center gap-1 text-secondary font-body-sm text-body-sm"
+                  >
+                    <span
+                      class="material-symbols-outlined text-[14px] text-primary"
+                      style="font-variation-settings: 'FILL' 1"
+                      >star</span
+                    >
+                    <span class="font-semibold text-on-surface">4.9</span>
+                    <span class="">• 42 caronas</span>
+                  </div>
+                </div>
+              </div>
+              <span
+                class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-label-pill text-label-pill flex items-center gap-1"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                Confirmada
+              </span>
+            </div>
+            <!-- Meio: Linha do Tempo da Rota -->
+            <div
+              class="flex items-start gap-3 py-2 bg-surface-container-low/60 rounded-lg px-3 mb-3"
+            >
+              <div
+                class="flex flex-col items-center self-stretch justify-between py-1"
+              >
+                <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                <span class="w-0.5 flex-1 bg-outline-variant/60 my-1"></span>
+                <span class="w-2 h-2 rounded-none bg-primary"></span>
+              </div>
+              <div class="flex flex-col gap-2 min-w-0 flex-1">
+                <div class="flex items-baseline justify-between">
+                  <span
+                    class="font-label-md text-label-md text-on-surface truncate"
+                    >Centro (Praça Rui Barbosa)</span
+                  >
+                  <span
+                    class="font-label-md text-label-md text-on-surface font-semibold ml-2"
+                    >07:15</span
+                  >
+                </div>
+                <div class="flex items-baseline justify-between">
+                  <span
+                    class="font-label-md text-label-md text-secondary truncate"
+                    >UTFPR Sede Centro</span
+                  >
+                  <span class="font-body-sm text-body-sm text-secondary ml-2"
+                    >~07:35</span
+                  >
+                </div>
+              </div>
+            </div>
+            <!-- Rodapé: Vagas & Preço & Botão -->
+            <div class="flex items-center justify-between pt-1">
+              <div class="flex flex-col">
+                <div
+                  class="flex items-center gap-1 text-secondary font-label-md text-label-md"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px] text-primary"
+                    >airline_seat_recline_normal</span
+                  >
+                  <span class="font-semibold text-on-surface"
+                    >2 vagas restantes</span
+                  >
+                </div>
+                <span
+                  class="font-display-currency text-display-currency text-on-surface"
+                  >R$ 7,50</span
+                >
+              </div>
+              <button
+                class="h-10 px-5 rounded-lg bg-primary text-on-primary font-label-lg text-label-lg active:scale-95 transition-transform flex items-center gap-1"
+                type="button"
+                onclick="
+                  window.location.href =
+                    './5._detalhe_da_oferta_e_solicitar_vaga.html'
+                "
+              >
+                Reservar
+              </button>
+            </div>
+          </article>
+          <!-- Card 2: Larissa Costa (Batel -> Neoville) -->
+          <article
+            class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2.5">
+                <div class="relative">
+                  <img
+                    class="w-11 h-11 rounded-full object-cover"
+                    data-alt="Portrait photo of Larissa Costa, a young female Brazilian architecture student with curly brown hair wearing a warm mustard-yellow sweater, relaxed expression in an urban coffee shop."
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCdyFCwou9csai8ifGNUlf96HnD7yfBelk4rp9ZbMVjW0orjynd_WUmdMO6-fKZJ_lla1Yr5qIHM4_UI5krjgfM8TwxxYjf5gDBgG1eKruqKyMlqRNRqg6sB3CiBFiL21xEJvcyUBhbDFU6h43kbOok9lwN_aEgMnrtmdFBC3hIbeYTiyV8c8GiVePJBDm_1BqWtL0A0SpmRWPP4FYLblk_BT4-9nfdwTJXTpX28bM5amC5rI1GchDs"
+                  />
+                  <span
+                    class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center text-on-primary text-[10px]"
+                  >
+                    <span class="material-symbols-outlined text-[12px]"
+                      >verified</span
+                    >
+                  </span>
+                </div>
+                <div class="flex flex-col">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-label-lg text-label-lg text-on-surface"
+                      >Larissa Costa</span
+                    >
+                    <span
+                      class="px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-label-pill text-label-pill"
+                      >DAECO</span
+                    >
+                  </div>
+                  <div
+                    class="flex items-center gap-1 text-secondary font-body-sm text-body-sm"
+                  >
+                    <span
+                      class="material-symbols-outlined text-[14px] text-primary"
+                      style="font-variation-settings: 'FILL' 1"
+                      >star</span
+                    >
+                    <span class="font-semibold text-on-surface">5.0</span>
+                    <span class="">• 18 caronas</span>
+                  </div>
+                </div>
+              </div>
+              <span
+                class="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-label-pill text-label-pill"
+              >
+                Em 25 min
+              </span>
+            </div>
+            <div
+              class="flex items-start gap-3 py-2 bg-surface-container-low/60 rounded-lg px-3 mb-3"
+            >
+              <div
+                class="flex flex-col items-center self-stretch justify-between py-1"
+              >
+                <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                <span class="w-0.5 flex-1 bg-outline-variant/60 my-1"></span>
+                <span class="w-2 h-2 rounded-none bg-primary"></span>
+              </div>
+              <div class="flex flex-col gap-2 min-w-0 flex-1">
+                <div class="flex items-baseline justify-between">
+                  <span
+                    class="font-label-md text-label-md text-on-surface truncate"
+                    >Batel (Praça da Espanha)</span
+                  >
+                  <span
+                    class="font-label-md text-label-md text-on-surface font-semibold ml-2"
+                    >07:30</span
+                  >
+                </div>
+                <div class="flex items-baseline justify-between">
+                  <span
+                    class="font-label-md text-label-md text-secondary truncate"
+                    >UTFPR Neoville</span
+                  >
+                  <span class="font-body-sm text-body-sm text-secondary ml-2"
+                    >~08:05</span
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between pt-1">
+              <div class="flex flex-col">
+                <div
+                  class="flex items-center gap-1 text-secondary font-label-md text-label-md"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px] text-primary"
+                    >airline_seat_recline_normal</span
+                  >
+                  <span class="font-semibold text-on-surface"
+                    >3 vagas restantes</span
+                  >
+                </div>
+                <span
+                  class="font-display-currency text-display-currency text-on-surface"
+                  >R$ 9,00</span
+                >
+              </div>
+              <button
+                class="h-10 px-5 rounded-lg bg-on-surface text-surface-bright font-label-lg text-label-lg active:scale-95 transition-transform flex items-center gap-1"
+                type="button"
+                onclick="
+                  window.location.href =
+                    './5._detalhe_da_oferta_e_solicitar_vaga.html'
+                "
+              >
+                Reservar
+              </button>
+            </div>
+          </article>
+          <!-- Card 3: Matheus Lima (SJP -> UTFPR Centro) -->
+          <article
+            class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2.5">
+                <div class="relative">
+                  <img
+                    class="w-11 h-11 rounded-full object-cover"
+                    data-alt="Headshot of Matheus Lima, a 23-year-old male university computer science student with headphones around neck, wearing grey hoodie in daylight outdoors."
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCPO_e9_cxsBUl0dBa-ePOvfGgCAOjQn7MdacWhb1VOmZBD-EklD9z1V8JhagGqNgAQ7f9JJNbeGgE538oGVSm1CuF7gMGe2XZ5yz_B0E8qZIUO3A7SfK5GQweVcokl_UKY4Y-ikCi1L1tCFmBHObYD1kW3wufzeUi08AojMswecLhESzOqB5iWazqFvx8kPhnFcE89TALHonepBwTe2GltfOysj4JR9ng2W-9caxFyEeQixsf-Rdjs"
+                  />
+                  <span
+                    class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center text-on-primary text-[10px]"
+                  >
+                    <span class="material-symbols-outlined text-[12px]"
+                      >verified</span
+                    >
+                  </span>
+                </div>
+                <div class="flex flex-col">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-label-lg text-label-lg text-on-surface"
+                      >Matheus Lima</span
+                    >
+                    <span
+                      class="px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-label-pill text-label-pill"
+                      >DAINF</span
+                    >
+                  </div>
+                  <div
+                    class="flex items-center gap-1 text-secondary font-body-sm text-body-sm"
+                  >
+                    <span
+                      class="material-symbols-outlined text-[14px] text-primary"
+                      style="font-variation-settings: 'FILL' 1"
+                      >star</span
+                    >
+                    <span class="font-semibold text-on-surface">4.8</span>
+                    <span class="">• 35 caronas</span>
+                  </div>
+                </div>
+              </div>
+              <span
+                class="px-2.5 py-1 rounded-full bg-error-container text-error font-label-pill text-label-pill font-bold"
+              >
+                Última vaga
+              </span>
+            </div>
+            <div
+              class="flex items-start gap-3 py-2 bg-surface-container-low/60 rounded-lg px-3 mb-3"
+            >
+              <div
+                class="flex flex-col items-center self-stretch justify-between py-1"
+              >
+                <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                <span class="w-0.5 flex-1 bg-outline-variant/60 my-1"></span>
+                <span class="w-2 h-2 rounded-none bg-primary"></span>
+              </div>
+              <div class="flex flex-col gap-2 min-w-0 flex-1">
+                <div class="flex items-baseline justify-between">
+                  <span
+                    class="font-label-md text-label-md text-on-surface truncate"
+                    >São José dos Pinhais (Centro)</span
+                  >
+                  <span
+                    class="font-label-md text-label-md text-on-surface font-semibold ml-2"
+                    >06:50</span
+                  >
+                </div>
+                <div class="flex items-baseline justify-between">
+                  <span
+                    class="font-label-md text-label-md text-secondary truncate"
+                    >UTFPR Sede Centro</span
+                  >
+                  <span class="font-body-sm text-body-sm text-secondary ml-2"
+                    >~07:40</span
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between pt-1">
+              <div class="flex flex-col">
+                <div
+                  class="flex items-center gap-1 text-secondary font-label-md text-label-md"
+                >
+                  <span class="material-symbols-outlined text-[16px] text-error"
+                    >airline_seat_recline_normal</span
+                  >
+                  <span class="font-semibold text-error">1 vaga restante</span>
+                </div>
+                <span
+                  class="font-display-currency text-display-currency text-on-surface"
+                  >R$ 12,00</span
+                >
+              </div>
+              <button
+                class="h-10 px-5 rounded-lg bg-on-surface text-surface-bright font-label-lg text-label-lg active:scale-95 transition-transform flex items-center gap-1"
+                type="button"
+                onclick="
+                  window.location.href =
+                    './5._detalhe_da_oferta_e_solicitar_vaga.html'
+                "
+              >
+                Reservar
+              </button>
+            </div>
+          </article>
+          <!-- Card 4: Camila Rocha (Portão -> UTFPR Centro) -->
+          <article
+            class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2.5">
+                <div class="relative">
+                  <img
+                    class="w-11 h-11 rounded-full object-cover"
+                    data-alt="Portrait of Camila Rocha, female university electrical engineering student smiling warmly at camera, wearing casual jacket, sunlit collegiate background."
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuBH7CrnHgxTiO3xLE__3HuQBmZXqa17Z66p7g6Bcb9EsXdlGz2mxGe25cROIzHwA7ZAxaeo_Q-PoM07lXWDqiSEJIhA7MXnB7e7vtFlpmvGEu9AGD6eGrkHS18USPpvdqLouQAY7GDdW3A6L6la8cE-nMM_S2SGXWxuJDalZRrBlRtUfdXZX5E6nxlbjiXFyr1IarQBKz8L-_q9-_GALcvj1papx14bBxVumzPokURfEVxa4RQwGuXy"
+                  />
+                  <span
+                    class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center text-on-primary text-[10px]"
+                  >
+                    <span class="material-symbols-outlined text-[12px]"
+                      >verified</span
+                    >
+                  </span>
+                </div>
+                <div class="flex flex-col">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-label-lg text-label-lg text-on-surface"
+                      >Camila Rocha</span
+                    >
+                    <span
+                      class="px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-label-pill text-label-pill"
+                      >DAELT</span
+                    >
+                  </div>
+                  <div
+                    class="flex items-center gap-1 text-secondary font-body-sm text-body-sm"
+                  >
+                    <span
+                      class="material-symbols-outlined text-[14px] text-primary"
+                      style="font-variation-settings: 'FILL' 1"
+                      >star</span
+                    >
+                    <span class="font-semibold text-on-surface">4.9</span>
+                    <span class="">• 29 caronas</span>
+                  </div>
+                </div>
+              </div>
+              <span
+                class="px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant font-label-pill text-label-pill"
+              >
+                Turno Tarde
+              </span>
+            </div>
+            <div
+              class="flex items-start gap-3 py-2 bg-surface-container-low/60 rounded-lg px-3 mb-3"
+            >
+              <div
+                class="flex flex-col items-center self-stretch justify-between py-1"
+              >
+                <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                <span class="w-0.5 flex-1 bg-outline-variant/60 my-1"></span>
+                <span class="w-2 h-2 rounded-none bg-primary"></span>
+              </div>
+              <div class="flex flex-col gap-2 min-w-0 flex-1">
+                <div class="flex items-baseline justify-between">
+                  <span
+                    class="font-label-md text-label-md text-on-surface truncate"
+                    >Portão (Term. Portão)</span
+                  >
+                  <span
+                    class="font-label-md text-label-md text-on-surface font-semibold ml-2"
+                    >13:00</span
+                  >
+                </div>
+                <div class="flex items-baseline justify-between">
+                  <span
+                    class="font-label-md text-label-md text-secondary truncate"
+                    >UTFPR Sede Centro</span
+                  >
+                  <span class="font-body-sm text-body-sm text-secondary ml-2"
+                    >~13:25</span
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between pt-1">
+              <div class="flex flex-col">
+                <div
+                  class="flex items-center gap-1 text-secondary font-label-md text-label-md"
+                >
+                  <span
+                    class="material-symbols-outlined text-[16px] text-primary"
+                    >airline_seat_recline_normal</span
+                  >
+                  <span class="font-semibold text-on-surface"
+                    >3 vagas restantes</span
+                  >
+                </div>
+                <span
+                  class="font-display-currency text-display-currency text-on-surface"
+                  >R$ 6,00</span
+                >
+              </div>
+              <button
+                class="h-10 px-5 rounded-lg bg-on-surface text-surface-bright font-label-lg text-label-lg active:scale-95 transition-transform flex items-center gap-1"
+                type="button"
+                onclick="
+                  window.location.href =
+                    './5._detalhe_da_oferta_e_solicitar_vaga.html'
+                "
+              >
+                Reservar
+              </button>
+            </div>
+          </article>
+          <!-- Card 5 (Esgotado RN05): Felipe Ramos -->
+          <article
+            class="bg-surface-container-lowest/70 rounded-xl p-space-lg shadow-sm opacity-85"
+          >
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2.5">
+                <div class="relative grayscale">
+                  <img
+                    class="w-11 h-11 rounded-full object-cover"
+                    data-alt="Portrait of Felipe Ramos, university student with short dark hair, wearing green jacket, natural outdoor lighting."
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCwYCrxi_qRdLOGRHRNWFtigApwqxu_6MRI-tAn0JuPT0jn8RC3VDJ6l9ErJUksbplcq7AwZ6_hW0KeFFGZ_r6swtugIhQQYfohOxPiHz8YMH0dOBxiOGwOHHqGIhl2AcQtpFAMdVStJEYM_DoYPYhDOBmCTXOFdd4gQtY5L5lD62tpQfzy5rkdpRJHeKXG_uZlnrvIfI-C68WPKhkQ8DmNIde3SskkfZ45C6KDssj63Pz9dwyWs7Mj"
+                  />
+                </div>
+                <div class="flex flex-col">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-label-lg text-label-lg text-on-surface/80"
+                      >Felipe Ramos</span
+                    >
+                    <span
+                      class="px-1.5 py-0.5 rounded bg-surface-container text-secondary font-label-pill text-label-pill"
+                      >DAMEC</span
+                    >
+                  </div>
+                  <div
+                    class="flex items-center gap-1 text-secondary font-body-sm text-body-sm"
+                  >
+                    <span
+                      class="material-symbols-outlined text-[14px] text-secondary"
+                      >star</span
+                    >
+                    <span class="">4.7 • 12 caronas</span>
+                  </div>
+                </div>
+              </div>
+              <span
+                class="px-2.5 py-1 rounded-full bg-secondary-container text-on-secondary-container font-label-pill text-label-pill font-bold"
+              >
+                Esgotada (0 vagas)
+              </span>
+            </div>
+            <div
+              class="flex items-start gap-3 py-2 bg-surface-container rounded-lg px-3 mb-3"
+            >
+              <div
+                class="flex flex-col items-center self-stretch justify-between py-1"
+              >
+                <span class="w-2 h-2 rounded-full bg-secondary"></span>
+                <span class="w-0.5 flex-1 bg-outline-variant/40 my-1"></span>
+                <span class="w-2 h-2 rounded-none bg-secondary"></span>
+              </div>
+              <div class="flex flex-col gap-2 min-w-0 flex-1">
+                <div class="flex items-baseline justify-between text-secondary">
+                  <span class="font-label-md text-label-md truncate"
+                    >Santa Felicidade (Portal)</span
+                  >
+                  <span class="font-label-md text-label-md font-semibold ml-2"
+                    >07:10</span
+                  >
+                </div>
+                <div class="flex items-baseline justify-between text-secondary">
+                  <span class="font-label-md text-label-md truncate"
+                    >UTFPR Sede Centro</span
+                  >
+                  <span class="font-body-sm text-body-sm ml-2">~07:45</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between pt-1">
+              <div class="flex flex-col">
+                <span
+                  class="font-label-pill text-label-pill text-secondary uppercase tracking-wider"
+                  >Lotação completa</span
+                >
+                <span class="font-headline-md text-headline-md text-secondary"
+                  >R$ 8,00</span
+                >
+              </div>
+              <button
+                class="h-10 px-5 rounded-lg bg-surface-container-high text-secondary font-label-lg text-label-lg cursor-not-allowed"
+                disabled=""
+                type="button"
+              >
+                Esgotado
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <!-- Indicador Sutil de Carregando Mais Caronas -->
+        <div
+          class="flex items-center justify-center gap-2 py-space-md text-secondary font-label-md text-label-md"
+        >
+          <span
+            class="w-2 h-2 rounded-full bg-primary-container animate-ping"
+          ></span>
+          <span class="">Carregando mais caronas no Câmpus...</span>
+        </div>
+      </div>
+    </main>
+    <nav
+      class="fixed bottom-0 w-full z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-4px_16px_rgba(0,0,0,0.06)]"
+      data-active-classes="text-on-surface font-bold [&amp;&gt;span.active-dot]:opacity-100"
+    >
+      <div
+        class="flex items-center justify-around h-16 px-space-xs max-w-2xl lg:max-w-3xl mx-auto w-full"
+      >
+        <a
+          aria-current="page"
+          class="flex flex-col items-center justify-center min-w-[64px] h-12 transition-colors text-on-surface font-bold [&amp;&gt;span.active-dot]:opacity-100"
+          data-path="buscar-caronas"
+          href="./4._buscar_caronas_home.html"
+          ><span class="material-symbols-outlined text-[24px]">search</span
+          ><span class="font-label-pill text-label-pill mt-0.5">Buscar</span
+          ><span
+            class="active-dot w-1.5 h-1.5 rounded-full bg-primary-container mt-0.5 opacity-0 transition-opacity"
+          ></span></a
+        ><a
+          class="flex flex-col items-center justify-center min-w-[64px] h-12 text-secondary hover:text-on-surface transition-colors"
+          data-path="oferecer-carona"
+          href="./6._oferecer_carona_motorista.html"
+          ><span class="material-symbols-outlined text-[24px]">add_circle</span
+          ><span class="font-label-pill text-label-pill mt-0.5">Oferecer</span
+          ><span
+            class="active-dot w-1.5 h-1.5 rounded-full bg-primary-container mt-0.5 opacity-0 transition-opacity"
+          ></span></a
+        ><a
+          class="flex flex-col items-center justify-center min-w-[64px] h-12 text-secondary hover:text-on-surface transition-colors"
+          data-path="minhas-ofertas"
+          href="./7._minhas_ofertas_e_gerenciar_solicita_es.html"
+          ><span class="material-symbols-outlined text-[24px]">local_offer</span
+          ><span class="font-label-pill text-label-pill mt-0.5">Ofertas</span
+          ><span
+            class="active-dot w-1.5 h-1.5 rounded-full bg-primary-container mt-0.5 opacity-0 transition-opacity"
+          ></span></a
+        ><a
+          class="flex flex-col items-center justify-center min-w-[64px] h-12 text-secondary hover:text-on-surface transition-colors"
+          data-path="minhas-viagens"
+          href="./8._minhas_viagens_passageiro.html"
+          ><span class="material-symbols-outlined text-[24px]"
+            >calendar_month</span
+          ><span class="font-label-pill text-label-pill mt-0.5">Viagens</span
+          ><span
+            class="active-dot w-1.5 h-1.5 rounded-full bg-primary-container mt-0.5 opacity-0 transition-opacity"
+          ></span></a
+        ><a
+          class="flex flex-col items-center justify-center min-w-[64px] h-12 text-secondary hover:text-on-surface transition-colors"
+          data-path="perfil-do-aluno"
+          href="./12._perfil_do_aluno.html"
+          ><span class="material-symbols-outlined text-[24px]">person</span
+          ><span class="font-label-pill text-label-pill mt-0.5">Perfil</span
+          ><span
+            class="active-dot w-1.5 h-1.5 rounded-full bg-primary-container mt-0.5 opacity-0 transition-opacity"
+          ></span
+        ></a>
+      </div>
+    </nav>
+  </body>
+</html>

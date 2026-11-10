@@ -110,7 +110,8 @@ Alimenta o arquivo `manifest.webmanifest` e as configurações de PWA no setup.
 
 ## 🗺️ Protótipo Navegável (ID1)
 
-- **Link Público do Figma:** [Protótipo UTFRide no Figma](https://www.figma.com/design/QWpCo1rfJqA466WFe8khU2/Sem-t%25C3%25ADtulo?node-id=0-1&p=f&t=MDkNtqCEA9Vef4nj-0)
+- **Fonte lida pelo agente:** `docs/prototipo/` (índice em `docs/prototipo/README.md`). Layout, fluxo e estados vêm de lá; cor, espaçamento e tipografia vêm destes tokens (em divergência, valem os tokens).
+- **Link Público do Figma (só evidência, o agente não consulta):** [Protótipo UTFRide no Figma](https://www.figma.com/design/QWpCo1rfJqA466WFe8khU2/Sem-t%25C3%25ADtulo?node-id=0-1&p=f&t=MDkNtqCEA9Vef4nj-0)
 - **Telas Mapeadas na Jornada:**
   1. *Landing Page (Visitante)*
   2. *Cadastro de Aluno (Institucional)*
