@@ -1,0 +1,472 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_standard" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"primary":"#745b00","tertiary":"#5d5e60","surface-container-low":"#f4f2fd","secondary-container":"#e5e2e1","on-primary-fixed-variant":"#584400","on-error":"#ffffff","on-tertiary":"#ffffff","surface-bright":"#fbf8ff","tertiary-fixed-dim":"#c6c6c7","surface-container-highest":"#e3e1ec","primary-fixed":"#ffe08b","outline-variant":"#d2c5ab","secondary-fixed-dim":"#c8c6c5","secondary":"#5f5e5e","on-primary":"#ffffff","surface-dim":"#dad9e3","on-primary-container":"#6f5700","on-secondary-container":"#656464","on-tertiary-container":"#595a5b","outline":"#80765f","inverse-primary":"#f1c100","surface-container":"#eeedf7","inverse-on-surface":"#f1effa","on-error-container":"#93000a","tertiary-container":"#d2d2d3","on-secondary":"#ffffff","surface-container-high":"#e8e7f1","primary-fixed-dim":"#f1c100","on-primary-fixed":"#241a00","background":"#fbf8ff","surface":"#fbf8ff","on-secondary-fixed-variant":"#474646","on-surface-variant":"#4e4632","surface-container-lowest":"#ffffff","on-secondary-fixed":"#1c1b1b","tertiary-fixed":"#e2e2e3","on-tertiary-fixed":"#1a1c1d","on-background":"#1a1b22","inverse-surface":"#2f3038","error":"#ba1a1a","error-container":"#ffdad6","secondary-fixed":"#e5e2e1","on-surface":"#1a1b22","on-tertiary-fixed-variant":"#454748","surface-variant":"#e3e1ec","surface-tint":"#745b00","primary-container":"#ffcc00"},borderRadius:{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},spacing:{"space-lg":"1rem","space-xs":"0.25rem","space-md":"0.75rem","space-xl":"1.5rem","gutter":"1rem","margin":"1rem","space-sm":"0.5rem"},fontFamily:{"headline-md":["Inter"],"label-pill":["Inter"],"body-md":["Inter"],"body-lg":["Inter"],"body-sm":["Inter"],"label-lg":["Inter"],"label-md":["Inter"],"headline-sm":["Inter"],"headline-lg":["Inter"],"display-currency":["Inter"]},fontSize:{"headline-md":["20px",{lineHeight:"28px",letterSpacing:"-0.01em",fontWeight:"700"}],"label-pill":["11px",{lineHeight:"14px",letterSpacing:"0.03em",fontWeight:"700"}],"body-md":["14px",{lineHeight:"20px",fontWeight:"400"}],"body-lg":["16px",{lineHeight:"24px",fontWeight:"500"}],"body-sm":["12px",{lineHeight:"16px",fontWeight:"400"}],"label-lg":["14px",{lineHeight:"20px",letterSpacing:"0.01em",fontWeight:"600"}],"label-md":["12px",{lineHeight:"16px",letterSpacing:"0.02em",fontWeight:"600"}],"headline-sm":["18px",{lineHeight:"24px",fontWeight:"600"}],"headline-lg":["24px",{lineHeight:"32px",letterSpacing:"-0.015em",fontWeight:"700"}],"display-currency":["26px",{lineHeight:"32px",letterSpacing:"-0.02em",fontWeight:"700"}]}}}}</script></head><body class="bg-surface font-body-md text-on-surface antialiased min-h-screen" style="min-height: 100%; height: auto; overflow: hidden auto; opacity: 1;"><header class="fixed top-0 left-0 right-0 w-full z-50 bg-surface/95 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between gap-space-lg"><div class="flex items-center gap-space-md"><img alt="Logo UTFRide" class="h-8 w-auto object-contain" src="../logo.png"><div class="flex items-center gap-space-sm pl-space-xs"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight">UTFRide</span><span class="bg-primary-fixed text-on-primary-fixed px-space-sm py-0.5 rounded-full font-label-pill text-label-pill uppercase">Painel de Moderação e Suporte Institucional</span></div></div><nav class="hidden xl:flex items-center gap-space-sm" data-active-classes="bg-primary-container text-on-primary-container font-label-lg rounded-lg"><a class="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="denuncias-e-casos" href="./1._landing_page_visitante.html">Denúncias e Casos</a><a class="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="alunos-e-bloqueios" href="./12._perfil_do_aluno.html">Alunos e Bloqueios</a><a class="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="logs-de-auditoria" href="./13._painel_de_suporte_desktop.html#audit-logs">Logs de Auditoria</a><a class="px-space-md py-space-sm rounded-lg font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="diretrizes" href="./13._painel_de_suporte_desktop.html">Diretrizes</a></nav><div class="flex items-center gap-space-md"><div class="hidden md:flex flex-col text-right"><span class="font-label-md text-label-md text-on-surface">Equipe Suporte UTFPR</span><span class="font-body-sm text-body-sm text-on-surface-variant">Moderação Central</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div><a class="p-space-xs text-on-surface-variant hover:text-error transition-colors rounded-lg" data-path="login" href="./3._login_e_estados_de_erro.html" title="Sair do Painel"><span class="material-symbols-outlined text-[20px]">logout</span></a></div></div></header><main class="w-full pt-16 bg-surface min-h-screen" style="min-height: 100vh; height: auto; overflow-y: visible; padding-bottom: 24px;"><div class="flex flex-col w-full">
+<div class="w-full max-w-7xl mx-auto px-6 lg:px-12 py-space-xl flex flex-col gap-space-xl pb-space-lg">
+<!-- Topo Institucional de Alertas & Status -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-space-lg">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="inline-flex items-center justify-center w-2.5 h-2.5 rounded-full bg-error animate-pulse"></span>
+<span class="font-label-pill text-label-pill uppercase text-error tracking-wider">Protocolos de Segurança Ativos • US06 / RN07 / RN08</span>
+</div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Centro de Moderação e Auditoria de Denúncias</h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-2xl">
+          Supervisão ética universitária, controle de conduta em caronas compartilhadas e aplicação de sanções administrativas conforme Regimento Disciplinar UTFPR.
+        </p>
+</div>
+<!-- Indicador Operacional -->
+<div class="flex items-center gap-space-md p-space-md rounded-xl bg-surface-container-low shadow-sm">
+<div class="w-10 h-10 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold">
+<span class="material-symbols-outlined text-[20px]">shield_person</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface">Operador em Sessão Segura</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">admin.suporte@utfpr.edu.br • IP 200.17.98.41</span>
+</div>
+</div>
+</div>
+<!-- Cards de Métricas Principais -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
+<!-- 12 Denúncias Pendentes -->
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
+<div class="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-bl-full pointer-events-none"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant">Fila Ativa de Triagem</span>
+<span class="material-symbols-outlined text-primary text-[22px]">pending_actions</span>
+</div>
+<div class="my-space-sm flex items-baseline gap-space-xs">
+<span class="font-display-currency text-display-currency text-on-surface">12</span>
+<span class="font-label-sm text-body-sm text-error font-semibold">+3 hoje</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="inline-block w-2 h-2 rounded-full bg-primary-container"></span>
+<span class="font-label-md text-label-md text-on-surface font-medium">12 Denúncias Pendentes</span>
+</div>
+</div>
+<!-- 148 Casos Resolvidos -->
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant">Ciclo Concluído (Mês)</span>
+<span class="material-symbols-outlined text-secondary text-[22px]">task_alt</span>
+</div>
+<div class="my-space-sm flex items-baseline gap-space-xs">
+<span class="font-display-currency text-display-currency text-on-surface">148</span>
+<span class="font-label-sm text-body-sm text-on-surface-variant">taxa 96.1%</span>
+</div>
+<div class="flex items-center gap-space-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">verified</span>
+<span class="font-body-sm text-body-sm">148 Casos Resolvidos</span>
+</div>
+</div>
+<!-- 3 Contas Bloqueadas (RN07) -->
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-error">Bloqueios Rígidos</span>
+<span class="material-symbols-outlined text-error text-[22px]">gavel</span>
+</div>
+<div class="my-space-sm flex items-baseline gap-space-xs">
+<span class="font-display-currency text-display-currency text-error">3</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">suspensões</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<span class="px-space-xs py-0.5 rounded-full bg-error-container text-on-error-container font-label-pill text-label-pill">RN07 APLICADA</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">3 Contas Bloqueadas</span>
+</div>
+</div>
+<!-- Tempo Médio de Análise: 4.2h -->
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant">Tempo Médio Resposta</span>
+<span class="material-symbols-outlined text-tertiary text-[22px]">avg_pace</span>
+</div>
+<div class="my-space-sm flex items-baseline gap-space-xs">
+<span class="font-display-currency text-display-currency text-on-surface">4.2h</span>
+<span class="font-body-sm text-body-sm text-primary font-medium">Meta &lt; 6h</span>
+</div>
+<div class="flex items-center gap-space-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">schedule</span>
+<span class="font-body-sm text-body-sm">Tempo Médio de Análise: 4.2h</span>
+</div>
+</div>
+</div>
+<!-- Filtros de Status em Pílulas -->
+<div class="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-xs p-1 bg-surface-container rounded-xl overflow-x-auto flex-shrink-0">
+<button class="px-space-md py-space-sm rounded-lg font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-space-xs" type="button">
+<span class="">Todas</span>
+<span class="px-1.5 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant font-label-pill text-label-pill">18</span>
+</button>
+<button class="px-space-md py-space-sm rounded-lg font-label-md text-label-md bg-primary-container text-on-primary-container font-semibold shadow-sm flex items-center gap-space-xs" type="button">
+<span class="">Pendentes</span>
+<span class="px-1.5 py-0.5 rounded-full bg-on-primary-container text-surface-container-lowest font-label-pill text-label-pill">12</span>
+</button>
+<button class="px-space-md py-space-sm rounded-lg font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-space-xs" type="button">
+<span class="">Em Análise</span>
+<span class="px-1.5 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant font-label-pill text-label-pill">3</span>
+</button>
+<button class="px-space-md py-space-sm rounded-lg font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-space-xs" type="button">
+<span class="">Resolvidas</span>
+<span class="px-1.5 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant font-label-pill text-label-pill">148</span>
+</button>
+</div>
+<div class="flex items-center gap-space-sm">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-[18px] text-on-surface-variant">search</span>
+<input class="pl-9 pr-4 py-2 text-body-sm font-body-sm bg-surface-container-lowest rounded-lg shadow-sm text-on-surface placeholder:text-outline focus:outline-none focus:ring-2 focus:ring-primary w-full sm:w-64" placeholder="Filtrar por aluno, RA ou ID..." type="text">
+</div>
+<button class="p-2 bg-surface-container-lowest hover:bg-surface-container text-on-surface rounded-lg shadow-sm transition-colors" title="Exportar Relatório CSV" type="button">
+<span class="material-symbols-outlined text-[20px]">download</span>
+</button>
+</div>
+</div>
+<!-- Layout Split 2 Colunas -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
+<!-- Coluna Esquerda: Lista de Denúncias (5 itens) -->
+<div class="lg:col-span-5 flex flex-col gap-space-md" style="overflow-y: visible;">
+<div class="flex items-center justify-between px-space-xs">
+<span class="font-label-md text-label-md uppercase tracking-wider text-on-surface-variant font-bold">Fila de Triagem Prioritária</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Ordenado por severidade</span>
+</div>
+<!-- Item 1: Caso #4912 (SELECIONADO) -->
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-md ring-2 ring-primary relative cursor-pointer transition-all flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="font-label-lg text-label-lg font-bold text-on-surface">#4912</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Hoje, 09:42</span>
+</div>
+<span class="px-space-sm py-0.5 rounded-full bg-primary-container text-on-primary-container font-label-pill text-label-pill uppercase font-bold">
+              Pendente
+            </span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Carlos Eduardo Mendes</span>
+<span class="font-body-sm text-body-sm text-error font-medium flex items-center gap-1 mt-0.5">
+<span class="material-symbols-outlined text-[16px]">payments</span>
+              Cobrança indevida de taxa fora do app
+            </span>
+</div>
+<div class="pt-space-xs flex items-center justify-between text-on-surface-variant font-body-sm text-body-sm">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">directions_car</span>
+              Batel → Neoville
+            </span>
+<span class="font-label-sm font-semibold text-primary">Em análise ativa →</span>
+</div>
+</div>
+<!-- Item 2: Caso #4910 -->
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md cursor-pointer transition-all flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="font-label-lg text-label-lg font-bold text-on-surface">#4910</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Ontem, 18:20</span>
+</div>
+<span class="px-space-sm py-0.5 rounded-full bg-primary-container text-on-primary-container font-label-pill text-label-pill uppercase font-bold">
+              Pendente
+            </span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Lucas Rocha</span>
+<span class="font-body-sm text-body-sm text-error font-medium flex items-center gap-1 mt-0.5">
+<span class="material-symbols-outlined text-[16px]">speed</span>
+              Desrespeito e direção perigosa
+            </span>
+</div>
+<div class="pt-space-xs flex items-center justify-between text-on-surface-variant font-body-sm text-body-sm">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">directions_car</span>
+              Sede Centro → Ecoville
+            </span>
+<span class="text-on-surface-variant">Aguardando moderador</span>
+</div>
+</div>
+<!-- Item 3: Caso #4908 -->
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md cursor-pointer transition-all flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="font-label-lg text-label-lg font-bold text-on-surface">#4908</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">19 Out</span>
+</div>
+<span class="px-space-sm py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-pill text-label-pill uppercase font-bold">
+              Resolvido
+            </span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Fernanda Souza</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1 mt-0.5">
+<span class="material-symbols-outlined text-[16px]">cancel</span>
+              Cancelamento reiterado no ponto
+            </span>
+</div>
+<div class="pt-space-xs flex items-center justify-between text-on-surface-variant font-body-sm text-body-sm">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">directions_car</span>
+              Portão → Sede Centro
+            </span>
+<span class="text-on-surface-variant">Arquivado com aviso</span>
+</div>
+</div>
+<!-- Item 4: Caso #4905 -->
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md cursor-pointer transition-all flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="font-label-lg text-label-lg font-bold text-on-surface">#4905</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">18 Out</span>
+</div>
+<span class="px-space-sm py-0.5 rounded-full bg-error-container text-on-error-container font-label-pill text-label-pill uppercase font-bold">
+              Bloqueado
+            </span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Thiago Ramos</span>
+<span class="font-body-sm text-body-sm text-error font-medium flex items-center gap-1 mt-0.5">
+<span class="material-symbols-outlined text-[16px]">person_off</span>
+              Uso de perfil falso/não institucional
+            </span>
+</div>
+<div class="pt-space-xs flex items-center justify-between text-on-surface-variant font-body-sm text-body-sm">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">security</span>
+              Matrícula Suspenso RN07
+            </span>
+<span class="text-error font-medium">Bloqueado definitivo</span>
+</div>
+</div>
+<!-- Item 5: Caso #4901 -->
+<div class="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm hover:shadow-md cursor-pointer transition-all flex flex-col gap-space-sm">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<span class="font-label-lg text-label-lg font-bold text-on-surface">#4901</span>
+<span class="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">17 Out</span>
+</div>
+<span class="px-space-sm py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-pill text-label-pill uppercase font-bold">
+              Resolvido
+            </span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Rodrigo Alves</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1 mt-0.5">
+<span class="material-symbols-outlined text-[16px]">schedule</span>
+              Atraso de 35 minutos
+            </span>
+</div>
+<div class="pt-space-xs flex items-center justify-between text-on-surface-variant font-body-sm text-body-sm">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">directions_car</span>
+              Boqueirão → Neoville
+            </span>
+<span class="text-on-surface-variant">Reembolso compensado</span>
+</div>
+</div>
+</div>
+<!-- Coluna Direita: Painel Detalhado do Caso #4912 -->
+<div class="lg:col-span-7 flex flex-col gap-space-lg" style="overflow-y: visible;">
+<div class="p-space-xl rounded-xl bg-surface-container-lowest shadow-md flex flex-col gap-space-xl">
+<!-- Cabeçalho do Detalhe -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-md pb-space-lg border-b border-surface-container">
+<div class="flex flex-col">
+<div class="flex items-center gap-space-sm">
+<span class="px-space-sm py-0.5 rounded-md bg-error-container text-on-error-container font-label-pill text-label-pill uppercase font-bold">Infração Gravíssima</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Protocolo Disciplinar UTFPR</span>
+</div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface tracking-tight mt-1">Detalhes da Denúncia #UTF-DEN-4912</h2>
+</div>
+<div class="flex items-center gap-space-xs self-start sm:self-center">
+<span class="material-symbols-outlined text-primary text-[20px]">flag</span>
+<span class="font-label-md text-label-md text-on-surface font-semibold">Prioridade Alta</span>
+</div>
+</div>
+<!-- Cards dos Alunos: Denunciante vs Denunciado -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+<!-- Denunciante (Passageiro) -->
+<div class="p-space-lg rounded-xl bg-surface-container-low flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-pill text-label-pill uppercase text-secondary font-bold">Denunciante (Passageiro)</span>
+<span class="material-symbols-outlined text-[18px] text-secondary">verified_user</span>
+</div>
+<div class="flex items-center gap-space-md">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest flex items-center justify-center font-bold text-on-surface text-headline-sm">
+                  BS
+                </div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Beatriz Santos</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Eng. Computação • RA a2394812</span>
+</div>
+</div>
+<div class="pt-space-xs flex items-center gap-space-md text-body-sm text-on-surface-variant">
+<span class="">Avaliação média: <strong class="text-on-surface">5.0 ★</strong></span>
+<span class="">•</span>
+<span class="">42 caronas realizadas</span>
+</div>
+</div>
+<!-- Denunciado (Motorista) -->
+<div class="p-space-lg rounded-xl bg-error-container/20 flex flex-col gap-space-sm relative">
+<div class="flex items-center justify-between">
+<span class="font-label-pill text-label-pill uppercase text-error font-bold">Denunciado (Motorista)</span>
+<span class="material-symbols-outlined text-[18px] text-error">warning</span>
+</div>
+<div class="flex items-center gap-space-md">
+<div class="w-12 h-12 rounded-full bg-error-container text-on-error-container flex items-center justify-center font-bold text-headline-sm">
+                  CM
+                </div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Carlos Eduardo Mendes</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Eng. Elétrica • RA a1983021</span>
+</div>
+</div>
+<div class="pt-space-xs flex items-center gap-space-xs text-body-sm text-error font-semibold">
+<span class="material-symbols-outlined text-[16px]">history_toggle_off</span>
+<span class="">Histórico: 2 advertências anteriores registradas</span>
+</div>
+</div>
+</div>
+<!-- Informações da Viagem Associada -->
+<div class="p-space-lg rounded-xl bg-surface-container flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-semibold flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[18px] text-primary">route</span>
+                Viagem Associada: Trajeto Batel → UTFPR Neoville
+              </span>
+<span class="font-body-sm text-body-sm text-on-surface-variant font-medium">18 de Outubro, 2025 • Partida 08:30</span>
+</div>
+<!-- Timeline simplificada da carona -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-md text-on-surface">
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Ponto de Encontro</span>
+<span class="font-label-md text-label-md">Praça da Espanha, Batel</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Destino Final</span>
+<span class="font-label-md text-label-md">Campus Neoville - Portaria 2</span>
+</div>
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Veículo Informado</span>
+<span class="font-label-md text-label-md">VW Gol Prata (ABC-4J19)</span>
+</div>
+</div>
+</div>
+<!-- Relato do Passageiro -->
+<div class="flex flex-col gap-space-xs">
+<span class="font-label-md text-label-md text-on-surface font-bold flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[18px] text-secondary">format_quote</span>
+              Relato Detalhado do Passageiro
+            </span>
+<div class="p-space-lg rounded-xl bg-surface-container-low text-on-surface font-body-lg text-body-lg leading-relaxed shadow-inner">
+              “O motorista exigiu um adicional de R$ 15,00 via Pix alegando trânsito pesado na Linha Verde, contrariando a regra da plataforma de rateio fixado antes da viagem. Ele disse que se não pagássemos na hora, deixaria os 3 passageiros no meio do anel viário.”
+            </div>
+</div>
+<!-- Evidências Anexadas -->
+<div class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-bold flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[18px] text-primary">attachment</span>
+                Evidências Anexadas pelo Aluno
+              </span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">2 arquivos anexados</span>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-space-md">
+<div class="p-space-md rounded-xl bg-surface-container-low flex items-center justify-between">
+<div class="flex items-center gap-space-sm min-w-0">
+<span class="material-symbols-outlined text-primary text-[24px]">receipt_long</span>
+<div class="flex flex-col min-w-0">
+<span class="font-label-md text-label-md text-on-surface truncate">Comprovante_Viagem_Oficial.pdf</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Taxa plataforma: R$ 9,00</span>
+</div>
+</div>
+<button class="p-space-xs text-primary hover:text-on-surface transition-colors" type="button">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</div>
+<div class="p-space-md rounded-xl bg-surface-container-low flex items-center justify-between">
+<div class="flex items-center gap-space-sm min-w-0">
+<span class="material-symbols-outlined text-error text-[24px]">chat</span>
+<div class="flex flex-col min-w-0">
+<span class="font-label-md text-label-md text-on-surface truncate">Screenshot_Chave_Pix_Exigida.png</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Imagem PNG • 1.4 MB</span>
+</div>
+</div>
+<button class="p-space-xs text-primary hover:text-on-surface transition-colors" type="button">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Bloco Interativo: Ações do Suporte & Moderação -->
+<div class="flex flex-col gap-space-md pt-space-lg border-t border-surface-container">
+<span class="font-label-lg text-label-lg text-on-surface font-bold">Tomada de Decisão Regimental (RN07 / RN08)</span>
+<div class="flex flex-col items-stretch gap-space-md sm:flex-row sm:items-center">
+<!-- Botão Ação Destrutiva: Bloquear Aluno -->
+<button class="h-[52px] px-space-lg rounded-xl bg-error text-on-error font-label-lg text-label-lg font-bold flex items-center justify-center gap-space-sm hover:opacity-90 shadow-md transition-all active:scale-[0.98]" id="btn-block" onclick="document.getElementById('modal-block-confirmation').classList.remove('hidden')" type="button">
+<span class="material-symbols-outlined text-[20px]">block</span>
+                Bloquear Aluno (Aplicar RN07)
+              </button>
+<!-- Botão Advertência: Amarelo Primário -->
+<button class="h-[52px] px-space-lg rounded-xl bg-primary-container text-on-primary-container font-label-lg text-label-lg font-bold flex items-center justify-center gap-space-sm hover:brightness-95 shadow-sm transition-all active:scale-[0.98]" onclick="alert('Advertência disciplinar aplicada ao motorista Carlos Eduardo Mendes e registrada no histórico acadêmico.')" type="button">
+<span class="material-symbols-outlined text-[20px]">assignment_late</span>
+                Marcar como Resolvida com Advertência
+              </button>
+<!-- Botão Contorno / Arquivar -->
+<button class="h-[52px] px-space-lg rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-lg text-label-lg font-semibold flex items-center justify-center gap-space-sm transition-all" onclick="alert('Denúncia arquivada sem aplicação de medidas disciplinares.')" type="button">
+<span class="material-symbols-outlined text-[20px]">archive</span>
+                Arquivar sem Ação
+              </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Modal de Confirmação Rígida para Bloqueio RN07 -->
+<div class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-background/60 backdrop-blur-sm" id="modal-block-confirmation">
+<div class="bg-surface-container-lowest max-w-lg w-full rounded-xl shadow-2xl p-space-xl flex flex-col gap-space-lg">
+<div class="flex items-center gap-space-md text-error">
+<div class="w-12 h-12 rounded-full bg-error-container text-on-error-container flex items-center justify-center">
+<span class="material-symbols-outlined text-[28px]">gavel</span>
+</div>
+<div class="flex flex-col">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Confirmar Bloqueio Institucional</h3>
+<span class="font-body-sm text-body-sm text-error font-semibold">Resolução Normativa RN07</span>
+</div>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+          Suspender imediatamente acesso da matrícula <strong class="text-on-surface">a1983021</strong> à rede UTFRide. 
+          O aluno perderá permissão para ofertar caronas, receberá notificação no e-mail institucional e o caso será encaminhado ao Colegiado Disciplinar da UTFPR.
+        </p>
+<div class="p-space-md rounded-lg bg-surface-container text-on-surface text-body-sm">
+<strong>Motivo do bloqueio:</strong> Reincidência em cobrança abusiva e extorsão de passageiros fora do app em ambiente acadêmico.
+        </div>
+<div class="flex items-center justify-end gap-space-md pt-space-xs">
+<button class="px-space-md py-space-sm font-label-md text-label-md text-on-surface-variant hover:text-on-surface" onclick="document.getElementById('modal-block-confirmation').classList.add('hidden')" type="button">
+            Cancelar
+          </button>
+<button class="px-space-lg py-space-sm rounded-lg bg-error text-on-error font-label-md text-label-md font-bold shadow-md hover:opacity-90" onclick="document.getElementById('modal-block-confirmation').classList.add('hidden'); alert('Matrícula a1983021 bloqueada permanentemente pelo RN07.');" type="button">
+            Confirmar Bloqueio Imediato
+          </button>
+</div>
+</div>
+</div>
+<!-- Registro de Auditoria no Rodapé -->
+<div class="p-space-md rounded-xl bg-surface-container-low flex flex-col sm:flex-row items-center justify-between gap-space-sm text-on-surface-variant font-body-sm text-body-sm">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]">verified</span>
+<span class="">Ação registrada pelo operador <strong>admin.suporte@utfpr.edu.br</strong></span>
+</div>
+<div class="flex items-center gap-space-sm">
+<span class="">Log SHA-256: e8d4f29...89b1</span>
+<span class="">•</span>
+<span class="">Timestamp: 2025-10-24 10:14:02 UTC-3</span>
+</div>
+</div>
+</div>
+</div></main><footer class="w-full bg-surface-container-low py-space-lg shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="max-w-7xl mx-auto px-6 lg:px-12 flex flex-col md:flex-row items-center justify-between gap-space-sm text-center md:text-left"><div class="font-body-sm text-body-sm text-on-surface-variant">© 2025 UTFRide — Universidade Tecnológica Federal do Paraná. Núcleo de Segurança Institucional e Moderação.</div><div class="flex items-center gap-space-lg"><a class="font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="diretrizes" href="./13._painel_de_suporte_desktop.html">Diretrizes de Conduta</a><span class="text-outline-variant">•</span><span class="font-body-sm text-body-sm text-on-surface-variant">Ambiente Auditado</span></div></div></footer>
+
+
+
+
+
+
+
+</body></html>

@@ -31,7 +31,8 @@ não consegue guardar — os tokens, os breakpoints e as decisões de abandono.
 
 ## Passo 1 — Framework CSS e Design System (IDs 1 e 5)
 
-> **Antes de perguntar, veja se dá para ler.** Se a sessão tiver um servidor MCP de
+> **Antes de perguntar, veja se dá para ler.** Primeiro leia `docs/prototipo/` (a fonte
+> local). Só se ela estiver vazia, e se a sessão tiver um servidor MCP de
 > ferramenta de design conectado (Stitch, Figma), use-o **antes** de começar as
 > perguntas: liste as telas e leia a paleta, a tipografia e os espaçamentos que o
 > protótipo já usa. Depois apresente o que encontrou e pergunte **o papel de cada
@@ -51,8 +52,10 @@ não consegue guardar — os tokens, os breakpoints e as decisões de abandono.
 2. **Tokens** — grave em `docs/design-tokens.md`: paleta (com os papéis: primária,
    superfície, erro…), escala de espaçamento, tipografia, estados de botão. Não é
    design system completo — é o mínimo para a IA não inventar um botão por tela.
-3. **Protótipo** — registre o **link público** do Stitch/Figma no
-   `docs/design-tokens.md` e no README. O protótipo é a jornada navegável: telas
+3. **Protótipo** — as telas em estado final vivem em `docs/prototipo/` (índice no
+   README dela) e são a **fonte que o agente lê**. Registre o **link público** do
+   Stitch/Figma no `docs/design-tokens.md` e no README só como evidência (ID1); o agente
+   não o consulta. O protótipo é a jornada navegável: telas
    das stories principais, no fluxo real.
 
 ## Passo 2 — Mobile-First (ID2)

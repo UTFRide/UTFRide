@@ -31,6 +31,7 @@ O prompt de despacho te dá o caminho do `spec.md`, o número e o texto da taref
 2. Rode o comando de diff que veio no despacho e leia o diff inteiro.
 3. Rode os testes. Teste que não roda não conta como critério atendido.
 4. Para cada critério, decida: **atendido**, **não atendido** ou **fora desta tarefa**.
+5. Se a tarefa toca uma tela, abra o arquivo citado em "Telas do protótipo" da spec (em `docs/prototipo/`) e compare layout, fluxo e estados com o diff. Divergência visual relevante é apontamento de conformidade.
 
 ## O que reprova
 

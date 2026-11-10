@@ -28,6 +28,7 @@ Ao estourar qualquer um dos dois, PARE IMEDIATAMENTE e diga qual estourou: "Esto
 ## 4. Padrões de Arquitetura e TDD
 - Todo código de produção deve seguir o ciclo TDD (RED → GREEN → REFACTOR). Escreva o teste antes da lógica.
 - Consulte rigorosamente o `docs/architecture.md` para qualquer decisão de estrutura, relacionamentos ou contratos de API.
+- **Telas:** a fonte da verdade visual é `docs/prototipo/` (índice em `docs/prototipo/README.md`). Para criar ou alterar qualquer tela, leia a tela correspondente ali antes de escrever. Nunca consulte o link do Figma/Stitch: ele é só evidência pública. O protótipo é referência de layout e fluxo, não código para copiar.
 
 ## 5. Regras de Git 
 - **Gitflow: `main` e `develop` são sagradas e bloqueadas.** Nunca faça commits diretos em nenhuma das duas. A `main` reflete produção; a `develop` integra o trabalho da equipe.

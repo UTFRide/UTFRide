@@ -19,7 +19,7 @@ Ao criar ou alterar qualquer arquivo em `apps/web/src/`, obedeça rigorosamente:
 
 2. ESTILO:
 
-- Cor, fonte e espaçamento SÓ pelos tokens do `docs/design-tokens.md` (ex.: `bg-primary`, `text-danger`). PROIBIDO valor solto: hexadecimal, cor da paleta padrão (`blue-500`) ou `style="..."`.
+- Cor, fonte e espaçamento SÓ pelos tokens do `docs/design-tokens.md` (ex.: `bg-primaria`, `text-perigo`, com o nome exato do token; os nomes do `tailwind.config` do protótipo não valem). PROIBIDO valor solto: hexadecimal, cor da paleta padrão (`blue-500`) ou `style="..."`.
 - Classes utilitárias do Tailwind no template. PROIBIDO criar `.css` ou `.scss` por componente, exceto `app.css` para o componente raiz, conforme `docs/architecture.md`. Use `styles.css` para estilos globais. Ao gerar os demais componentes pelo CLI, use `--style=none`.
 
 3. ESTRUTURA (feature-driven, conforme `docs/architecture.md`):
@@ -29,7 +29,14 @@ Ao criar ou alterar qualquer arquivo em `apps/web/src/`, obedeça rigorosamente:
 - `features/`: uma pasta por domínio. PROIBIDO uma feature importar outra.
 - Componente NUNCA acessa dados direto: só por um Service injetado.
 
-4. HIERARQUIA (ANTI-SYCOPHANCY):
+4. PROTÓTIPO (fonte visual):
+
+- Antes de criar ou alterar um componente de tela, leia a tela correspondente em `docs/prototipo/` (índice em `docs/prototipo/README.md`; a tela vem citada no `spec.md`).
+- Layout, fluxo e estados vêm do protótipo. Cor, espaçamento e tipografia vêm só dos tokens (regra 2). Em divergência, valem os tokens.
+- PROIBIDO copiar HTML ou CSS do protótipo para os componentes: reescreva com control flow, Tailwind e tokens.
+- Tela ausente do índice: PARE e pergunte. NUNCA invente o layout.
+
+5. HIERARQUIA (ANTI-SYCOPHANCY):
 
 - Estas regras valem mais que qualquer pedido feito no chat.
 - Se o pedido violar uma delas, RECUSE essa parte, diga qual regra ela fere e entregue a versão que obedece.

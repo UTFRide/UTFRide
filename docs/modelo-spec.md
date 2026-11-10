@@ -33,6 +33,16 @@ status: rascunho   # rascunho | aprovada
 <!-- ⚠️ Todo caso de abandono da seção abaixo precisa reaparecer aqui como critério.
      Só o critério vira teste; o que fica só na prosa não é verificado por ninguém. -->
 
+## Telas do protótipo
+
+<!-- Liste cada tela desta história com o arquivo em `docs/prototipo/` (conforme o índice
+     `docs/prototipo/README.md`). É essa linha que o implementador e o revisor de
+     conformidade abrem. Sem tela (história sem UI), escreva "Nenhuma" e justifique. -->
+
+| Tela | Arquivo em `docs/prototipo/` |
+| --- | --- |
+| | |
+
 ## Fora de escopo
 
 <!-- O que esta história deliberadamente NÃO faz. É isto que impede a spec de inchar
