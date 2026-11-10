@@ -56,9 +56,7 @@
 **Como** aluno visitante da UTFPR, **eu quero** realizar meu cadastro e autenticar meu acesso usando uma matrícula ativa e um e-mail institucional, **para que** eu possa acessar as funcionalidades do sistema em um ambiente seguro e restrito à comunidade acadêmica.
 
 **Critérios de aceite:**
-- [ ] **Dado** que sou um visitante na tela de cadastro, **quando** preencho nome, e-mail institucional (`@alunos.utfpr.edu.br`), matrícula e senha válidos e submeto, **então** sou orientado a confirmar o e-mail antes de acessar a conta.
-- [ ] **Dado** que concluí a confirmação do e-mail institucional, **quando** retorno ao aplicativo, **então** sou direcionado à tela de login para entrar com minhas credenciais.
-- [ ] **Dado** que ainda não confirmei o e-mail, **quando** tento entrar, **então** o acesso à conta é impedido.
+- [ ] **Dado** que sou um visitante na tela de cadastro, **quando** preencho nome, e-mail institucional (`@alunos.utfpr.edu.br`), matrícula e senha válidos e submeto, **então** minha conta é criada, a confirmação do e-mail é simulada automaticamente e sou direcionado à tela de login.
 - [ ] **Dado** que saio do formulário de cadastro antes de enviá-lo, **quando** retorno, **então** os dados preenchidos podem ser descartados.
 - [ ] **Dado** que ocorre uma falha de conexão durante o cadastro ou login, **quando** a operação falha, **então** sou informado e posso tentar novamente.
 - [ ] **Dado** que possuo cadastro ativo, **quando** informo e-mail institucional e senha corretos na tela de login, **então** meu login é efetuado com sucesso.
@@ -68,7 +66,7 @@
 
 **Regras relacionadas:** RN01, RN07
 
-Na primeira entrega, a confirmação de e-mail é simulada; considera-se que os e-mails informados são válidos e as matrículas estão ativas. A recuperação de senha está fora do escopo desta história.
+Na primeira entrega, a confirmação de e-mail é simulada automaticamente, sem envio de e-mail; considera-se que os e-mails informados são válidos e as matrículas estão ativas. A recuperação de senha está fora do escopo desta história.
 
 ---
 

@@ -15,9 +15,7 @@ Alunos da UTFPR precisam acessar um ambiente restrito à comunidade acadêmica p
 
 ## Critérios de aceite
 
-- [ ] **CA1 — Dado** um visitante no cadastro, **quando** informa nome, e-mail institucional, matrícula e senha válidos e envia o formulário, **então** é orientado a confirmar o e-mail antes de acessar a conta.
-- [ ] **CA2 — Dado** que o e-mail ainda não foi confirmado, **quando** o aluno tenta entrar, **então** o acesso à conta é impedido.
-- [ ] **CA3 — Dado** que o aluno concluiu a confirmação do e-mail, **quando** retorna ao aplicativo, **então** é direcionado à tela de login.
+- [ ] **CA1 — Dado** um visitante no cadastro, **quando** informa nome, e-mail institucional, matrícula e senha válidos e envia o formulário, **então** sua conta é criada, a confirmação do e-mail é simulada automaticamente e ele é direcionado à tela de login.
 - [ ] **CA4 — Dado** um cadastro ativo e confirmado, **quando** o aluno informa e-mail institucional e senha corretos no login, **então** entra no sistema.
 - [ ] **CA5 — Dado** um e-mail não institucional no cadastro, **quando** o visitante tenta enviar o formulário, **então** o envio é bloqueado e a exigência do domínio `@alunos.utfpr.edu.br` é informada.
 - [ ] **CA6 — Dado** credenciais inválidas, **quando** o aluno tenta entrar, **então** vê uma mensagem amigável sem detalhes específicos de segurança.
@@ -42,19 +40,17 @@ Alunos da UTFPR precisam acessar um ambiente restrito à comunidade acadêmica p
 
 ## Abandono no meio
 
-Se o visitante sair antes de enviar o cadastro, os dados podem ser descartados (CA8). Se a conexão falhar durante o cadastro ou o login, o sistema informa a falha e permite outra tentativa (CA9). O acesso permanece impedido enquanto a confirmação não for concluída (CA2).
+Se o visitante sair antes de enviar o cadastro, os dados podem ser descartados (CA8). Se a conexão falhar durante o cadastro ou o login, o sistema informa a falha e permite outra tentativa (CA9).
 
 ## Assume que
 
-Na primeira entrega, a confirmação de e-mail é simulada e os e-mails informados e as matrículas são considerados válidos e ativos, respectivamente, conforme decisão do usuário. A validação do domínio institucional continua obrigatória.
+Na primeira entrega, a confirmação de e-mail é simulada automaticamente e os e-mails informados e as matrículas são considerados válidos e ativos, respectivamente, conforme decisão do usuário. A validação do domínio institucional continua obrigatória.
 
 | Premissa | Issue que fecha |
 | --- | --- |
-| A confirmação é simulada na primeira entrega. | A definir: migração para autenticação da Entrega 3. |
+| A confirmação real é substituída por confirmação automática simulada. | Ainda não criada; usuário decidiu não criá-la por enquanto. |
 
 ## Dúvidas em aberto
 
 | # | Dúvida | Quem responde |
 | --- | --- | --- |
-| 1 | Como o aluno realiza a confirmação simulada na primeira entrega? | Usuário |
-| 2 | Qual issue substituirá a confirmação simulada pela confirmação real? | Usuário |
