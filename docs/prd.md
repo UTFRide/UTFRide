@@ -56,13 +56,19 @@
 **Como** aluno visitante da UTFPR, **eu quero** realizar meu cadastro e autenticar meu acesso usando uma matrícula ativa e um e-mail institucional, **para que** eu possa acessar as funcionalidades do sistema em um ambiente seguro e restrito à comunidade acadêmica.
 
 **Critérios de aceite:**
-- [ ] **Dado** que sou um visitante na tela de cadastro, **quando** preencho nome, e-mail institucional (`@alunos.utfpr.edu.br`), matrícula e senha válidos e submeto, **então** minha conta de Aluno é criada e sou direcionado para a página principal autenticado.
+- [ ] **Dado** que sou um visitante na tela de cadastro, **quando** preencho nome, e-mail institucional (`@alunos.utfpr.edu.br`), matrícula e senha válidos e submeto, **então** sou orientado a confirmar o e-mail antes de acessar a conta.
+- [ ] **Dado** que concluí a confirmação do e-mail institucional, **quando** retorno ao aplicativo, **então** sou direcionado à tela de login para entrar com minhas credenciais.
+- [ ] **Dado** que ainda não confirmei o e-mail, **quando** tento entrar, **então** o acesso à conta é impedido.
+- [ ] **Dado** que saio do formulário de cadastro antes de enviá-lo, **quando** retorno, **então** os dados preenchidos podem ser descartados.
+- [ ] **Dado** que ocorre uma falha de conexão durante o cadastro ou login, **quando** a operação falha, **então** sou informado e posso tentar novamente.
 - [ ] **Dado** que possuo cadastro ativo, **quando** informo e-mail institucional e senha corretos na tela de login, **então** meu login é efetuado com sucesso.
 - [ ] **Dado** que informo um e-mail não institucional (ex.: `@gmail.com`) no cadastro, **quando** tento submeter, **então** o sistema bloqueia e exibe erro informando a exigência do e-mail da UTFPR.
 - [ ] **Dado** que informo credenciais inválidas no login, **quando** tento entrar, **então** o sistema apresenta mensagem amigável de erro sem expor detalhes específicos de segurança.
 - [ ] **Dado** que o e-mail ou matrícula já foram cadastrados previamente, **quando** tento novo cadastro com os mesmos dados, **então** o sistema alerta sobre a existência prévia do cadastro.
 
 **Regras relacionadas:** RN01, RN07
+
+Na primeira entrega, a confirmação de e-mail é simulada; considera-se que os e-mails informados são válidos e as matrículas estão ativas. A recuperação de senha está fora do escopo desta história.
 
 ---
 
