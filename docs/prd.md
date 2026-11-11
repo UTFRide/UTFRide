@@ -66,7 +66,7 @@
 
 **Regras relacionadas:** RN01, RN07
 
-Na primeira entrega, a confirmação de e-mail é simulada automaticamente, sem envio de e-mail; considera-se que os e-mails informados são válidos e as matrículas estão ativas. A recuperação de senha está fora do escopo desta história.
+A confirmação de e-mail é simulada automaticamente, sem envio de e-mail; considera-se que os e-mails informados são válidos e as matrículas estão ativas. A recuperação de senha e a confirmação real por e-mail estão fora do escopo desta história.
 
 ---
 

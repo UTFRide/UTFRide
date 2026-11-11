@@ -35,7 +35,7 @@ Alunos da UTFPR precisam acessar um ambiente restrito à comunidade acadêmica p
 ## Fora de escopo
 
 - Recuperação de senha.
-- Envio real de e-mail na primeira entrega.
+- Envio real de e-mail e confirmação pelo aluno.
 - Verificação externa da validade do e-mail ou da situação da matrícula.
 
 ## Abandono no meio
@@ -44,11 +44,10 @@ Se o visitante sair antes de enviar o cadastro, os dados podem ser descartados (
 
 ## Assume que
 
-Na primeira entrega, a confirmação de e-mail é simulada automaticamente e os e-mails informados e as matrículas são considerados válidos e ativos, respectivamente, conforme decisão do usuário. A validação do domínio institucional continua obrigatória.
+Não há premissas de dependências futuras. A confirmação automática simulada é o comportamento definido para esta história; os e-mails informados e as matrículas são considerados válidos e ativos. A validação do domínio institucional continua obrigatória.
 
 | Premissa | Issue que fecha |
 | --- | --- |
-| A confirmação real é substituída por confirmação automática simulada. | Ainda não criada; usuário decidiu não criá-la por enquanto. |
 
 ## Dúvidas em aberto
 
