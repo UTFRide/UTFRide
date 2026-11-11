@@ -1,6 +1,6 @@
 ---
 issue: 4
-status: rascunho
+status: aprovada
 ---
 
 # US01 — Cadastro e Autenticação Institucional
@@ -25,12 +25,12 @@ Alunos da UTFPR precisam acessar um ambiente restrito à comunidade acadêmica p
 
 ## Telas do protótipo
 
-| Tela | Arquivo em `docs/prototipo/` |
-| --- | --- |
-| Landing Page | `models/1._landing_page_visitante.html` |
-| Cadastro de Aluno | `models/2._cadastro_de_aluno.html` |
-| Login e Estados de Erro | `models/3._login_e_estados_de_erro.html` |
-| Acesso Negado | `models/14._acesso_negado_403_forbidden.html` |
+| Tela                    | Arquivo em `docs/prototipo/`                  |
+| ----------------------- | --------------------------------------------- |
+| Landing Page            | `models/1._landing_page_visitante.html`       |
+| Cadastro de Aluno       | `models/2._cadastro_de_aluno.html`            |
+| Login e Estados de Erro | `models/3._login_e_estados_de_erro.html`      |
+| Acesso Negado           | `models/14._acesso_negado_403_forbidden.html` |
 
 ## Fora de escopo
 
@@ -47,9 +47,9 @@ Se o visitante sair antes de enviar o cadastro, os dados podem ser descartados (
 Não há premissas de dependências futuras. A confirmação automática simulada é o comportamento definido para esta história; os e-mails informados e as matrículas são considerados válidos e ativos. A validação do domínio institucional continua obrigatória.
 
 | Premissa | Issue que fecha |
-| --- | --- |
+| -------- | --------------- |
 
 ## Dúvidas em aberto
 
-| # | Dúvida | Quem responde |
-| --- | --- | --- |
+| #   | Dúvida | Quem responde |
+| --- | ------ | ------------- |
