@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { environment } from '../../../environments/environment';
 import { AuthData } from './auth-data';
 
 describe('AuthData', () => {
@@ -16,4 +17,21 @@ describe('AuthData', () => {
     expect(service.result()).toEqual(user);
     http.verify();
   });
+});
+
+it('usa a URL configurada para cadastro e login', () => {
+  const originalApiUrl = environment.apiUrl;
+  environment.apiUrl = 'http://api.test';
+  try {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    service.register({ name: 'Ana', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123', password: 'senha123', whatsapp: '41987654321' });
+    http.expectOne('http://api.test/users').flush({});
+    service.login('ana@alunos.utfpr.edu.br', 'senha123');
+    http.expectOne((request) => request.url === 'http://api.test/users' && request.params.get('email') === 'ana@alunos.utfpr.edu.br').flush([]);
+    http.verify();
+  } finally {
+    environment.apiUrl = originalApiUrl;
+  }
 });

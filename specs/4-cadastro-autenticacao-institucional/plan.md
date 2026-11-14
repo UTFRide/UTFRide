@@ -14,7 +14,7 @@
   - Teste primeiro: enviar dados válidos, verificar a criação da conta com confirmação automática e a navegação para `/login`; o teste falha enquanto esse fluxo não existir.
   - Arquivos previstos: testes e componentes de cadastro e landing em `apps/web/src/app/features/auth/`; serviço e modelo em `apps/web/src/app/core/`; `apps/web/src/app/app.routes.ts`; `apps/api/db.json`.
 
-- [ ] **Tarefa 2 — Autenticar o aluno**
+- [x] **Tarefa 2 — Autenticar o aluno**
   - Cobre: CA4.
   - Teste primeiro: informar credenciais corretas de conta ativa e confirmada e verificar a entrada no sistema e o estado autenticado; o teste falha enquanto o login não existir.
   - Arquivos previstos: testes e componente de login em `apps/web/src/app/features/auth/`; serviço e guarda em `apps/web/src/app/core/`; `apps/web/src/app/app.routes.ts`.

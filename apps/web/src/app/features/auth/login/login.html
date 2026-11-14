@@ -1,0 +1,17 @@
+<div class="min-h-screen bg-superficie font-sans text-texto">
+  <header class="border-b border-borda px-lg py-lg"><div class="mx-auto flex max-w-2xl items-center"><a routerLink="/"><img src="/assets/logo.png" alt="UTFRide" class="h-8 w-auto object-contain" /></a></div></header>
+  <main class="mx-auto flex max-w-md flex-col gap-lg px-lg py-xl">
+    <div class="flex flex-col items-center gap-sm text-center">
+      <img src="/assets/logo.png" alt="UTFRide Caronas UTFPR" class="h-16 w-auto object-contain" />
+      <span class="rounded-full bg-primaria px-md py-xs text-label-pill">Acesso Acadêmico Exclusivo</span>
+      <h1 class="text-headline-lg">Acesse sua conta</h1>
+      <p class="text-body-md text-texto-suave">Informe seu e-mail institucional da UTFPR</p>
+    </div>
+    <form [formGroup]="form" (ngSubmit)="submit()" class="flex flex-col gap-md rounded-xl bg-superficie p-lg">
+      <div class="flex flex-col gap-xs"><label for="login-email" class="flex justify-between text-label-md">E-mail Institucional <span class="text-body-sm text-texto-suave">&#64;alunos.utfpr.edu.br</span></label><input id="login-email" type="email" formControlName="email" autocomplete="email" placeholder="aluno&#64;alunos.utfpr.edu.br" class="rounded-xl border border-borda bg-fundo px-md py-lg text-body-md" /></div>
+      <div class="flex flex-col gap-xs"><label for="login-password" class="text-label-md">Senha do Portal</label><div class="flex items-center rounded-xl border border-borda bg-fundo px-md"><input id="login-password" [type]="passwordVisible() ? 'text' : 'password'" formControlName="password" autocomplete="current-password" class="min-w-0 flex-1 py-lg text-body-md outline-none" /><button type="button" (click)="passwordVisible.set(!passwordVisible())" [attr.aria-label]="passwordVisible() ? 'Ocultar senha' : 'Mostrar senha'"><span class="material-symbols-outlined text-texto-suave" aria-hidden="true">{{ passwordVisible() ? 'visibility_off' : 'visibility' }}</span></button></div></div>
+      <button type="submit" [disabled]="form.invalid || loading()" class="rounded-xl bg-primaria px-lg py-lg text-label-lg hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave">{{ loading() ? 'Entrando...' : 'Entrar' }}</button>
+      <p class="text-center text-body-md text-texto-suave">Ainda não tem conta? <a routerLink="/register" class="text-label-lg text-primaria-escura underline">Cadastre-se com seu e-mail UTFPR</a></p>
+    </form>
+  </main>
+</div>
