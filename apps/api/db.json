@@ -1,1 +1,22 @@
-{}
+{
+  "users": [
+    {
+      "name": "Geovane Galan",
+      "email": "geovanegalan@alunos.utfpr.edu.br",
+      "registrationNumber": "a901234",
+      "password": "senhamuitofoda",
+      "role": "student",
+      "isBlocked": false,
+      "isEmailConfirmed": true,
+      "ratingAverage": 0,
+      "createdAt": "2026-11-14T20:24:56.872Z",
+      "id": "FGQcjFFRDQk"
+    }
+  ],
+  "rides": [],
+  "ride_requests": [],
+  "ride_searches": [],
+  "reviews": [],
+  "reports": [],
+  "$schema": "./node_modules/json-server/schema.json"
+}

@@ -9,7 +9,7 @@
 
 ## Tarefas
 
-- [ ] **Tarefa 1 — Criar o cadastro e a confirmação simulada**
+- [x] **Tarefa 1 — Criar o cadastro e a confirmação simulada**
   - Cobre: CA1.
   - Teste primeiro: enviar dados válidos, verificar a criação da conta com confirmação automática e a navegação para `/login`; o teste falha enquanto esse fluxo não existir.
   - Arquivos previstos: testes e componentes de cadastro e landing em `apps/web/src/app/features/auth/`; serviço e modelo em `apps/web/src/app/core/`; `apps/web/src/app/app.routes.ts`; `apps/api/db.json`.
