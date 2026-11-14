@@ -13,6 +13,13 @@
       <button type="submit" [disabled]="form.invalid || loading()" class="flex w-full items-center justify-center gap-space-sm rounded-xl bg-primaria px-space-lg py-space-lg text-label-lg hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave">{{ loading() ? 'Entrando...' : 'Entrar' }} <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button>
       <p class="text-center text-body-md text-texto-suave">Ainda não tem conta? <a routerLink="/register" class="text-label-lg text-primaria-escura underline">Cadastre-se com seu e-mail UTFPR</a></p>
     </form>
+    @if (invalidCredentials()) {
+      <div role="alert" class="rounded-xl bg-perigo/10 p-space-md text-perigo">
+        <h2 class="text-label-lg">Falha na autenticação</h2>
+        <p class="text-body-md">E-mail ou senha incorretos.</p>
+        <p class="text-body-sm">Verifique suas credenciais e tente novamente.</p>
+      </div>
+    }
     <div class="flex items-center gap-space-sm rounded-xl bg-fundo p-space-lg text-texto-suave"><span class="material-symbols-outlined shrink-0 text-primaria-escura" aria-hidden="true">verified_user</span><p class="text-body-sm">O UTFRide é de uso exclusivo da comunidade acadêmica com autenticação validada pelo domínio UTFPR.</p></div>
   </main>
 </div>

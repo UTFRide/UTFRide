@@ -24,7 +24,7 @@
   - Teste primeiro: informar e-mail fora de `@alunos.utfpr.edu.br` e verificar bloqueio do envio e mensagem sobre o domínio exigido; o teste falha enquanto a validação ou mensagem não estiver completa.
   - Arquivos previstos: testes e componente de cadastro em `apps/web/src/app/features/auth/`.
 
-- [ ] **Tarefa 4 — Informar credenciais inválidas**
+- [x] **Tarefa 4 — Informar credenciais inválidas**
   - Cobre: CA6.
   - Teste primeiro: tentar entrar com credenciais inválidas e verificar mensagem amigável sem revelar qual credencial falhou; o teste falha enquanto o tratamento não existir.
   - Arquivos previstos: testes e componente de login em `apps/web/src/app/features/auth/`; serviço em `apps/web/src/app/core/services/`.

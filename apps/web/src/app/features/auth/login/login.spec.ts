@@ -7,6 +7,58 @@ import { routes } from '../../../app.routes';
 import { AuthData } from '../../../core/services/auth-data';
 
 describe('Autenticação institucional', () => {
+  it('informa a mesma mensagem para e-mail inexistente e senha incorreta', async () => {
+    TestBed.configureTestingModule({ providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()] });
+    const harness = await RouterTestingHarness.create('/login');
+    const root = harness.routeNativeElement as HTMLElement;
+    const http = TestBed.inject(HttpTestingController);
+    const email = root.querySelector<HTMLInputElement>('input[formControlName="email"]')!;
+    const password = root.querySelector<HTMLInputElement>('input[formControlName="password"]')!;
+    const submit = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    const user = { id: '1', name: 'Ana', email: 'ana@alunos.utfpr.edu.br', password: 'senha123', registrationNumber: '123', whatsapp: '', role: 'student', isBlocked: false, isEmailConfirmed: true, ratingAverage: 0, createdAt: '2026-01-01' };
+
+    for (const [address, users] of [['ausente@alunos.utfpr.edu.br', []], [user.email, [user]], [user.email, [user]]] as const) {
+      email.value = address;
+      email.dispatchEvent(new Event('input', { bubbles: true }));
+      password.value = 'senha-incorreta';
+      password.dispatchEvent(new Event('input', { bubbles: true }));
+      root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      http.expectOne((req) => req.url === 'http://localhost:3000/users' && req.params.get('email') === address).flush(users);
+      await harness.fixture.whenStable();
+      expect(root.querySelector('[role="alert"]')?.textContent?.replace(/\s+/g, ''))
+        .toBe('Falha na autenticação E-mail ou senha incorretos. Verifique suas credenciais e tente novamente.'.replace(/\s+/g, ''));
+      expect(submit.disabled).toBe(false);
+      expect(TestBed.inject(AuthData).isAuthenticated()).toBe(false);
+      expect(TestBed.inject(Router).url).toBe('/login');
+    }
+    http.verify();
+  });
+
+  it('não exibe a falha anterior ao sair e voltar para o login', async () => {
+    TestBed.configureTestingModule({ providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()] });
+    const harness = await RouterTestingHarness.create('/login');
+    const root = harness.routeNativeElement as HTMLElement;
+    for (const [name, value] of [['email', 'ana@alunos.utfpr.edu.br'], ['password', 'incorreta']]) {
+      const input = root.querySelector<HTMLInputElement>(`input[formControlName="${name}"]`)!;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((request) => request.url === 'http://localhost:3000/users').flush([]);
+    await harness.fixture.whenStable();
+    expect(root.querySelector('[role="alert"]')).not.toBeNull();
+
+    await harness.navigateByUrl('/register');
+    await harness.navigateByUrl('/login');
+    await harness.fixture.whenStable();
+    const returned = harness.routeNativeElement as HTMLElement;
+    expect(returned.querySelector('[role="alert"]')).toBeNull();
+    expect(returned.querySelector<HTMLInputElement>('input[formControlName="email"]')?.value).toBe('');
+    expect(returned.querySelector<HTMLInputElement>('input[formControlName="password"]')?.value).toBe('');
+    http.verify();
+  });
+
   it('autentica uma conta ativa e confirmada e entra no sistema', async () => {
     TestBed.configureTestingModule({ providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()] });
     const harness = await RouterTestingHarness.create('/login');

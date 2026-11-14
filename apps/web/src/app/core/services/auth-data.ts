@@ -11,12 +11,18 @@ export class AuthData {
   private readonly submissions = new Subject<Registration>();
   private readonly resets = new Subject<void>();
   private readonly loginSubmissions = new Subject<{ email: string; password: string }>();
+  private readonly loginResets = new Subject<void>();
   private readonly authenticatedUser = signal<User | null>(null);
   readonly isAuthenticated = computed(() => this.authenticatedUser() !== null);
-  readonly loginResult = toSignal(this.loginSubmissions.pipe(
-    exhaustMap(({ email, password }) => this.http.get<User[]>(`${environment.apiUrl}/users`, { params: { email } }).pipe(
-      map((users) => users.find((user) => user.email === email && user.password === password && !user.isBlocked && user.isEmailConfirmed) ?? null),
-      tap((user) => this.authenticatedUser.set(user)),
+  readonly loginResult = toSignal(this.loginResets.pipe(
+    startWith(undefined),
+    switchMap(() => this.loginSubmissions.pipe(
+      exhaustMap(({ email, password }) => this.http.get<User[]>(`${environment.apiUrl}/users`, { params: { email } }).pipe(
+        map((users) => users.find((user) => user.email === email && user.password === password && !user.isBlocked && user.isEmailConfirmed) ?? null),
+        tap((user) => this.authenticatedUser.set(user)),
+        map((user) => ({ user })),
+      )),
+      startWith(undefined),
     )),
   ));
   readonly result = toSignal(this.resets.pipe(
@@ -44,5 +50,9 @@ export class AuthData {
 
   login(email: string, password: string): void {
     this.loginSubmissions.next({ email, password });
+  }
+
+  resetLogin(): void {
+    this.loginResets.next();
   }
 }
