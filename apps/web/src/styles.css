@@ -43,11 +43,11 @@
   --text-label-pill--font-weight: 700;
 
   --spacing: 4px;
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 12px;
-  --spacing-lg: 16px;
-  --spacing-xl: 24px;
+  --spacing-space-xs: 4px;
+  --spacing-space-sm: 8px;
+  --spacing-space-md: 12px;
+  --spacing-space-lg: 16px;
+  --spacing-space-xl: 24px;
 
   --breakpoint-sm: 640px;
   --breakpoint-md: 768px;

@@ -9,6 +9,7 @@
     "start": "npm run start -w apps/web",
     "dev": "npm start",
     "build": "npm run build -w apps/web",
+    "pretest": "node --test apps/web/src/app/features/auth/layout.spec.mjs",
     "test": "npm run test -w apps/web -- --watch=false",
     "lint": "npm run lint -w apps/web",
     "api": "json-server --watch apps/api/db.json --port 3000",

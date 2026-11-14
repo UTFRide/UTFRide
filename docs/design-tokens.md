@@ -38,11 +38,13 @@ Ritmo proporcional de espaçamento usado em layouts, paddings e margens.
 
 | Token | Valor | Onde se usa |
 | :--- | :--- | :--- |
-| `xs` | `4px` (`0.25rem`) | Espaçamento mínimo entre elementos, base do ritmo de 4px, tags |
-| `sm` | `8px` (`0.5rem`) | Margem do topo da alça do bottom sheet, espaços compactos |
-| `md` | `12px` (`0.75rem`) | Separação entre os cards de carona em uma lista |
-| `lg` | `16px` (`1.0rem`) | Padding interno dos cards, margens de página (`margin`) e gutter |
-| `xl` | `24px` (`1.5rem`) | Espaço entre seções e grupos de cards |
+| `space-xs` | `4px` (`0.25rem`) | Espaçamento mínimo entre elementos, base do ritmo de 4px, tags |
+| `space-sm` | `8px` (`0.5rem`) | Margem do topo da alça do bottom sheet, espaços compactos |
+| `space-md` | `12px` (`0.75rem`) | Separação entre os cards de carona em uma lista |
+| `space-lg` | `16px` (`1.0rem`) | Padding interno dos cards, margens de página (`margin`) e gutter |
+| `space-xl` | `24px` (`1.5rem`) | Espaço entre seções e grupos de cards |
+
+Use o prefixo `space-` nas classes de espaçamento, como `p-space-md` e `gap-space-lg`, para distingui-las dos tamanhos de contêiner do Tailwind.
 
 ---
 
