@@ -19,7 +19,7 @@
   - Teste primeiro: informar credenciais corretas de conta ativa e confirmada e verificar a entrada no sistema e o estado autenticado; o teste falha enquanto o login não existir.
   - Arquivos previstos: testes e componente de login em `apps/web/src/app/features/auth/`; serviço e guarda em `apps/web/src/app/core/`; `apps/web/src/app/app.routes.ts`.
 
-- [ ] **Tarefa 3 — Validar o domínio institucional**
+- [x] **Tarefa 3 — Validar o domínio institucional**
   - Cobre: CA5.
   - Teste primeiro: informar e-mail fora de `@alunos.utfpr.edu.br` e verificar bloqueio do envio e mensagem sobre o domínio exigido; o teste falha enquanto a validação ou mensagem não estiver completa.
   - Arquivos previstos: testes e componente de cadastro em `apps/web/src/app/features/auth/`.

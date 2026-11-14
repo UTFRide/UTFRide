@@ -24,6 +24,15 @@
         <label for="email" class="text-label-lg">E-mail institucional</label>
         <div class="flex items-center gap-space-sm rounded-xl border border-borda bg-superficie px-space-md"><span class="material-symbols-outlined text-texto-suave" aria-hidden="true">school</span><input id="email" type="email" formControlName="email" autocomplete="email" placeholder="seunome&#64;alunos.utfpr.edu.br" class="min-w-0 flex-1 py-space-lg text-body-md outline-none" /></div>
         <p class="flex items-center gap-space-xs text-body-sm text-texto-suave"><span class="material-symbols-outlined" aria-hidden="true">info</span>Use seu e-mail institucional da UTFPR.</p>
+        @if (form.controls.email.hasError('pattern') && (form.controls.email.dirty || form.controls.email.touched)) {
+          <div role="alert" class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo">
+            <span class="material-symbols-outlined shrink-0" aria-hidden="true">error</span>
+            <div>
+              <p class="text-label-md">Validação necessária</p>
+              <p class="mt-space-xs text-body-sm">Use seu e-mail institucional oficial da UTFPR (&#64;alunos.utfpr.edu.br) para ter acesso liberado.</p>
+            </div>
+          </div>
+        }
       </div>
       <div class="flex flex-col gap-space-xs">
         <label for="registrationNumber" class="text-label-lg">Número de matrícula</label>

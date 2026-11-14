@@ -6,6 +6,43 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../../../app.routes';
 import { AuthData } from '../../../core/services/auth-data';
 
+it('bloqueia cadastro com e-mail fora do domínio institucional e informa o domínio exigido', async () => {
+  TestBed.configureTestingModule({ providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()] });
+  const harness = await RouterTestingHarness.create('/register');
+  const root = harness.routeNativeElement as HTMLElement;
+  const fill = (name: string, value: string) => {
+    const input = root.querySelector<HTMLInputElement>(`input[formControlName="${name}"]`)!;
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  fill('name', 'Ana Silva');
+  fill('email', 'ana@example.com');
+  fill('registrationNumber', '1234567');
+  fill('password', 'senha123');
+  fill('confirmPassword', 'senha123');
+  const terms = root.querySelector<HTMLInputElement>('input[formControlName="terms"]')!;
+  terms.checked = true;
+  terms.dispatchEvent(new Event('change', { bubbles: true }));
+  root.querySelector<HTMLInputElement>('#email')!.dispatchEvent(new Event('blur'));
+  await harness.fixture.whenStable();
+
+  expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
+  root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  TestBed.inject(HttpTestingController).expectNone('http://localhost:3000/users');
+  const alert = root.querySelector<HTMLElement>('[role="alert"]');
+  expect(alert).not.toBeNull();
+  expect(alert!.textContent).toContain('Validação necessária');
+  expect(alert!.textContent).toContain('@alunos.utfpr.edu.br');
+  expect(alert!.querySelector('.material-symbols-outlined')?.textContent).toContain('error');
+  expect(root.querySelector('#email')!.compareDocumentPosition(alert!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+  fill('email', 'ana@alunos.utfpr.edu.br');
+  await harness.fixture.whenStable();
+  expect(root.querySelector('[role="alert"]')).toBeNull();
+  expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
+  TestBed.inject(HttpTestingController).verify();
+});
+
 describe('Cadastro institucional', () => {
   it('cria uma conta confirmada e navega para o login', async () => {
     TestBed.configureTestingModule({

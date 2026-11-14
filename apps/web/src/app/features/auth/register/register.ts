@@ -28,7 +28,7 @@ export class Register {
   readonly confirmationVisible = signal(false);
   readonly form = new FormGroup({
     name: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-    email: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.email] }),
+    email: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.email, Validators.pattern(/^[^@]+@alunos\.utfpr\.edu\.br$/i)] }),
     registrationNumber: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
     whatsapp: new FormControl('', { nonNullable: true }),
     password: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.minLength(6)] }),
