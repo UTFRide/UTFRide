@@ -6,6 +6,38 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../../../app.routes';
 import { AuthData } from '../../../core/services/auth-data';
 
+it('descarta os dados não enviados ao sair do cadastro e retornar', async () => {
+  TestBed.configureTestingModule({ providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()] });
+  const harness = await RouterTestingHarness.create('/register');
+  const root = harness.routeNativeElement as HTMLElement;
+  const values = {
+    name: 'Ana Silva',
+    email: 'ana@alunos.utfpr.edu.br',
+    registrationNumber: '1234567',
+    whatsapp: '(41) 98765-4321',
+    password: 'senha123',
+    confirmPassword: 'senha123',
+  };
+  for (const [name, value] of Object.entries(values)) {
+    const input = root.querySelector<HTMLInputElement>(`input[formControlName="${name}"]`)!;
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  const terms = root.querySelector<HTMLInputElement>('input[formControlName="terms"]')!;
+  terms.checked = true;
+  terms.dispatchEvent(new Event('change', { bubbles: true }));
+  const http = TestBed.inject(HttpTestingController);
+  await harness.navigateByUrl('/');
+  await harness.navigateByUrl('/register');
+  const returned = harness.routeNativeElement as HTMLElement;
+  for (const name of Object.keys(values)) {
+    expect(returned.querySelector<HTMLInputElement>(`input[formControlName="${name}"]`)!.value).toBe('');
+  }
+  expect(returned.querySelector<HTMLInputElement>('input[formControlName="terms"]')!.checked).toBe(false);
+  http.expectNone((request) => request.method === 'POST');
+  http.verify();
+});
+
 it('bloqueia cadastro com e-mail fora do domínio institucional e informa o domínio exigido', async () => {
   TestBed.configureTestingModule({ providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()] });
   const harness = await RouterTestingHarness.create('/register');

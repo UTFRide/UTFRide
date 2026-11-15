@@ -34,7 +34,7 @@
   - Teste primeiro: tentar cadastrar com e-mail existente e, em outro caso, matrícula existente; verificar alerta e ausência de nova conta em ambos. Os testes falham enquanto a verificação não existir.
   - Arquivos previstos: testes e componente de cadastro em `apps/web/src/app/features/auth/`; serviço em `apps/web/src/app/core/services/`.
 
-- [ ] **Tarefa 6 — Descartar o formulário não enviado**
+- [x] **Tarefa 6 — Descartar o formulário não enviado**
   - Cobre: CA8.
   - Teste primeiro: preencher o formulário, sair sem enviar e retornar; verificar que os dados podem ser descartados e nenhuma conta foi criada. O teste falha enquanto o comportamento de navegação não estiver implementado.
   - Arquivos previstos: testes e componente de cadastro em `apps/web/src/app/features/auth/`; `apps/web/src/app/app.routes.ts`, se necessário.
