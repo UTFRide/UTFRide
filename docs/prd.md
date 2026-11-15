@@ -51,7 +51,7 @@
 
 ## 📝 4. Escopo Funcional (User Stories)
 
-### US01 — Cadastro e Autenticação Institucional · `Must Have` · `M` · Status: `Ready`
+### US01 — Cadastro e Autenticação Institucional · `Must Have` · `M` · Status: `Implementada` (aguardando auditoria final e PR)
 
 **Como** aluno visitante da UTFPR, **eu quero** realizar meu cadastro e autenticar meu acesso usando uma matrícula ativa e um e-mail institucional, **para que** eu possa acessar as funcionalidades do sistema em um ambiente seguro e restrito à comunidade acadêmica.
 
