@@ -35,9 +35,10 @@ A persistência do UTFRide evolui em duas fases bem demarcadas:
 
 ### 2.1 Fase MVP (Entrega 2) — `json-server`
 - **Arquivo de Dados:** `apps/api/db.json`
-- **Execução:** `json-server --watch apps/api/db.json --port 3000`
+- **Execução:** `npm run server` na raiz do repositório; o servidor disponibiliza a API na porta 3000 e inclui o endpoint de verificação de duplicidade usado pelo cadastro.
 - **Camada de Integração:** `HttpClient` do Angular consumindo `http://localhost:3000/`.
 - **Coleções Mapeadas:** `users`, `rides`, `ride_requests`, `ride_searches`, `reviews`, `reports`.
+- **Cadastro e autenticação simulados:** o servidor do MVP acrescenta `POST /registration-exists` para consultar duplicidade de e-mail ou matrícula. A conta usa `password`, `whatsapp` e `isEmailConfirmed` em `users`; a sessão fica em memória no frontend. Essa simulação não fornece autenticação segura e não substitui o Supabase Auth da fase completa.
 
 ### 2.2 Fase Completa (Entrega 3) — Backend-as-a-Service (**Supabase**)
 - **Banco de Dados:** PostgreSQL hospedado no Supabase.
@@ -175,6 +176,9 @@ erDiagram
         string name
         string email
         string registration_number
+        string whatsapp
+        string password
+        boolean is_email_confirmed
         string role
         boolean is_blocked
         number rating_average

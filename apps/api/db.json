@@ -1,1 +1,9 @@
-{}
+{
+  "users": [],
+  "rides": [],
+  "ride_requests": [],
+  "ride_searches": [],
+  "reviews": [],
+  "reports": [],
+  "$schema": "./node_modules/json-server/schema.json"
+}

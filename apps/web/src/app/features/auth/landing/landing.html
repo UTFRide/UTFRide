@@ -1,0 +1,46 @@
+<div class="min-h-screen bg-superficie font-sans text-texto">
+  <header class="border-b border-borda px-space-lg py-space-lg">
+    <div class="mx-auto flex max-w-2xl items-center justify-between">
+      <img src="/assets/logo.png" alt="UTFRide" class="h-8 w-auto object-contain" />
+      <a routerLink="/login" class="text-label-lg">Entrar</a>
+    </div>
+  </header>
+  <main class="mx-auto flex max-w-(--container-lg) flex-col gap-space-xl px-space-lg py-space-xl lg:max-w-2xl">
+    <aside class="flex items-center gap-space-md rounded-xl bg-primaria p-space-md text-texto">
+      <span class="material-symbols-outlined" aria-hidden="true">verified_user</span><div>
+      <p class="text-label-pill">ACESSO RESTRITO</p>
+      <p class="text-label-md">Exclusivo para alunos com e-mail institucional &#64;alunos.utfpr.edu.br</p>
+      </div>
+    </aside>
+    <section class="flex flex-col gap-space-lg rounded-xl bg-secundaria p-space-xl text-superficie">
+      <span class="text-label-pill text-primaria">REDE SOLIDÁRIA UTFPR</span>
+      <img src="/assets/logo.png" alt="UTFRide Caronas UTFPR" class="mx-auto h-14 w-auto object-contain" />
+      <h1 class="text-headline-lg">Caronas universitárias seguras e econômicas na UTFPR</h1>
+      <p class="text-body-md">O UTFRide conecta estudantes para dividir os custos de deslocamento até os campi.</p>
+      <div class="flex flex-col gap-space-sm">
+        <a routerLink="/register" class="flex items-center justify-center gap-space-sm rounded-xl bg-primaria px-space-lg py-space-lg text-label-lg text-texto hover:bg-primaria-hover"><span class="material-symbols-outlined" aria-hidden="true">how_to_reg</span>Criar conta institucional</a>
+        <a routerLink="/login" class="flex items-center justify-center gap-space-sm rounded-xl border border-borda px-space-lg py-space-lg text-label-lg"><span class="material-symbols-outlined" aria-hidden="true">login</span>Já tenho conta / Entrar</a>
+      </div>
+    </section>
+    <div class="relative overflow-hidden rounded-xl bg-fundo">
+      <div role="img" aria-label="Entrada de um campus universitário com estudantes" class="h-36 bg-cover bg-center bg-[url('https://lh3.googleusercontent.com/aida-public/AB6AXuDA0p2WxZC-KgpKwZU3VNkovgr32OHdoxi6V-tY1XqaB7fIMV-clhWvv-76Yw92fclcENWFSZXi1l5yv2LxJdZe48RoYRKU2o1P2U0K85NJkigDLwgzwUhgPIISG5zkLfWhSOLVTanbl1JigLwDuqG6WHIWDZg12R3ZddWPrKH-uCaRimwzgO7frjT-v503pqb9VQj0ID9hXVpJfae8aab_Q6Di4YxSvWflwL-NnByricE0ynLN7Aha')]"></div>
+      <p class="absolute inset-x-0 bottom-0 flex items-center gap-space-xs bg-secundaria/80 p-space-lg text-label-md text-superficie"><span class="material-symbols-outlined text-primaria" aria-hidden="true">near_me</span>Conectando todos os campi e turnos letivos</p>
+    </div>
+    <section class="flex flex-col gap-space-md">
+      <h2 class="text-headline-sm">Vantagens da comunidade</h2>
+      <article class="flex items-start gap-space-md rounded-xl bg-fundo p-space-lg"><span class="material-symbols-outlined rounded-xl bg-primaria p-space-sm" aria-hidden="true">savings</span><div><h3 class="text-label-lg">Mais econômico que apps</h3><p class="mt-space-xs text-body-md text-texto-suave">Divida os custos de combustível e pedágio, sem taxas de intermediação.</p></div></article>
+      <article class="flex items-start gap-space-md rounded-xl bg-fundo p-space-lg"><span class="material-symbols-outlined rounded-xl bg-borda p-space-sm" aria-hidden="true">schedule</span><div><h3 class="text-label-lg">Horários e rotas combinadas</h3><p class="mt-space-xs text-body-md text-texto-suave">Encontre trajetos compatíveis com os horários das aulas.</p></div></article>
+      <article class="flex items-start gap-space-md rounded-xl bg-fundo p-space-lg"><span class="material-symbols-outlined rounded-xl bg-borda p-space-sm" aria-hidden="true">school</span><div><h3 class="text-label-lg">Comunidade UTFPR</h3><p class="mt-space-xs text-body-md text-texto-suave">Conecte-se com outros estudantes da universidade.</p></div></article>
+    </section>
+    <section class="flex flex-col gap-space-md rounded-xl bg-fundo p-space-lg">
+      <h2 class="text-headline-sm">Como funciona</h2>
+      <p class="text-body-md">1. Cadastre seu e-mail institucional.</p>
+      <p class="text-body-md">2. Encontre ou ofereça sua carona.</p>
+      <p class="text-body-md">3. Combine o ponto e divida os custos.</p>
+    </section>
+    <section class="rounded-xl border border-borda p-space-lg"><h2 class="flex items-center gap-space-sm text-headline-sm"><span class="material-symbols-outlined text-primaria-escura" aria-hidden="true">shield</span>Acerto direto e transparente</h2><p class="mt-space-sm text-body-md text-texto-suave">O rateio é combinado diretamente entre os participantes, sem cobrança pelo aplicativo.</p></section>
+    <section class="flex flex-col gap-space-md rounded-xl bg-primaria p-space-lg"><h2 class="text-headline-sm">Pronto para economizar no caminho do campus?</h2><a routerLink="/register" class="rounded-xl bg-secundaria px-space-lg py-space-lg text-center text-label-lg text-superficie">Cadastre-se com e-mail UTFPR</a></section>
+    <footer class="text-center text-body-sm text-texto-suave">Iniciativa universitária independente para a comunidade discente da UTFPR.</footer>
+  </main>
+</div>
+
