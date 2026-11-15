@@ -13,6 +13,9 @@
       <button type="submit" [disabled]="form.invalid || loading()" class="flex w-full items-center justify-center gap-space-sm rounded-xl bg-primaria px-space-lg py-space-lg text-label-lg hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave">{{ loading() ? 'Entrando...' : 'Entrar' }} <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button>
       <p class="text-center text-body-md text-texto-suave">Ainda não tem conta? <a routerLink="/register" class="text-label-lg text-primaria-escura underline">Cadastre-se com seu e-mail UTFPR</a></p>
     </form>
+    @if (connectionError()) {
+      <div role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-perigo">Falha de conexão. Verifique sua conexão e tente novamente.</div>
+    }
     @if (invalidCredentials()) {
       <div role="alert" class="rounded-xl bg-perigo/10 p-space-md text-perigo">
         <h2 class="text-label-lg">Falha na autenticação</h2>

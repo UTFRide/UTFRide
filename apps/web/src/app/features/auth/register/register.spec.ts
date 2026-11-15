@@ -227,3 +227,31 @@ it('alerta e não cria conta quando já existe cadastro', async () => {
   http.expectNone((request) => request.method === 'POST');
   http.verify();
 });
+
+it('informa falha de conexão no cadastro e permite tentar novamente', async () => {
+  TestBed.configureTestingModule({ providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()] });
+  const harness = await RouterTestingHarness.create('/register');
+  const root = harness.routeNativeElement as HTMLElement;
+  for (const [name, value] of Object.entries({ name: 'Ana Silva', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '1234567', password: 'senha123', confirmPassword: 'senha123' })) {
+    const input = root.querySelector<HTMLInputElement>(`input[formControlName="${name}"]`)!;
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  const terms = root.querySelector<HTMLInputElement>('input[formControlName="terms"]')!;
+  terms.checked = true;
+  terms.dispatchEvent(new Event('change', { bubbles: true }));
+  const submit = () => root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  const http = TestBed.inject(HttpTestingController);
+  submit();
+  http.expectOne('http://localhost:3000/registration-exists').error(new ProgressEvent('error'));
+  await harness.fixture.whenStable();
+  expect(root.querySelector('[role="alert"]')?.textContent).toContain('conexão');
+  expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
+  submit();
+  http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+  const request = http.expectOne('http://localhost:3000/users');
+  request.flush({ id: '1', ...request.request.body });
+  await harness.fixture.whenStable();
+  expect(TestBed.inject(Router).url).toBe('/login');
+  http.verify();
+});

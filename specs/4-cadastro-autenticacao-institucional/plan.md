@@ -39,7 +39,7 @@
   - Teste primeiro: preencher o formulário, sair sem enviar e retornar; verificar que os dados podem ser descartados e nenhuma conta foi criada. O teste falha enquanto o comportamento de navegação não estiver implementado.
   - Arquivos previstos: testes e componente de cadastro em `apps/web/src/app/features/auth/`; `apps/web/src/app/app.routes.ts`, se necessário.
 
-- [ ] **Tarefa 7 — Tratar falhas de conexão**
+- [x] **Tarefa 7 — Tratar falhas de conexão**
   - Cobre: CA9.
   - Teste primeiro: simular falhas de rede no cadastro e no login, verificar mensagem e nova tentativa em ambos; os testes falham enquanto o tratamento não existir.
   - Arquivos previstos: testes e componentes de cadastro e login em `apps/web/src/app/features/auth/`; serviço em `apps/web/src/app/core/services/`.

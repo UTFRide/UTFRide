@@ -25,6 +25,7 @@ export class Register {
   }
   readonly loading = signal(false);
   readonly duplicate = signal(false);
+  readonly connectionError = signal(false);
   readonly passwordVisible = signal(false);
   readonly confirmationVisible = signal(false);
   readonly form = new FormGroup({
@@ -41,14 +42,19 @@ export class Register {
     const result = this.auth.result();
     if (result) {
       this.loading.set(false);
-      this.duplicate.set(result.duplicate);
-      if (!result.duplicate) void this.router.navigateByUrl('/login');
+      if ('connectionError' in result) {
+        this.connectionError.set(true);
+      } else if (!('requestError' in result)) {
+        this.duplicate.set(result.duplicate);
+        if (!result.duplicate) void this.router.navigateByUrl('/login');
+      }
     }
   });
 
   submit(): void {
     if (this.form.invalid || this.loading()) return;
     this.duplicate.set(false);
+    this.connectionError.set(false);
     this.loading.set(true);
     const { name, email, registrationNumber, whatsapp, password } = this.form.getRawValue();
     this.auth.register({ name, email, registrationNumber, whatsapp, password });

@@ -13,6 +13,7 @@ export class Login {
   private readonly destroyRef = inject(DestroyRef);
   readonly loading = signal(false);
   readonly invalidCredentials = signal(false);
+  readonly connectionError = signal(false);
   readonly passwordVisible = signal(false);
   readonly form = new FormGroup({
     email: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.email] }),
@@ -26,7 +27,12 @@ export class Login {
 
   private readonly navigateAfterLogin = effect(() => {
     const result = this.auth.loginResult();
-    if (result?.user === null) {
+    if (result && 'connectionError' in result) {
+      this.loading.set(false);
+      this.connectionError.set(true);
+    } else if (result && 'requestError' in result) {
+      this.loading.set(false);
+    } else if (result?.user === null) {
       this.loading.set(false);
       this.invalidCredentials.set(true);
     } else if (result?.user) {
@@ -38,6 +44,7 @@ export class Login {
   submit(): void {
     if (this.form.invalid || this.loading()) return;
     this.invalidCredentials.set(false);
+    this.connectionError.set(false);
     this.loading.set(true);
     const { email, password } = this.form.getRawValue();
     this.auth.login(email, password);

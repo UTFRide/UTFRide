@@ -1,13 +1,15 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { exhaustMap, map, of, startWith, Subject, switchMap, tap } from 'rxjs';
+import { catchError, exhaustMap, map, of, startWith, Subject, switchMap, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { ErrorNotice } from './error-notice';
 import { Registration, User } from '../models/user.model';
 
 @Injectable({ providedIn: 'root' })
 export class AuthData {
   private readonly http = inject(HttpClient);
+  private readonly notice = inject(ErrorNotice);
   private readonly submissions = new Subject<Registration>();
   private readonly resets = new Subject<void>();
   private readonly loginSubmissions = new Subject<{ email: string; password: string }>();
@@ -21,6 +23,14 @@ export class AuthData {
         map((users) => users.find((user) => user.email === email && user.password === password && !user.isBlocked && user.isEmailConfirmed) ?? null),
         tap((user) => this.authenticatedUser.set(user)),
         map((user) => ({ user })),
+        catchError((error: unknown) => {
+          if (!(error instanceof HttpErrorResponse)) {
+            this.notice.message.set('Falha inesperada. Tente novamente.');
+          }
+          return of(error instanceof HttpErrorResponse && error.status === 0
+            ? { connectionError: true as const }
+            : { requestError: true as const });
+        }),
       )),
       startWith(undefined),
     )),
@@ -39,12 +49,25 @@ export class AuthData {
             ratingAverage: 0,
             createdAt: new Date().toISOString(),
           }).pipe(map((user) => ({ duplicate: false as const, user })))),
+        catchError((error: unknown) => {
+          if (!(error instanceof HttpErrorResponse)) {
+            this.notice.message.set('Falha inesperada. Tente novamente.');
+          }
+          return of(error instanceof HttpErrorResponse && error.status === 0
+            ? { connectionError: true as const }
+            : { requestError: true as const });
+        }),
       )),
       startWith(undefined),
     )),
   ));
 
+  logout(): void {
+    this.authenticatedUser.set(null);
+  }
+
   register(registration: Registration): void {
+    this.notice.message.set('');
     this.submissions.next(registration);
   }
 
@@ -53,6 +76,7 @@ export class AuthData {
   }
 
   login(email: string, password: string): void {
+    this.notice.message.set('');
     this.loginSubmissions.next({ email, password });
   }
 
