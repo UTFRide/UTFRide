@@ -69,6 +69,7 @@ describe('Cadastro institucional', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
     const http = TestBed.inject(HttpTestingController);
+    http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
     const request = http.expectOne('http://localhost:3000/users');
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual(expect.objectContaining({
@@ -139,6 +140,7 @@ it('usa o serviço global e não redireciona ao retornar após um cadastro', asy
   expect(harness.routeDebugElement!.injector.get(AuthData)).toBe(service);
   service.register({ name: 'Ana', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123', password: 'senha123', whatsapp: '' });
   const http = TestBed.inject(HttpTestingController);
+  http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
   const request = http.expectOne('http://localhost:3000/users');
   request.flush({ id: '1', ...request.request.body });
   await harness.fixture.whenStable();
@@ -156,11 +158,12 @@ it('cancela a resposta pendente ao sair e permite um cadastro na próxima visita
   const data = { name: 'Ana', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123', password: 'senha123', whatsapp: '' };
   service.register(data);
   const http = TestBed.inject(HttpTestingController);
-  const previous = http.expectOne('http://localhost:3000/users');
+  const previous = http.expectOne('http://localhost:3000/registration-exists');
   await harness.navigateByUrl('/');
   expect(previous.cancelled).toBe(true);
   await harness.navigateByUrl('/register');
   service.register(data);
+  http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
   const current = http.expectOne('http://localhost:3000/users');
   current.flush({ id: '2', ...current.request.body });
   await harness.fixture.whenStable();
@@ -168,3 +171,27 @@ it('cancela a resposta pendente ao sair e permite um cadastro na próxima visita
   http.verify();
 });
 
+
+it('alerta e não cria conta quando já existe cadastro', async () => {
+  TestBed.configureTestingModule({ providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()] });
+  const harness = await RouterTestingHarness.create('/register');
+  const root = harness.routeNativeElement as HTMLElement;
+  for (const [name, value] of Object.entries({ name: 'Ana Silva', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '1234567', password: 'senha123', confirmPassword: 'senha123' })) {
+    const input = root.querySelector<HTMLInputElement>(`input[formControlName="${name}"]`)!;
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  const terms = root.querySelector<HTMLInputElement>('input[formControlName="terms"]')!;
+  terms.checked = true;
+  terms.dispatchEvent(new Event('change', { bubbles: true }));
+  root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  const http = TestBed.inject(HttpTestingController);
+  const lookup = http.expectOne((request) => request.url === 'http://localhost:3000/registration-exists' && request.method === 'POST');
+  lookup.flush({ exists: true });
+  await harness.fixture.whenStable();
+  expect(root.querySelector('[role="alert"]')?.textContent).toContain('já cadastrado');
+  expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
+  expect(TestBed.inject(Router).url).toBe('/register');
+  http.expectNone((request) => request.method === 'POST');
+  http.verify();
+});

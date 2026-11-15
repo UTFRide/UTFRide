@@ -15,6 +15,12 @@
       <h1 class="mt-space-xs text-headline-md">Crie sua conta no UTFRide</h1></div><img src="/assets/logo.png" alt="UTFRide" class="w-28 shrink-0 object-contain" /></div>
       <p class="mt-space-sm text-body-sm">Junte-se à rede de caronas universitárias da UTFPR. Rápido, seguro e exclusivo para alunos.</p>
     </div>
+    @if (duplicate()) {
+      <div role="alert" class="flex items-start gap-space-sm rounded-xl bg-primaria p-space-md text-texto">
+        <span class="material-symbols-outlined shrink-0" aria-hidden="true">warning</span>
+        <div><p class="text-label-md">Atenção ao cadastro</p><p class="mt-space-xs text-body-sm">E-mail ou matrícula já cadastrado. Faça login para continuar.</p></div>
+      </div>
+    }
     <form [formGroup]="form" (ngSubmit)="submit()" class="flex flex-col gap-space-md">
       <div class="flex flex-col gap-space-xs">
         <label for="name" class="flex justify-between text-label-lg">Nome completo <span class="text-label-pill text-texto-suave">Como no crachá</span></label>

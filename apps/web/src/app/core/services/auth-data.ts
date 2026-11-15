@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { exhaustMap, map, startWith, Subject, switchMap, tap } from 'rxjs';
+import { exhaustMap, map, of, startWith, Subject, switchMap, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Registration, User } from '../models/user.model';
 
@@ -28,14 +28,18 @@ export class AuthData {
   readonly result = toSignal(this.resets.pipe(
     startWith(undefined),
     switchMap(() => this.submissions.pipe(
-      exhaustMap((registration) => this.http.post<User>(`${environment.apiUrl}/users`, {
-        ...registration,
-        role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 0,
-        createdAt: new Date().toISOString(),
-      })),
+      exhaustMap((registration) => this.http.post<{ exists: boolean }>(`${environment.apiUrl}/registration-exists`, { email: registration.email, registrationNumber: registration.registrationNumber }).pipe(
+        switchMap(({ exists }) => exists
+          ? of({ duplicate: true as const })
+          : this.http.post<User>(`${environment.apiUrl}/users`, {
+            ...registration,
+            role: 'student',
+            isBlocked: false,
+            isEmailConfirmed: true,
+            ratingAverage: 0,
+            createdAt: new Date().toISOString(),
+          }).pipe(map((user) => ({ duplicate: false as const, user })))),
+      )),
       startWith(undefined),
     )),
   ));

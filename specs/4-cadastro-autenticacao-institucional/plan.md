@@ -29,7 +29,7 @@
   - Teste primeiro: tentar entrar com credenciais inválidas e verificar mensagem amigável sem revelar qual credencial falhou; o teste falha enquanto o tratamento não existir.
   - Arquivos previstos: testes e componente de login em `apps/web/src/app/features/auth/`; serviço em `apps/web/src/app/core/services/`.
 
-- [ ] **Tarefa 5 — Impedir cadastros duplicados**
+- [x] **Tarefa 5 — Impedir cadastros duplicados**
   - Cobre: CA7.
   - Teste primeiro: tentar cadastrar com e-mail existente e, em outro caso, matrícula existente; verificar alerta e ausência de nova conta em ambos. Os testes falham enquanto a verificação não existir.
   - Arquivos previstos: testes e componente de cadastro em `apps/web/src/app/features/auth/`; serviço em `apps/web/src/app/core/services/`.

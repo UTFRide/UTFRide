@@ -24,6 +24,7 @@ export class Register {
     this.destroyRef.onDestroy(() => this.auth.resetRegistration());
   }
   readonly loading = signal(false);
+  readonly duplicate = signal(false);
   readonly passwordVisible = signal(false);
   readonly confirmationVisible = signal(false);
   readonly form = new FormGroup({
@@ -37,14 +38,17 @@ export class Register {
   }, { validators: matchingPasswords });
 
   private readonly navigateAfterRegistration = effect(() => {
-    if (this.auth.result()) {
+    const result = this.auth.result();
+    if (result) {
       this.loading.set(false);
-      void this.router.navigateByUrl('/login');
+      this.duplicate.set(result.duplicate);
+      if (!result.duplicate) void this.router.navigateByUrl('/login');
     }
   });
 
   submit(): void {
     if (this.form.invalid || this.loading()) return;
+    this.duplicate.set(false);
     this.loading.set(true);
     const { name, email, registrationNumber, whatsapp, password } = this.form.getRawValue();
     this.auth.register({ name, email, registrationNumber, whatsapp, password });

@@ -12,7 +12,7 @@
     "pretest": "node --test apps/web/src/app/features/auth/layout.spec.mjs",
     "test": "npm run test -w apps/web -- --watch=false",
     "lint": "npm run lint -w apps/web",
-    "api": "json-server --watch apps/api/db.json --port 3000",
+    "api": "node apps/api/start.mjs",
     "server": "npm run api",
     "format": "prettier --write ."
   },
