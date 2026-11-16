@@ -1,0 +1,212 @@
+<div class="min-h-screen bg-fundo pb-24 font-sans text-texto">
+  <header class="sticky top-0 z-40 border-b border-borda bg-superficie/95 px-space-lg py-space-md backdrop-blur">
+    <div class="mx-auto flex max-w-2xl items-center justify-between">
+      <a routerLink="/rides" class="flex items-center gap-space-sm">
+        <img src="/assets/logo.png" alt="UTFRide" class="h-8 w-auto object-contain" />
+        <span class="text-headline-sm text-texto">UTFRide</span>
+      </a>
+      <a routerLink="/driver/offer" class="text-label-md text-texto-suave hover:text-texto">
+        Oferecer Carona
+      </a>
+    </div>
+  </header>
+
+  <main class="mx-auto flex w-full max-w-2xl flex-col gap-space-lg px-space-lg py-space-xl">
+    <div class="flex items-center justify-between">
+      <div class="flex flex-col gap-space-xs">
+        <h1 class="text-headline-lg text-texto">Minhas Ofertas de Carona</h1>
+        <p class="text-body-sm text-texto-suave">Gerencie suas rotas e confirme seus passageiros</p>
+      </div>
+      <div class="flex h-10 w-10 items-center justify-center rounded-full border border-borda bg-superficie text-texto shadow-sm">
+        <span class="material-symbols-outlined text-body-lg" aria-hidden="true">tune</span>
+      </div>
+    </div>
+
+    @if (rides().length > 1) {
+      <div class="flex flex-wrap gap-space-sm">
+        @for (item of rides(); track item.id) {
+          <button
+            type="button"
+            (click)="selectRide(item.id)"
+            [class]="
+              selectedRide()?.id === item.id
+                ? 'rounded-full bg-primaria px-space-md py-space-xs text-label-md text-texto'
+                : 'rounded-full border border-borda bg-superficie px-space-md py-space-xs text-label-md text-texto-suave'
+            "
+          >
+            {{ item.origin }} → {{ item.destination }}
+          </button>
+        }
+      </div>
+    }
+
+    @if (selectedRide(); as ride) {
+      <section class="flex flex-col gap-space-md rounded-xl border border-borda bg-superficie p-space-lg shadow-sm">
+        <div class="flex items-start justify-between gap-space-sm">
+          <div class="flex flex-col gap-space-xs">
+            <h2 class="text-headline-sm text-texto">{{ ride.origin }} → {{ ride.destination }}</h2>
+            <div class="flex items-center gap-space-xs text-label-md text-texto-suave">
+              <span class="material-symbols-outlined text-body-md" aria-hidden="true">schedule</span>
+              <span>{{ ride.departureTime }}</span>
+            </div>
+          </div>
+          <div class="flex flex-col items-end">
+            <span class="text-display-currency text-texto">{{ ride.pricePerSeat | currencyBrl }}</span>
+            <span class="text-body-sm text-texto-suave">por vaga</span>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-space-sm">
+          @if (ride.status === 'full') {
+            <div class="inline-flex items-center gap-space-xs rounded-full bg-perigo-fundo px-space-md py-space-xs text-label-pill text-perigo">
+              <span class="h-2 w-2 rounded-full bg-perigo"></span>
+              <span>Esgotada • {{ occupiedSeats() }} de {{ ride.totalSeats }} vagas ocupadas</span>
+            </div>
+            <span class="rounded-full bg-fundo px-space-md py-space-xs text-label-pill text-texto-suave">
+              Não aceita novos pedidos
+            </span>
+          } @else {
+            <div class="inline-flex items-center gap-space-xs rounded-full bg-sucesso-fundo px-space-md py-space-xs text-label-pill text-sucesso">
+              <span class="h-2 w-2 rounded-full bg-sucesso"></span>
+              <span>Ativa • {{ occupiedSeats() }} de {{ ride.totalSeats }} vagas ocupadas</span>
+            </div>
+          }
+        </div>
+
+        <div class="flex items-center gap-space-md rounded-lg bg-fundo p-space-md">
+          <div class="flex -space-x-2 overflow-hidden">
+            @for (confirmed of acceptedRequests(); track confirmed.id) {
+              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primaria text-label-md text-texto shadow-sm">
+                {{ confirmed.passengerId.slice(0, 2).toUpperCase() }}
+              </div>
+            }
+            @if (ride.availableSeats > 0) {
+              <div class="flex h-8 w-8 items-center justify-center rounded-full border border-borda bg-superficie text-texto-suave shadow-sm">
+                <span class="material-symbols-outlined text-body-md" aria-hidden="true">person_add</span>
+              </div>
+            }
+          </div>
+          <div class="flex flex-col">
+            <span class="text-label-md text-texto">Ocupação: {{ occupancyPercentage() }}%</span>
+            @if (ride.status === 'full' || ride.availableSeats === 0) {
+              <span class="text-body-sm text-perigo">Oferta esgotada — não aceita novos pedidos</span>
+            } @else if (ride.availableSeats === 1) {
+              <span class="text-body-sm text-texto-suave">Falta apenas 1 passageiro para lotar</span>
+            } @else {
+              <span class="text-body-sm text-texto-suave">Restam {{ ride.availableSeats }} vagas disponíveis</span>
+            }
+          </div>
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-space-sm">
+        <div class="flex items-center justify-between px-space-xs">
+          <div class="flex items-center gap-space-sm">
+            <span class="material-symbols-outlined text-body-lg text-sucesso" aria-hidden="true">check_circle</span>
+            <h2 class="text-headline-sm text-texto">Passageiros Confirmados</h2>
+          </div>
+          <span class="rounded-full bg-superficie px-space-sm py-space-xs text-label-pill text-texto">
+            {{ acceptedRequests().length }} {{ acceptedRequests().length === 1 ? 'confirmado' : 'confirmados' }}
+          </span>
+        </div>
+
+        @if (acceptedRequests().length === 0) {
+          <p class="rounded-xl border border-borda bg-superficie p-space-md text-body-sm text-texto-suave">
+            Nenhum passageiro confirmado até o momento.
+          </p>
+        } @else {
+          <div class="flex flex-col gap-space-sm">
+            @for (confirmed of acceptedRequests(); track confirmed.id) {
+              <div class="flex items-center justify-between rounded-xl border border-borda bg-superficie p-space-md shadow-sm">
+                <div class="flex min-w-0 items-center gap-space-md">
+                  <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sucesso-fundo text-label-lg text-sucesso">
+                    {{ confirmed.passengerId.slice(0, 2).toUpperCase() }}
+                  </div>
+                  <div class="flex min-w-0 flex-col">
+                    <div class="flex items-center gap-space-xs">
+                      <span class="truncate text-label-lg text-texto">{{ confirmed.passengerId }}</span>
+                      <span class="material-symbols-outlined text-body-md text-primaria-escura" aria-hidden="true">verified</span>
+                    </div>
+                    <span class="text-body-sm text-texto-suave">Vaga confirmada</span>
+                  </div>
+                </div>
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sucesso-fundo text-sucesso">
+                  <span class="material-symbols-outlined text-body-lg" aria-hidden="true">chat</span>
+                </span>
+              </div>
+            }
+          </div>
+        }
+      </section>
+
+      <section class="flex flex-col gap-space-sm">
+        <div class="flex items-center justify-between px-space-xs">
+          <div class="flex items-center gap-space-sm">
+            <span class="material-symbols-outlined text-body-lg text-pendente" aria-hidden="true">pending</span>
+            <h2 class="text-headline-sm text-texto">Solicitações Pendentes</h2>
+          </div>
+          <span class="rounded-full bg-pendente-fundo px-space-sm py-space-xs text-label-pill text-pendente">
+            {{ pendingRequests().length }} aguardando
+          </span>
+        </div>
+
+        @if (pendingRequests().length === 0) {
+          <p class="rounded-xl border border-borda bg-superficie p-space-md text-body-sm text-texto-suave">
+            Nenhuma solicitação pendente para esta oferta.
+          </p>
+        } @else {
+          <div class="flex flex-col gap-space-sm">
+            @for (pending of pendingRequests(); track pending.id) {
+              <app-ride-request-card
+                [request]="pending"
+                [canAccept]="canAcceptRequests()"
+                [canReject]="isBeforeDeparture()"
+                [isLastSeat]="isLastAvailableSeat()"
+                (accepted)="acceptRequest($event)"
+                (rejected)="rejectRequest($event)"
+              />
+            }
+          </div>
+        }
+      </section>
+    } @else {
+      <section class="flex flex-col items-center gap-space-md rounded-xl border border-borda bg-superficie p-space-xl text-center shadow-sm">
+        <span class="material-symbols-outlined text-headline-lg text-texto-suave" aria-hidden="true">local_offer</span>
+        <p class="text-body-md text-texto-suave">Você ainda não possui ofertas de carona cadastradas.</p>
+        <a
+          routerLink="/driver/offer"
+          class="inline-flex h-12 items-center justify-center rounded-xl bg-primaria px-space-lg text-label-lg text-texto hover:bg-primaria-hover"
+        >
+          Oferecer Carona
+        </a>
+      </section>
+    }
+  </main>
+
+  <nav class="fixed bottom-0 z-40 w-full border-t border-borda bg-superficie/95 backdrop-blur">
+    <div class="mx-auto flex h-16 max-w-2xl items-center justify-around px-space-xs">
+      <a
+        routerLink="/rides"
+        class="flex min-w-16 flex-col items-center justify-center text-texto-suave hover:text-texto"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">search</span>
+        <span class="text-label-pill">Buscar</span>
+      </a>
+      <a
+        routerLink="/driver/offer"
+        class="flex min-w-16 flex-col items-center justify-center text-texto-suave hover:text-texto"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">add_circle</span>
+        <span class="text-label-pill">Oferecer</span>
+      </a>
+      <a
+        routerLink="/driver/my-rides"
+        aria-current="page"
+        class="flex min-w-16 flex-col items-center justify-center text-texto"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">local_offer</span>
+        <span class="text-label-pill">Ofertas</span>
+      </a>
+    </div>
+  </nav>
+</div>

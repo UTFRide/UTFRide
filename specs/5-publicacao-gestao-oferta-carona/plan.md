@@ -16,7 +16,7 @@
   - Teste primeiro: verificar a publicação de uma oferta ativa pelo aluno autenticado, os erros para campos obrigatórios e vagas fora de 1 a 4, e a rejeição de data e horário não futuros no momento de salvar. Verificar valor não negativo e a responsabilidade do motorista pela capacidade do veículo.
   - Arquivos previstos: `apps/web/src/app/features/driver/offer-ride/`, `apps/web/src/app/core/models/ride.model.ts`, `apps/web/src/app/core/services/ride-data*`, `apps/web/src/app/core/services/auth-data*` e `apps/web/src/app/app.routes.ts`.
 
-- [ ] **Tarefa 2 — Gerenciar solicitações**
+- [x] **Tarefa 2 — Gerenciar solicitações**
   - Cobre: CA4.
   - Teste primeiro: com solicitações de exemplo, verificar aceite e rejeição individual, atualização de vagas e status esgotada, manutenção dos pedidos pendentes e impedimento de novos aceites sem vaga; verificar que a oferta esgotada não aceita novos pedidos.
   - Arquivos previstos: `apps/web/src/app/features/driver/my-rides/`, `apps/web/src/app/core/models/ride-request.model.ts`, `apps/web/src/app/core/services/ride-data*`, `apps/web/src/app/core/services/ride-request-data*` e `apps/web/src/app/app.routes.ts`.
