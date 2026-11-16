@@ -20,6 +20,49 @@ describe('AuthData', () => {
     expect(service.result()).toEqual({ duplicate: false, user });
     http.verify();
   });
+
+  it('disponibiliza o perfil do aluno autenticado sem expor a senha', () => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    expect(service.currentUser()).toBeNull();
+
+    service.login('ana@alunos.utfpr.edu.br', 'senha123');
+    http.expectOne((request) => request.url === 'http://localhost:3000/users').flush([
+      {
+        id: '1',
+        name: 'Ana',
+        email: 'ana@alunos.utfpr.edu.br',
+        password: 'senha123',
+        registrationNumber: '123',
+        whatsapp: '41987654321',
+        role: 'student',
+        isBlocked: false,
+        isEmailConfirmed: true,
+        ratingAverage: 4.5,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    expect(service.currentUser()).toEqual({
+      id: '1',
+      name: 'Ana',
+      email: 'ana@alunos.utfpr.edu.br',
+      registrationNumber: '123',
+      whatsapp: '41987654321',
+      role: 'student',
+      isBlocked: false,
+      isEmailConfirmed: true,
+      ratingAverage: 4.5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(service.currentUser()).not.toHaveProperty('password');
+
+    service.logout();
+    expect(service.currentUser()).toBeNull();
+    http.verify();
+  });
 });
 
 describe('classificação de falhas de autenticação', () => {

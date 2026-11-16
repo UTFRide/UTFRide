@@ -11,7 +11,7 @@
 
 ## Tarefas
 
-- [ ] **Tarefa 1 — Publicar oferta válida**
+- [x] **Tarefa 1 — Publicar oferta válida**
   - Cobre: CA1, CA2 e CA3.
   - Teste primeiro: verificar a publicação de uma oferta ativa pelo aluno autenticado, os erros para campos obrigatórios e vagas fora de 1 a 4, e a rejeição de data e horário não futuros no momento de salvar. Verificar valor não negativo e a responsabilidade do motorista pela capacidade do veículo.
   - Arquivos previstos: `apps/web/src/app/features/driver/offer-ride/`, `apps/web/src/app/core/models/ride.model.ts`, `apps/web/src/app/core/services/ride-data*`, `apps/web/src/app/core/services/auth-data*` e `apps/web/src/app/app.routes.ts`.
