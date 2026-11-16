@@ -296,4 +296,108 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     expect(root.textContent).toContain('R$ 11,00');
     http.verify();
   });
+
+  it('restringe a edição quando há passageiros confirmados: bloqueia alterações de trajeto, data, horário, valor e redução de vagas, permite aumento dentro dos limites e retorna oferta esgotada ao status ativa', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const rideData = TestBed.inject(RideData);
+    authenticateStudent(http);
+
+    const initialDeparture = new Date(2026, 10, 17, 7, 30, 0);
+    const fullRideWithPassengers: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: initialDeparture.toISOString(),
+      totalSeats: 2,
+      availableSeats: 0,
+      pricePerSeat: 9,
+      status: 'full',
+      notes: 'Próximo ao shopping',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    rideData.startEditing(fullRideWithPassengers);
+
+    const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-1');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    const originInput = root.querySelector<HTMLInputElement>('[formControlName="origin"]')!;
+    const destinationInput = root.querySelector<HTMLInputElement>('[formControlName="destination"]')!;
+    const notesInput = root.querySelector<HTMLInputElement>('[formControlName="notes"]')!;
+    const dateInput = root.querySelector<HTMLInputElement>('[formControlName="departureDate"]')!;
+    const timeInput = root.querySelector<HTMLInputElement>('[formControlName="departureTime"]')!;
+    const priceInput = root.querySelector<HTMLInputElement>('[formControlName="pricePerSeat"]')!;
+    const seatBtn1 = root.querySelector<HTMLButtonElement>('[data-testid="seat-option-1"]')!;
+    const seatBtn2 = root.querySelector<HTMLButtonElement>('[data-testid="seat-option-2"]')!;
+    const seatBtn3 = root.querySelector<HTMLButtonElement>('[data-testid="seat-option-3"]')!;
+    const seatBtn4 = root.querySelector<HTMLButtonElement>('[data-testid="seat-option-4"]')!;
+
+    // 1. Campos de trajeto, data, horário e valor, além da opção de reduzir vagas (1 < 2), ficam bloqueados
+    expect(originInput.disabled).toBe(true);
+    expect(destinationInput.disabled).toBe(true);
+    expect(notesInput.disabled).toBe(true);
+    expect(dateInput.disabled).toBe(true);
+    expect(timeInput.disabled).toBe(true);
+    expect(priceInput.disabled).toBe(true);
+    expect(seatBtn1.disabled).toBe(true);
+    expect(seatBtn2.disabled).toBe(false);
+    expect(seatBtn3.disabled).toBe(false);
+    expect(seatBtn4.disabled).toBe(false);
+
+    // 2. Tentativa de reduzir vagas pelo campo numérico ou exceder limite de 4 é bloqueada
+    setField(root, 'totalSeats', '1');
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await harness.fixture.whenStable();
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+
+    const reductionAlerts = Array.from(root.querySelectorAll('[role="alert"]'))
+      .map((el) => el.textContent ?? '')
+      .join(' ');
+    expect(reductionAlerts).toContain('reduzir');
+
+    setField(root, 'totalSeats', '5');
+    await harness.fixture.whenStable();
+    expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+
+    // 3. Aumentar vagas dentro do limite permitido (2 -> 3) disponibiliza 1 vaga e retorna oferta esgotada para ativa
+    seatBtn3.click();
+    await harness.fixture.whenStable();
+
+    const submitButton = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(submitButton.disabled).toBe(false);
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    const patchReq = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+    );
+    expect(patchReq.request.body).toEqual({
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: initialDeparture.toISOString(),
+      totalSeats: 3,
+      availableSeats: 1,
+      pricePerSeat: 9,
+      status: 'active',
+      notes: 'Próximo ao shopping',
+    });
+
+    patchReq.flush({ ...fullRideWithPassengers, ...patchReq.request.body });
+    await harness.fixture.whenStable();
+
+    expect(root.textContent).toContain('Oferta Atualizada!');
+    expect(root.textContent).toContain('3 vagas');
+    expect(root.textContent).toContain('Ativa');
+    http.verify();
+  });
 });

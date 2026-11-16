@@ -223,4 +223,64 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     expect(TestBed.inject(Router).url).toBe('/driver/offer?rideId=ride-1');
     http.verify();
   });
+
+  it('permite iniciar a edição de uma oferta com passageiros confirmados (inclusive esgotada) antes da viagem a partir de Minhas Ofertas', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    authenticateDriver(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const fullRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 2,
+      availableSeats: 0,
+      pricePerSeat: 9,
+      status: 'full',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const confirmedRequests: RideRequest[] = [
+      {
+        id: 'req-1',
+        rideId: 'ride-1',
+        passengerId: 'Mariana Silva',
+        status: 'accepted',
+        createdAt: '2026-01-01T07:00:00.000Z',
+      },
+      {
+        id: 'req-2',
+        rideId: 'ride-1',
+        passengerId: 'Pedro Henrique',
+        status: 'accepted',
+        createdAt: '2026-01-01T07:05:00.000Z',
+      },
+    ];
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([fullRide]);
+    await harness.fixture.whenStable();
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
+      .flush(confirmedRequests);
+    await harness.fixture.whenStable();
+
+    const editBtn = root.querySelector<HTMLButtonElement>('[data-testid="edit-ride-button"]');
+    expect(editBtn).not.toBeNull();
+    expect(editBtn!.disabled).toBe(false);
+    editBtn!.click();
+    await harness.fixture.whenStable();
+
+    expect(TestBed.inject(Router).url).toBe('/driver/offer?rideId=ride-1');
+    http.verify();
+  });
 });

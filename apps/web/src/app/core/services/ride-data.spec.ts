@@ -225,4 +225,137 @@ describe('RideData', () => {
     expect(rideData.driverRides()[0]).toEqual(updatedRide);
     http.verify();
   });
+
+  it('restringe edição de oferta com passageiros confirmados antes da viagem: bloqueia alterações de trajeto, data, horário, valor e redução de vagas; permite aumento dentro dos limites e retorna oferta esgotada para ativa', () => {
+    const rideData = TestBed.inject(RideData);
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
+
+    const initialDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const fullRideWithPassengers: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: initialDeparture,
+      totalSeats: 2,
+      availableSeats: 0,
+      pricePerSeat: 9,
+      status: 'full',
+      notes: 'Saída pontual',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    rideData.loadDriverRides();
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([fullRideWithPassengers]);
+
+    // 1. Bloqueia alteração de origem
+    rideData.update(fullRideWithPassengers, {
+      origin: 'Cabral',
+      destination: 'UTFPR Neoville',
+      departureTime: initialDeparture,
+      totalSeats: 3,
+      pricePerSeat: 9,
+      notes: 'Saída pontual',
+    });
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.updateResult()).toEqual({ invalidData: true });
+
+    // 2. Bloqueia alteração de destino
+    rideData.update(fullRideWithPassengers, {
+      origin: 'Batel',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: initialDeparture,
+      totalSeats: 3,
+      pricePerSeat: 9,
+      notes: 'Saída pontual',
+    });
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.updateResult()).toEqual({ invalidData: true });
+
+    // 3. Bloqueia alteração de data/horário
+    rideData.update(fullRideWithPassengers, {
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 3,
+      pricePerSeat: 9,
+      notes: 'Saída pontual',
+    });
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.updateResult()).toEqual({ invalidData: true });
+
+    // 4. Bloqueia alteração de valor
+    rideData.update(fullRideWithPassengers, {
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: initialDeparture,
+      totalSeats: 3,
+      pricePerSeat: 12,
+      notes: 'Saída pontual',
+    });
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.updateResult()).toEqual({ invalidData: true });
+
+    // 5. Bloqueia redução de vagas
+    rideData.update(fullRideWithPassengers, {
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: initialDeparture,
+      totalSeats: 1,
+      pricePerSeat: 9,
+      notes: 'Saída pontual',
+    });
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.updateResult()).toEqual({ invalidData: true });
+
+    // 6. Bloqueia aumento acima do limite permitido (4)
+    rideData.update(fullRideWithPassengers, {
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: initialDeparture,
+      totalSeats: 5,
+      pricePerSeat: 9,
+      notes: 'Saída pontual',
+    });
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.updateResult()).toEqual({ invalidData: true });
+
+    // 7. Permite aumento dentro dos limites (2 -> 3) e retorna oferta esgotada para ativa com 1 vaga disponível
+    rideData.update(fullRideWithPassengers, {
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: initialDeparture,
+      totalSeats: 3,
+      pricePerSeat: 9,
+      notes: 'Saída pontual',
+    });
+
+    const patchReq = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+    );
+    expect(patchReq.request.body).toEqual({
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: initialDeparture,
+      totalSeats: 3,
+      availableSeats: 1,
+      pricePerSeat: 9,
+      status: 'active',
+      notes: 'Saída pontual',
+    });
+
+    const reopenedRide: Ride = {
+      ...fullRideWithPassengers,
+      ...patchReq.request.body,
+    };
+    patchReq.flush(reopenedRide);
+
+    expect(rideData.updateResult()).toEqual({ ride: reopenedRide });
+    expect(rideData.driverRides()[0]).toEqual(reopenedRide);
+    expect(rideData.canAcceptNewRequests(reopenedRide)).toBe(true);
+    http.verify();
+  });
 });

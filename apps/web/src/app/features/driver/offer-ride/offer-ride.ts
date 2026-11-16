@@ -85,6 +85,17 @@ export class OfferRide {
   readonly publishedRide = signal<Ride | null>(null);
   readonly editingRide = this.rideData.editingRide;
   readonly isEditMode = computed(() => this.editingRide() !== null);
+  readonly hasConfirmedPassengers = computed(() => {
+    const ride = this.editingRide();
+    return !!ride && ride.availableSeats < ride.totalSeats;
+  });
+  readonly minAllowedSeats = computed(() => {
+    const ride = this.editingRide();
+    if (ride && ride.availableSeats < ride.totalSeats) {
+      return ride.totalSeats;
+    }
+    return 1;
+  });
 
   readonly form = new FormGroup(
     {
@@ -100,7 +111,7 @@ export class OfferRide {
         validators: [Validators.required, Validators.min(0)],
       }),
     },
-    { validators: futureDepartureValidator },
+    { validators: [futureDepartureValidator, (control) => this.confirmedPassengersValidator(control)] },
   );
 
   constructor() {
@@ -162,18 +173,90 @@ export class OfferRide {
       totalSeats: ride.totalSeats,
       pricePerSeat: ride.pricePerSeat,
     });
+    if (ride.availableSeats < ride.totalSeats) {
+      this.disableLockedControlsForConfirmedPassengers();
+    } else {
+      this.enableAllControls();
+    }
+    this.form.updateValueAndValidity();
+  }
+
+  private disableLockedControlsForConfirmedPassengers(): void {
+    this.form.controls.origin.disable({ emitEvent: false });
+    this.form.controls.destination.disable({ emitEvent: false });
+    this.form.controls.notes.disable({ emitEvent: false });
+    this.form.controls.departureDate.disable({ emitEvent: false });
+    this.form.controls.departureTime.disable({ emitEvent: false });
+    this.form.controls.pricePerSeat.disable({ emitEvent: false });
+  }
+
+  private enableAllControls(): void {
+    this.form.controls.origin.enable({ emitEvent: false });
+    this.form.controls.destination.enable({ emitEvent: false });
+    this.form.controls.notes.enable({ emitEvent: false });
+    this.form.controls.departureDate.enable({ emitEvent: false });
+    this.form.controls.departureTime.enable({ emitEvent: false });
+    this.form.controls.pricePerSeat.enable({ emitEvent: false });
+  }
+
+  private confirmedPassengersValidator(control: AbstractControl): ValidationErrors | null {
+    const ride = this.editingRide();
+    if (!ride || ride.availableSeats >= ride.totalSeats) {
+      return null;
+    }
+
+    const errors: ValidationErrors = {};
+    const totalSeats = control.get('totalSeats')?.value as number | null | undefined;
+    if (totalSeats !== null && totalSeats !== undefined && totalSeats < ride.totalSeats) {
+      errors['seatReduction'] = true;
+    }
+
+    const origin = (control.get('origin')?.value as string | undefined) ?? '';
+    const destination = (control.get('destination')?.value as string | undefined) ?? '';
+    const notes = (control.get('notes')?.value as string | undefined) ?? '';
+    const departureDate = (control.get('departureDate')?.value as string | undefined) ?? '';
+    const departureTime = (control.get('departureTime')?.value as string | undefined) ?? '';
+    const pricePerSeat = control.get('pricePerSeat')?.value as number | null | undefined;
+    const rideDeparture = new Date(ride.departureTime);
+    const expectedDate = formatLocalDateInput(rideDeparture);
+    const expectedTime = formatLocalTimeInput(rideDeparture);
+
+    if (
+      origin.trim() !== ride.origin.trim() ||
+      destination.trim() !== ride.destination.trim() ||
+      notes.trim() !== (ride.notes ?? '').trim() ||
+      departureDate !== expectedDate ||
+      departureTime !== expectedTime ||
+      pricePerSeat !== ride.pricePerSeat
+    ) {
+      errors['lockedFieldChanged'] = true;
+    }
+
+    return Object.keys(errors).length > 0 ? errors : null;
   }
 
   setDestination(destination: string): void {
+    if (this.hasConfirmedPassengers()) return;
     this.form.controls.destination.setValue(destination);
     this.form.controls.destination.markAsDirty();
     this.form.controls.destination.markAsTouched();
   }
 
+  isSeatOptionDisabled(seats: number): boolean {
+    return this.hasConfirmedPassengers() && seats < this.minAllowedSeats();
+  }
+
   selectSeats(seats: number): void {
+    if (this.isSeatOptionDisabled(seats)) return;
     this.form.controls.totalSeats.setValue(seats);
     this.form.controls.totalSeats.markAsDirty();
     this.form.controls.totalSeats.markAsTouched();
+  }
+
+  hasSeatReductionError(): boolean {
+    const { totalSeats } = this.form.controls;
+    const interacted = totalSeats.dirty || totalSeats.touched || this.submitAttempted();
+    return this.form.hasError('seatReduction') && interacted;
   }
 
   isFieldInvalid(controlName: keyof typeof this.form.controls): boolean {
@@ -198,6 +281,7 @@ export class OfferRide {
     this.submitAttempted.set(false);
     this.rideData.resetPublish();
     this.rideData.clearEditing();
+    this.enableAllControls();
     this.form.reset({
       origin: '',
       destination: '',
@@ -227,11 +311,19 @@ export class OfferRide {
       return;
     }
 
+    const editingDeparture = editing ? new Date(editing.departureTime) : null;
+    const unchangedDeparture =
+      editing &&
+      editingDeparture &&
+      !Number.isNaN(editingDeparture.getTime()) &&
+      departureDate === formatLocalDateInput(editingDeparture) &&
+      departureTime === formatLocalTimeInput(editingDeparture);
+
     this.loading.set(true);
     const draft = {
       origin,
       destination,
-      departureTime: departure.toISOString(),
+      departureTime: unchangedDeparture ? editing.departureTime : departure.toISOString(),
       totalSeats,
       pricePerSeat,
       notes,

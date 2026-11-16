@@ -141,26 +141,37 @@ export class RideData {
             if (
               ride.status === 'cancelled' ||
               ride.status === 'completed' ||
-              ride.availableSeats !== ride.totalSeats ||
               new Date(ride.departureTime).getTime() <= Date.now()
             ) {
               return of({ invalidState: true as const });
             }
 
-            if (!this.isValidDraft(draft)) {
+            if (
+              !this.isValidDraft(draft) ||
+              !this.isAllowedConfirmedPassengersUpdate(ride, draft)
+            ) {
               return of({ invalidData: true as const });
             }
 
+            const occupiedSeats = Math.max(0, ride.totalSeats - ride.availableSeats);
+            const availableSeats = draft.totalSeats - occupiedSeats;
+            const status: RideStatus = availableSeats > 0 ? 'active' : 'full';
             const notes = draft.notes?.trim();
             const body = {
               origin: draft.origin.trim(),
               destination: draft.destination.trim(),
               departureTime: draft.departureTime,
               totalSeats: draft.totalSeats,
-              availableSeats: draft.totalSeats,
+              availableSeats,
               pricePerSeat: draft.pricePerSeat,
-              status: 'active' as const,
-              ...(notes ? { notes } : ride.notes !== undefined ? { notes: '' } : {}),
+              status,
+              ...(notes
+                ? { notes }
+                : draft.notes !== undefined && ride.notes !== undefined
+                  ? { notes: '' }
+                  : ride.notes !== undefined
+                    ? { notes: ride.notes }
+                    : {}),
             };
 
             return this.http.patch<Ride>(`${environment.apiUrl}/rides/${ride.id}`, body).pipe(
@@ -261,6 +272,29 @@ export class RideData {
     }
     const departureMs = new Date(draft.departureTime).getTime();
     return !Number.isNaN(departureMs) && departureMs > Date.now();
+  }
+
+  private isAllowedConfirmedPassengersUpdate(ride: Ride, draft: RideDraft): boolean {
+    const occupiedSeats = Math.max(0, ride.totalSeats - ride.availableSeats);
+    if (occupiedSeats === 0) {
+      return true;
+    }
+
+    if (
+      draft.origin.trim() !== ride.origin.trim() ||
+      draft.destination.trim() !== ride.destination.trim() ||
+      new Date(draft.departureTime).getTime() !== new Date(ride.departureTime).getTime() ||
+      draft.pricePerSeat !== ride.pricePerSeat ||
+      draft.totalSeats < ride.totalSeats
+    ) {
+      return false;
+    }
+
+    if (draft.notes !== undefined && draft.notes.trim() !== (ride.notes ?? '').trim()) {
+      return false;
+    }
+
+    return true;
   }
 
   private mapError(error: unknown): RideErrorResult {

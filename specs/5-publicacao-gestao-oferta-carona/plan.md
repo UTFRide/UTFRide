@@ -26,7 +26,7 @@
   - Teste primeiro: verificar que o autor edita os campos e salva dados válidos antes da viagem, e que campos obrigatórios, vagas e data futura são novamente validados.
   - Arquivos previstos: `apps/web/src/app/features/driver/offer-ride/`, `apps/web/src/app/features/driver/my-rides/` e `apps/web/src/app/core/services/ride-data*`.
 
-- [ ] **Tarefa 4 — Restringir edição com passageiros confirmados**
+- [x] **Tarefa 4 — Restringir edição com passageiros confirmados**
   - Cobre: CA6.
   - Teste primeiro: verificar bloqueio de alterações de trajeto, data, horário, valor e redução de vagas; permitir aumento dentro dos limites e verificar que uma oferta esgotada retorna a ativa quando há vaga disponível.
   - Arquivos previstos: `apps/web/src/app/features/driver/offer-ride/`, `apps/web/src/app/features/driver/my-rides/` e `apps/web/src/app/core/services/ride-data*`.

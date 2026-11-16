@@ -40,7 +40,7 @@
                 type="text"
                 formControlName="origin"
                 placeholder="Ex: Portão, Praça do Japão, Bacacheri..."
-                class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie"
+                class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
               />
               @if (isFieldInvalid('origin')) {
                 <p role="alert" class="mt-space-xs flex items-center gap-space-xs text-body-sm text-perigo">
@@ -62,7 +62,7 @@
                 type="text"
                 formControlName="destination"
                 placeholder="Ex: UTFPR Câmpus Curitiba (Sede Centro)"
-                class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie"
+                class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
               />
               @if (isFieldInvalid('destination')) {
                 <p role="alert" class="mt-space-xs flex items-center gap-space-xs text-body-sm text-perigo">
@@ -77,8 +77,9 @@
             @for (campus of campusOptions; track campus.label) {
               <button
                 type="button"
+                [disabled]="hasConfirmedPassengers()"
                 (click)="setDestination(campus.value)"
-                class="rounded-full bg-fundo px-space-md py-space-xs text-label-pill text-texto hover:bg-primaria"
+                class="rounded-full bg-fundo px-space-md py-space-xs text-label-pill text-texto hover:bg-primaria disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
               >
                 {{ campus.label }}
               </button>
@@ -95,7 +96,7 @@
               type="text"
               formControlName="notes"
               placeholder="Ex: Próximo à guarita do bloco B ou estação tubo"
-              class="h-11 w-full rounded-lg border border-borda bg-superficie px-space-md text-body-sm text-texto outline-none focus:border-secundaria"
+              class="h-11 w-full rounded-lg border border-borda bg-superficie px-space-md text-body-sm text-texto outline-none focus:border-secundaria disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
             />
           </div>
         </div>
@@ -117,7 +118,7 @@
               id="departureDate"
               type="date"
               formControlName="departureDate"
-              class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie"
+              class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
             />
           </div>
           <div class="flex flex-col gap-space-xs">
@@ -126,7 +127,7 @@
               id="departureTime"
               type="time"
               formControlName="departureTime"
-              class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie"
+              class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
             />
           </div>
         </div>
@@ -150,14 +151,14 @@
         <div class="flex items-center justify-between gap-space-md">
           <div>
             <h2 class="text-headline-sm text-texto">Vagas Disponíveis</h2>
-            <p class="text-body-sm text-texto-suave">Selecione de 1 a 4 passageiros</p>
+            <p class="text-body-sm text-texto-suave">Selecione de {{ minAllowedSeats() }} a 4 passageiros</p>
           </div>
           <div class="flex items-center gap-space-xs">
             <label for="totalSeats" class="sr-only">Quantidade de vagas</label>
             <input
               id="totalSeats"
               type="number"
-              min="1"
+              [min]="minAllowedSeats()"
               max="4"
               step="1"
               formControlName="totalSeats"
@@ -171,11 +172,12 @@
             <button
               type="button"
               [attr.data-testid]="'seat-option-' + seats"
+              [disabled]="isSeatOptionDisabled(seats)"
               (click)="selectSeats(seats)"
               [class]="
                 form.controls.totalSeats.value === seats
                   ? 'flex flex-col items-center justify-center rounded-xl bg-primaria py-space-sm text-texto ring-2 ring-secundaria'
-                  : 'flex flex-col items-center justify-center rounded-xl bg-fundo py-space-sm text-texto hover:bg-borda'
+                  : 'flex flex-col items-center justify-center rounded-xl bg-fundo py-space-sm text-texto hover:bg-borda disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave'
               "
             >
               <span class="text-headline-sm">{{ seats }}</span>
@@ -191,7 +193,12 @@
           </p>
         </div>
 
-        @if (isFieldInvalid('totalSeats')) {
+        @if (hasSeatReductionError()) {
+          <p role="alert" class="flex items-center gap-space-xs text-body-sm text-perigo">
+            <span class="material-symbols-outlined text-body-md" aria-hidden="true">error</span>
+            Não é permitido reduzir o número de vagas quando há passageiros confirmados.
+          </p>
+        } @else if (isFieldInvalid('totalSeats')) {
           <p role="alert" class="flex items-center gap-space-xs text-body-sm text-perigo">
             <span class="material-symbols-outlined text-body-md" aria-hidden="true">error</span>
             Informe uma quantidade válida entre 1 e 4 vagas.
@@ -213,7 +220,7 @@
               min="0"
               step="0.50"
               formControlName="pricePerSeat"
-              class="w-20 bg-transparent text-right text-display-currency text-texto outline-none"
+              class="w-20 bg-transparent text-right text-display-currency text-texto outline-none disabled:cursor-not-allowed disabled:text-texto-suave"
             />
           </div>
         </div>
@@ -267,7 +274,7 @@
           <span class="material-symbols-outlined text-headline-lg" aria-hidden="true">check_circle</span>
         </div>
         <span class="rounded-full bg-sucesso-fundo px-space-md py-space-xs text-label-pill uppercase text-sucesso">
-          Ativa
+          {{ ride.status === 'full' ? 'Esgotada' : 'Ativa' }}
         </span>
         <h2 id="published-ride-title" class="text-headline-md text-texto">
           {{ isEditMode() ? 'Oferta Atualizada!' : 'Carona Publicada!' }}

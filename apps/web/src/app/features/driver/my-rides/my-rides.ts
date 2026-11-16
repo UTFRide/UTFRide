@@ -75,11 +75,7 @@ export class MyRides {
   readonly canEditSelectedRide = computed<boolean>(() => {
     const ride = this.selectedRide();
     if (!ride || !this.isBeforeDeparture()) return false;
-    return (
-      (ride.status === 'active' || ride.status === 'full') &&
-      this.acceptedRequests().length === 0 &&
-      this.occupiedSeats() === 0
-    );
+    return ride.status === 'active' || ride.status === 'full';
   });
 
   constructor() {
