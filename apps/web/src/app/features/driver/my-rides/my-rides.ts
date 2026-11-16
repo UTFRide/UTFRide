@@ -1,11 +1,11 @@
 import { Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { Ride } from '../../../core/models/ride.model';
 import { RideRequest } from '../../../core/models/ride-request.model';
 import { RideData } from '../../../core/services/ride-data';
 import { RideRequestData } from '../../../core/services/ride-request-data';
 import { CurrencyBrlPipe } from '../../../shared/pipes/currency-brl-pipe';
-import { RideRequestCard } from './ride-request-card';
+import { formatPassengerInitials, RideRequestCard } from './ride-request-card';
 
 @Component({
   selector: 'app-my-rides',
@@ -15,6 +15,7 @@ import { RideRequestCard } from './ride-request-card';
 export class MyRides {
   private readonly rideData = inject(RideData);
   private readonly rideRequestData = inject(RideRequestData);
+  private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly selectedRideId = signal<string | null>(null);
@@ -71,6 +72,16 @@ export class MyRides {
     return !!ride && ride.status === 'active' && ride.availableSeats === 1;
   });
 
+  readonly canEditSelectedRide = computed<boolean>(() => {
+    const ride = this.selectedRide();
+    if (!ride || !this.isBeforeDeparture()) return false;
+    return (
+      (ride.status === 'active' || ride.status === 'full') &&
+      this.acceptedRequests().length === 0 &&
+      this.occupiedSeats() === 0
+    );
+  });
+
   constructor() {
     this.rideData.resetDriverRides();
     this.rideRequestData.reset();
@@ -89,6 +100,17 @@ export class MyRides {
 
   selectRide(rideId: string): void {
     this.selectedRideId.set(rideId);
+  }
+
+  passengerInitials(passengerId: string): string {
+    return formatPassengerInitials(passengerId);
+  }
+
+  editSelectedRide(): void {
+    const ride = this.selectedRide();
+    if (!ride || !this.canEditSelectedRide()) return;
+    this.rideData.startEditing(ride);
+    void this.router.navigate(['/driver/offer'], { queryParams: { rideId: ride.id } });
   }
 
   acceptRequest(request: RideRequest): void {

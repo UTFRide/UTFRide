@@ -179,4 +179,48 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
     http.verify();
   });
+
+  it('permite iniciar a edição de uma oferta sem passageiros confirmados antes da viagem a partir de Minhas Ofertas', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    authenticateDriver(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const ride: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 3,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([ride]);
+    await harness.fixture.whenStable();
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    const editBtn = root.querySelector<HTMLButtonElement>('[data-testid="edit-ride-button"]');
+    expect(editBtn).not.toBeNull();
+    expect(editBtn!.disabled).toBe(false);
+    editBtn!.click();
+    await harness.fixture.whenStable();
+
+    expect(TestBed.inject(Router).url).toBe('/driver/offer?rideId=ride-1');
+    http.verify();
+  });
 });

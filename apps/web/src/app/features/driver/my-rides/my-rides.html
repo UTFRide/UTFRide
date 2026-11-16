@@ -77,7 +77,7 @@
           <div class="flex -space-x-2 overflow-hidden">
             @for (confirmed of acceptedRequests(); track confirmed.id) {
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primaria text-label-md text-texto shadow-sm">
-                {{ confirmed.passengerId.slice(0, 2).toUpperCase() }}
+                {{ passengerInitials(confirmed.passengerId) }}
               </div>
             }
             @if (ride.availableSeats > 0) {
@@ -120,7 +120,7 @@
               <div class="flex items-center justify-between rounded-xl border border-borda bg-superficie p-space-md shadow-sm">
                 <div class="flex min-w-0 items-center gap-space-md">
                   <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sucesso-fundo text-label-lg text-sucesso">
-                    {{ confirmed.passengerId.slice(0, 2).toUpperCase() }}
+                    {{ passengerInitials(confirmed.passengerId) }}
                   </div>
                   <div class="flex min-w-0 flex-col">
                     <div class="flex items-center gap-space-xs">
@@ -168,6 +168,19 @@
             }
           </div>
         }
+      </section>
+
+      <section class="flex flex-col gap-space-sm pt-space-xs">
+        <button
+          type="button"
+          data-testid="edit-ride-button"
+          [disabled]="!canEditSelectedRide()"
+          (click)="editSelectedRide()"
+          class="flex h-12 w-full items-center justify-center gap-space-xs rounded-xl border border-borda bg-superficie px-space-lg text-label-lg text-texto shadow-sm hover:bg-fundo disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          <span class="material-symbols-outlined text-body-lg" aria-hidden="true">edit</span>
+          <span>Editar Oferta</span>
+        </button>
       </section>
     } @else {
       <section class="flex flex-col items-center gap-space-md rounded-xl border border-borda bg-superficie p-space-xl text-center shadow-sm">

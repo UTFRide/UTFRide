@@ -4,13 +4,16 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
+import { Ride } from '../../../core/models/ride.model';
 import { AuthData } from '../../../core/services/auth-data';
+import { RideData } from '../../../core/services/ride-data';
 
 function authenticateStudent(http: HttpTestingController): void {
   const auth = TestBed.inject(AuthData);
   auth.login('motorista@alunos.utfpr.edu.br', 'senha123');
-  http.expectOne((request) => request.url === 'http://localhost:3000/users').flush([
+  http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
     {
       id: 'driver-1',
       name: 'Carlos Motorista',
@@ -95,7 +98,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     expect(submitButton.disabled).toBe(false);
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
-    const request = http.expectOne((req) => req.url === 'http://localhost:3000/rides' && req.method === 'POST');
+    const request = http.expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.method === 'POST');
     expect(request.request.body).toEqual({
       driverId: 'driver-1',
       origin: 'Praça do Japão',
@@ -141,7 +144,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await harness.fixture.whenStable();
 
-    http.expectNone('http://localhost:3000/rides');
+    http.expectNone(`${environment.apiUrl}/rides`);
     const alertsText = Array.from(root.querySelectorAll('[role="alert"]'))
       .map((el) => el.textContent ?? '')
       .join(' ');
@@ -185,11 +188,112 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     root.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
     await harness.fixture.whenStable();
 
-    http.expectNone('http://localhost:3000/rides');
+    http.expectNone(`${environment.apiUrl}/rides`);
     const alertsText = Array.from(root.querySelectorAll('[role="alert"]'))
       .map((el) => el.textContent ?? '')
       .join(' ');
     expect(alertsText).toContain('Data e horário inválidos');
+    http.verify();
+  });
+
+  it('permite ao autor editar os campos de uma oferta sem passageiros confirmados antes da viagem e valida novamente campos obrigatórios, vagas e data futura', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const rideData = TestBed.inject(RideData);
+    authenticateStudent(http);
+
+    const initialDeparture = new Date(2026, 10, 17, 7, 30, 0);
+    const existingRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: initialDeparture.toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      notes: 'Próximo ao shopping',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    rideData.startEditing(existingRide);
+
+    const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-1');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    expect(root.querySelector<HTMLInputElement>('[formControlName="origin"]')!.value).toBe('Batel');
+    expect(root.querySelector<HTMLInputElement>('[formControlName="destination"]')!.value).toBe(
+      'UTFPR Neoville',
+    );
+    expect(root.querySelector<HTMLInputElement>('[formControlName="notes"]')!.value).toBe(
+      'Próximo ao shopping',
+    );
+    expect(root.querySelector<HTMLInputElement>('[formControlName="totalSeats"]')!.value).toBe('2');
+    expect(root.querySelector<HTMLInputElement>('[formControlName="pricePerSeat"]')!.value).toBe('9');
+
+    // 1. Validar novamente campos obrigatórios, vagas fora do limite e data não futura na edição
+    setField(root, 'origin', '');
+    setField(root, 'destination', '');
+    setField(root, 'totalSeats', '5');
+    const pastDate = new Date(2026, 10, 16, 9, 30, 0);
+    setField(root, 'departureDate', formatLocalDate(pastDate));
+    setField(root, 'departureTime', formatLocalTime(pastDate));
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await harness.fixture.whenStable();
+
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    const alertsText = Array.from(root.querySelectorAll('[role="alert"]'))
+      .map((el) => el.textContent ?? '')
+      .join(' ');
+    expect(alertsText).toContain('origem');
+    expect(alertsText).toContain('destino');
+    expect(alertsText).toContain('1 e 4');
+    expect(alertsText).toContain('Data e horário inválidos');
+
+    // 2. Preencher dados válidos e salvar edição antes da viagem
+    const updatedDeparture = new Date(2026, 10, 18, 8, 15, 0);
+    setField(root, 'origin', 'Água Verde');
+    setField(root, 'destination', 'UTFPR - Sede Ecoville');
+    setField(root, 'notes', 'Saída em frente à praça');
+    setField(root, 'departureDate', formatLocalDate(updatedDeparture));
+    setField(root, 'departureTime', formatLocalTime(updatedDeparture));
+    root.querySelector<HTMLButtonElement>('[data-testid="seat-option-4"]')!.click();
+    setField(root, 'pricePerSeat', '11');
+    await harness.fixture.whenStable();
+
+    const submitButton = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(submitButton.disabled).toBe(false);
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    const patchReq = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+    );
+    expect(patchReq.request.body).toEqual({
+      origin: 'Água Verde',
+      destination: 'UTFPR - Sede Ecoville',
+      departureTime: updatedDeparture.toISOString(),
+      totalSeats: 4,
+      availableSeats: 4,
+      pricePerSeat: 11,
+      status: 'active',
+      notes: 'Saída em frente à praça',
+    });
+
+    patchReq.flush({ ...existingRide, ...patchReq.request.body });
+    await harness.fixture.whenStable();
+
+    expect(root.textContent).toContain('Oferta Atualizada!');
+    expect(root.textContent).toContain('4 vagas');
+    expect(root.textContent).toContain('R$ 11,00');
     http.verify();
   });
 });

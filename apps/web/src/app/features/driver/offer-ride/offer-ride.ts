@@ -1,6 +1,6 @@
-import { Component, DestroyRef, effect, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Ride } from '../../../core/models/ride.model';
 import { RideData } from '../../../core/services/ride-data';
 import { CurrencyBrlPipe } from '../../../shared/pipes/currency-brl-pipe';
@@ -33,6 +33,19 @@ function parseLocalDateTime(dateStr: string, timeStr: string): Date | null {
   return parsed;
 }
 
+function formatLocalDateInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatLocalTimeInput(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 function futureDepartureValidator(control: AbstractControl): ValidationErrors | null {
   const departureDate = control.get('departureDate')?.value as string | undefined;
   const departureTime = control.get('departureTime')?.value as string | undefined;
@@ -46,10 +59,7 @@ function futureDepartureValidator(control: AbstractControl): ValidationErrors | 
 
 function defaultTomorrowDate(): string {
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const year = tomorrow.getFullYear();
-  const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
-  const day = String(tomorrow.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return formatLocalDateInput(tomorrow);
 }
 
 @Component({
@@ -59,7 +69,9 @@ function defaultTomorrowDate(): string {
 })
 export class OfferRide {
   private readonly rideData = inject(RideData);
+  private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
+  private populatedRideId: string | null = null;
 
   readonly seatOptions = [1, 2, 3, 4] as const;
   readonly campusOptions = [
@@ -71,6 +83,8 @@ export class OfferRide {
   readonly loading = signal(false);
   readonly submitAttempted = signal(false);
   readonly publishedRide = signal<Ride | null>(null);
+  readonly editingRide = this.rideData.editingRide;
+  readonly isEditMode = computed(() => this.editingRide() !== null);
 
   readonly form = new FormGroup(
     {
@@ -91,8 +105,31 @@ export class OfferRide {
 
   constructor() {
     this.rideData.resetPublish();
-    this.destroyRef.onDestroy(() => this.rideData.resetPublish());
+    this.rideData.resetUpdate();
+    const routeRideId = this.route.snapshot.queryParamMap.get('rideId');
+    const initialEditing = this.editingRide();
+    if (initialEditing && (!routeRideId || initialEditing.id === routeRideId)) {
+      this.populateFormFromRide(initialEditing);
+    } else if (routeRideId) {
+      const fromDriverRides = this.rideData.driverRides().find((item) => item.id === routeRideId);
+      if (fromDriverRides) {
+        this.rideData.startEditing(fromDriverRides);
+        this.populateFormFromRide(fromDriverRides);
+      } else {
+        this.rideData.loadRideForEdit(routeRideId);
+      }
+    }
+    this.destroyRef.onDestroy(() => {
+      this.rideData.resetPublish();
+      this.rideData.clearEditing();
+    });
   }
+
+  private readonly syncLoadedEditingRide = effect(() => {
+    const ride = this.editingRide();
+    if (!ride || this.populatedRideId === ride.id) return;
+    this.populateFormFromRide(ride);
+  });
 
   private readonly handlePublishResult = effect(() => {
     const result = this.rideData.publishResult();
@@ -102,6 +139,30 @@ export class OfferRide {
       this.publishedRide.set(result.ride);
     }
   });
+
+  private readonly handleUpdateResult = effect(() => {
+    const result = this.rideData.updateResult();
+    if (!result) return;
+    this.loading.set(false);
+    if ('ride' in result) {
+      this.publishedRide.set(result.ride);
+    }
+  });
+
+  private populateFormFromRide(ride: Ride): void {
+    this.populatedRideId = ride.id;
+    const departure = new Date(ride.departureTime);
+    const hasValidDeparture = !Number.isNaN(departure.getTime());
+    this.form.reset({
+      origin: ride.origin,
+      destination: ride.destination,
+      notes: ride.notes ?? '',
+      departureDate: hasValidDeparture ? formatLocalDateInput(departure) : defaultTomorrowDate(),
+      departureTime: hasValidDeparture ? formatLocalTimeInput(departure) : '07:15',
+      totalSeats: ride.totalSeats,
+      pricePerSeat: ride.pricePerSeat,
+    });
+  }
 
   setDestination(destination: string): void {
     this.form.controls.destination.setValue(destination);
@@ -133,8 +194,10 @@ export class OfferRide {
 
   resetForAnotherRide(): void {
     this.publishedRide.set(null);
+    this.populatedRideId = null;
     this.submitAttempted.set(false);
     this.rideData.resetPublish();
+    this.rideData.clearEditing();
     this.form.reset({
       origin: '',
       destination: '',
@@ -155,18 +218,30 @@ export class OfferRide {
     const { origin, destination, notes, departureDate, departureTime, totalSeats, pricePerSeat } =
       this.form.getRawValue();
     const departure = parseLocalDateTime(departureDate, departureTime);
-    if (!departure || departure.getTime() <= Date.now() || totalSeats === null || pricePerSeat === null) {
+    if (!departure || totalSeats === null || pricePerSeat === null) {
+      return;
+    }
+
+    const editing = this.editingRide();
+    if (editing && new Date(editing.departureTime).getTime() <= Date.now()) {
       return;
     }
 
     this.loading.set(true);
-    this.rideData.publish({
+    const draft = {
       origin,
       destination,
       departureTime: departure.toISOString(),
       totalSeats,
       pricePerSeat,
       notes,
-    });
+    };
+
+    if (editing) {
+      this.rideData.update(editing, draft);
+      return;
+    }
+
+    this.rideData.publish(draft);
   }
 }

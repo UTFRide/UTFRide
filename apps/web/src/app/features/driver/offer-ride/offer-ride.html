@@ -5,7 +5,7 @@
         <img src="/assets/logo.png" alt="UTFRide" class="h-8 w-auto object-contain" />
         <span class="text-headline-sm text-texto">UTFRide</span>
       </a>
-      <span class="text-label-md text-texto-suave">Oferecer Carona</span>
+      <span class="text-label-md text-texto-suave">{{ isEditMode() ? 'Editar Oferta' : 'Oferecer Carona' }}</span>
     </div>
   </header>
 
@@ -15,7 +15,7 @@
         <span class="material-symbols-outlined text-body-lg" aria-hidden="true">directions_car</span>
         <span class="text-label-pill uppercase">Motorista UTFPR</span>
       </div>
-      <h1 class="text-headline-lg text-texto">Oferecer uma Carona</h1>
+      <h1 class="text-headline-lg text-texto">{{ isEditMode() ? 'Editar Oferta de Carona' : 'Oferecer uma Carona' }}</h1>
       <p class="text-body-md text-texto-suave">
         Compartilhe seu trajeto e divida os custos com colegas da UTFPR de forma sustentável e segura.
       </p>
@@ -73,7 +73,7 @@
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center gap-space-sm pl-12">
+          <div class="flex flex-wrap items-center gap-space-sm pl-space-xl">
             @for (campus of campusOptions; track campus.label) {
               <button
                 type="button"
@@ -241,8 +241,16 @@
         [disabled]="form.invalid || loading()"
         class="flex h-13 w-full items-center justify-center gap-space-sm rounded-2xl bg-primaria px-space-lg text-label-lg text-texto shadow-sm hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
       >
-        <span class="material-symbols-outlined" aria-hidden="true">add_circle</span>
-        {{ loading() ? 'Publicando...' : 'Publicar Oferta de Carona' }}
+        <span class="material-symbols-outlined" aria-hidden="true">{{ isEditMode() ? 'save' : 'add_circle' }}</span>
+        {{
+          loading()
+            ? isEditMode()
+              ? 'Salvando...'
+              : 'Publicando...'
+            : isEditMode()
+              ? 'Salvar Alterações'
+              : 'Publicar Oferta de Carona'
+        }}
       </button>
     </form>
   </main>
@@ -261,7 +269,9 @@
         <span class="rounded-full bg-sucesso-fundo px-space-md py-space-xs text-label-pill uppercase text-sucesso">
           Ativa
         </span>
-        <h2 id="published-ride-title" class="text-headline-md text-texto">Carona Publicada!</h2>
+        <h2 id="published-ride-title" class="text-headline-md text-texto">
+          {{ isEditMode() ? 'Oferta Atualizada!' : 'Carona Publicada!' }}
+        </h2>
         <p class="text-body-md text-texto-suave">
           Sua oferta já está disponível para alunos da UTFPR.
         </p>
@@ -276,12 +286,11 @@
           </div>
         </div>
         <div class="flex w-full flex-col gap-space-sm">
-          <!-- TODO #5: direcionar para /driver/my-rides na Tarefa 2 -->
           <a
-            routerLink="/rides"
+            routerLink="/driver/my-rides"
             class="flex h-12 w-full items-center justify-center rounded-xl bg-secundaria text-label-lg text-superficie"
           >
-            Ver Caronas
+            Ver Minhas Ofertas
           </a>
           <button
             type="button"
@@ -311,6 +320,13 @@
       >
         <span class="material-symbols-outlined" aria-hidden="true">add_circle</span>
         <span class="text-label-pill">Oferecer</span>
+      </a>
+      <a
+        routerLink="/driver/my-rides"
+        class="flex min-w-16 flex-col items-center justify-center text-texto-suave hover:text-texto"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">local_offer</span>
+        <span class="text-label-pill">Ofertas</span>
       </a>
     </div>
   </nav>

@@ -11,6 +11,13 @@ export type RideErrorResult = { connectionError: true } | { requestError: true }
 
 export type PublishRideResult = { ride: Ride } | { unauthorized: true } | RideErrorResult;
 
+export type UpdateRideResult =
+  | { ride: Ride }
+  | { unauthorized: true }
+  | { invalidState: true }
+  | { invalidData: true }
+  | RideErrorResult;
+
 export type DriverRidesResult = { rides: Ride[] } | { unauthorized: true } | RideErrorResult;
 
 @Injectable({ providedIn: 'root' })
@@ -20,11 +27,43 @@ export class RideData {
   private readonly notice = inject(ErrorNotice);
   private readonly publishSubmissions = new Subject<RideDraft>();
   private readonly publishResets = new Subject<void>();
+  private readonly updateSubmissions = new Subject<{ ride: Ride; draft: RideDraft }>();
+  private readonly updateResets = new Subject<void>();
+  private readonly editRideLoads = new Subject<string>();
   private readonly driverRidesLoads = new Subject<void>();
   private readonly driverRidesResets = new Subject<void>();
   private readonly driverRidesState = signal<Ride[]>([]);
+  private readonly editingRideState = signal<Ride | null>(null);
 
   readonly driverRides = computed(() => this.driverRidesState());
+  readonly editingRide = computed(() => this.editingRideState());
+
+  private readonly editRideLoader = toSignal(
+    this.updateResets.pipe(
+      startWith(undefined),
+      switchMap(() =>
+        this.editRideLoads.pipe(
+          switchMap((rideId) => {
+            const driver = this.auth.currentUser();
+            if (!driver || driver.isBlocked) {
+              this.editingRideState.set(null);
+              return of(undefined);
+            }
+
+            return this.http.get<Ride>(`${environment.apiUrl}/rides/${rideId}`).pipe(
+              tap((ride) => {
+                if (ride.driverId === driver.id) {
+                  this.editingRideState.set(ride);
+                }
+              }),
+              catchError((error: unknown) => of(this.mapError(error))),
+            );
+          }),
+          startWith(undefined),
+        ),
+      ),
+    ),
+  );
 
   readonly driverRidesResult = toSignal<DriverRidesResult | undefined>(
     this.driverRidesResets.pipe(
@@ -88,6 +127,59 @@ export class RideData {
     ),
   );
 
+  readonly updateResult = toSignal<UpdateRideResult | undefined>(
+    this.updateResets.pipe(
+      startWith(undefined),
+      switchMap(() =>
+        this.updateSubmissions.pipe(
+          exhaustMap(({ ride, draft }) => {
+            const driver = this.auth.currentUser();
+            if (!driver || driver.isBlocked || driver.id !== ride.driverId) {
+              return of({ unauthorized: true as const });
+            }
+
+            if (
+              ride.status === 'cancelled' ||
+              ride.status === 'completed' ||
+              ride.availableSeats !== ride.totalSeats ||
+              new Date(ride.departureTime).getTime() <= Date.now()
+            ) {
+              return of({ invalidState: true as const });
+            }
+
+            if (!this.isValidDraft(draft)) {
+              return of({ invalidData: true as const });
+            }
+
+            const notes = draft.notes?.trim();
+            const body = {
+              origin: draft.origin.trim(),
+              destination: draft.destination.trim(),
+              departureTime: draft.departureTime,
+              totalSeats: draft.totalSeats,
+              availableSeats: draft.totalSeats,
+              pricePerSeat: draft.pricePerSeat,
+              status: 'active' as const,
+              ...(notes ? { notes } : ride.notes !== undefined ? { notes: '' } : {}),
+            };
+
+            return this.http.patch<Ride>(`${environment.apiUrl}/rides/${ride.id}`, body).pipe(
+              tap((updated) => {
+                this.driverRidesState.update((rides) =>
+                  rides.map((item) => (item.id === updated.id ? updated : item)),
+                );
+                this.editingRideState.set(updated);
+              }),
+              map((updated) => ({ ride: updated })),
+              catchError((error: unknown) => of(this.mapError(error))),
+            );
+          }),
+          startWith(undefined),
+        ),
+      ),
+    ),
+  );
+
   publish(draft: RideDraft): void {
     this.notice.message.set('');
     this.publishSubmissions.next(draft);
@@ -95,6 +187,30 @@ export class RideData {
 
   resetPublish(): void {
     this.publishResets.next();
+  }
+
+  startEditing(ride: Ride): void {
+    this.editingRideState.set(ride);
+    this.updateResets.next();
+  }
+
+  loadRideForEdit(rideId: string): void {
+    this.notice.message.set('');
+    this.editRideLoads.next(rideId);
+  }
+
+  clearEditing(): void {
+    this.editingRideState.set(null);
+    this.updateResets.next();
+  }
+
+  update(ride: Ride, draft: RideDraft): void {
+    this.notice.message.set('');
+    this.updateSubmissions.next({ ride, draft });
+  }
+
+  resetUpdate(): void {
+    this.updateResets.next();
   }
 
   loadDriverRides(): void {
@@ -127,6 +243,24 @@ export class RideData {
           ),
         ),
       );
+  }
+
+  private isValidDraft(draft: RideDraft): boolean {
+    if (draft.origin.trim().length === 0 || draft.destination.trim().length === 0) {
+      return false;
+    }
+    if (!Number.isInteger(draft.totalSeats) || draft.totalSeats < 1 || draft.totalSeats > 4) {
+      return false;
+    }
+    if (
+      typeof draft.pricePerSeat !== 'number' ||
+      Number.isNaN(draft.pricePerSeat) ||
+      draft.pricePerSeat < 0
+    ) {
+      return false;
+    }
+    const departureMs = new Date(draft.departureTime).getTime();
+    return !Number.isNaN(departureMs) && departureMs > Date.now();
   }
 
   private mapError(error: unknown): RideErrorResult {

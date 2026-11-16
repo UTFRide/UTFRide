@@ -21,7 +21,7 @@
   - Teste primeiro: com solicitações de exemplo, verificar aceite e rejeição individual, atualização de vagas e status esgotada, manutenção dos pedidos pendentes e impedimento de novos aceites sem vaga; verificar que a oferta esgotada não aceita novos pedidos.
   - Arquivos previstos: `apps/web/src/app/features/driver/my-rides/`, `apps/web/src/app/core/models/ride-request.model.ts`, `apps/web/src/app/core/services/ride-data*`, `apps/web/src/app/core/services/ride-request-data*` e `apps/web/src/app/app.routes.ts`.
 
-- [ ] **Tarefa 3 — Editar oferta sem passageiros confirmados**
+- [x] **Tarefa 3 — Editar oferta sem passageiros confirmados**
   - Cobre: CA5.
   - Teste primeiro: verificar que o autor edita os campos e salva dados válidos antes da viagem, e que campos obrigatórios, vagas e data futura são novamente validados.
   - Arquivos previstos: `apps/web/src/app/features/driver/offer-ride/`, `apps/web/src/app/features/driver/my-rides/` e `apps/web/src/app/core/services/ride-data*`.
