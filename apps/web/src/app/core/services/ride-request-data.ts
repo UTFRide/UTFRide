@@ -1,12 +1,25 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { catchError, exhaustMap, map, of, startWith, Subject, switchMap, tap } from 'rxjs';
+import {
+  catchError,
+  exhaustMap,
+  forkJoin,
+  map,
+  Observable,
+  of,
+  startWith,
+  Subject,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { Notification } from '../models/notification.model';
 import { Ride } from '../models/ride.model';
 import { RideRequest } from '../models/ride-request.model';
 import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
+import { NotificationData } from './notification-data';
 import { RideData, RideErrorResult } from './ride-data';
 
 export type RideRequestDecisionResult =
@@ -23,11 +36,18 @@ export type CreateRideRequestResult =
 
 export type LoadRideRequestsResult = { requests: RideRequest[] } | RideErrorResult;
 
+export type CancelRideResult =
+  | { ride: Ride; cancelledRequests: RideRequest[]; notifications: Notification[] }
+  | { unauthorized: true }
+  | { invalidState: true }
+  | RideErrorResult;
+
 @Injectable({ providedIn: 'root' })
 export class RideRequestData {
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthData);
   private readonly rideData = inject(RideData);
+  private readonly notificationData = inject(NotificationData);
   private readonly notice = inject(ErrorNotice);
 
   private readonly loadRideIds = new Subject<string>();
@@ -37,6 +57,7 @@ export class RideRequestData {
     ride: Ride;
   }>();
   private readonly createSubmissions = new Subject<{ ride: Ride; passengerId: string }>();
+  private readonly cancelSubmissions = new Subject<Ride>();
   private readonly resets = new Subject<void>();
   private readonly requestsState = signal<RideRequest[]>([]);
 
@@ -76,6 +97,8 @@ export class RideRequestData {
             if (
               request.rideId !== ride.id ||
               request.status !== 'pending' ||
+              ride.status === 'cancelled' ||
+              ride.status === 'completed' ||
               new Date(ride.departureTime).getTime() <= Date.now()
             ) {
               return of({ invalidState: true as const });
@@ -154,6 +177,42 @@ export class RideRequestData {
     ),
   );
 
+  readonly cancelResult = toSignal<CancelRideResult | undefined>(
+    this.resets.pipe(
+      startWith(undefined),
+      switchMap(() =>
+        this.cancelSubmissions.pipe(
+          exhaustMap((ride) => {
+            const driver = this.auth.currentUser();
+            if (!driver || driver.isBlocked || driver.id !== ride.driverId) {
+              return of({ unauthorized: true as const });
+            }
+
+            if (!this.rideData.canCancel(ride)) {
+              return of({ invalidState: true as const });
+            }
+
+            return this.rideData.cancel$(ride).pipe(
+              switchMap((cancelledRide) =>
+                this.http
+                  .get<RideRequest[]>(`${environment.apiUrl}/ride_requests`, {
+                    params: { rideId: ride.id },
+                  })
+                  .pipe(
+                    switchMap((requests) =>
+                      this.cancelPendingAndNotify(cancelledRide, requests),
+                    ),
+                  ),
+              ),
+              catchError((error: unknown) => of(this.mapError(error))),
+            );
+          }),
+          startWith(undefined),
+        ),
+      ),
+    ),
+  );
+
   loadForRide(rideId: string): void {
     this.notice.message.set('');
     this.loadRideIds.next(rideId);
@@ -174,9 +233,59 @@ export class RideRequestData {
     this.createSubmissions.next({ ride, passengerId });
   }
 
+  cancelRide(ride: Ride): void {
+    this.notice.message.set('');
+    this.cancelSubmissions.next(ride);
+  }
+
   reset(): void {
     this.requestsState.set([]);
     this.resets.next();
+  }
+
+  private cancelPendingAndNotify(
+    cancelledRide: Ride,
+    requests: RideRequest[],
+  ): Observable<CancelRideResult> {
+    const pendingRequests = requests.filter((request) => request.status === 'pending');
+    const acceptedRequests = requests.filter((request) => request.status === 'accepted');
+    const recipientIds = [
+      ...acceptedRequests.map((request) => request.passengerId),
+      ...pendingRequests.map((request) => request.passengerId),
+    ];
+
+    const cancelPending$ =
+      pendingRequests.length === 0
+        ? of([] as RideRequest[])
+        : forkJoin(
+            pendingRequests.map((request) =>
+              this.http.patch<RideRequest>(`${environment.apiUrl}/ride_requests/${request.id}`, {
+                status: 'cancelled',
+              }),
+            ),
+          );
+
+    return cancelPending$.pipe(
+      tap((cancelledRequests) => {
+        const cancelledById = new Map(cancelledRequests.map((item) => [item.id, item]));
+        const merged = requests.map((item) => cancelledById.get(item.id) ?? item);
+        this.requestsState.update((current) => [
+          ...current.filter((item) => item.rideId !== cancelledRide.id),
+          ...merged,
+        ]);
+      }),
+      switchMap((cancelledRequests) =>
+        this.notificationData
+          .createCancellationNotifications$(cancelledRide, recipientIds)
+          .pipe(
+            map((notifications) => ({
+              ride: cancelledRide,
+              cancelledRequests,
+              notifications,
+            })),
+          ),
+      ),
+    );
   }
 
   private mapError(error: unknown): RideErrorResult {

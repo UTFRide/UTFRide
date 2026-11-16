@@ -242,6 +242,28 @@ export class RideData {
     );
   }
 
+  canCancel(ride: Ride): boolean {
+    return (
+      (ride.status === 'active' || ride.status === 'full') &&
+      new Date(ride.departureTime).getTime() > Date.now()
+    );
+  }
+
+  cancel$(ride: Ride): Observable<Ride> {
+    return this.http
+      .patch<Ride>(`${environment.apiUrl}/rides/${ride.id}`, { status: 'cancelled' })
+      .pipe(
+        tap((updated) => {
+          this.driverRidesState.update((rides) =>
+            rides.map((item) => (item.id === updated.id ? updated : item)),
+          );
+          if (this.editingRideState()?.id === updated.id) {
+            this.editingRideState.set(updated);
+          }
+        }),
+      );
+  }
+
   occupySeat$(ride: Ride): Observable<Ride> {
     const availableSeats = Math.max(0, ride.availableSeats - 1);
     const status: RideStatus = availableSeats === 0 ? 'full' : 'active';

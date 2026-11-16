@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Ride } from '../models/ride.model';
 import { AuthData } from './auth-data';
@@ -356,6 +357,57 @@ describe('RideData', () => {
     expect(rideData.updateResult()).toEqual({ ride: reopenedRide });
     expect(rideData.driverRides()[0]).toEqual(reopenedRide);
     expect(rideData.canAcceptNewRequests(reopenedRide)).toBe(true);
+    http.verify();
+  });
+
+  it('permite cancelar oferta ativa ou esgotada apenas antes da viagem e atualiza seu status para cancelled', async () => {
+    const rideData = TestBed.inject(RideData);
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const pastDeparture = new Date(Date.now() - 60 * 1000).toISOString();
+
+    const activeRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 2,
+      availableSeats: 1,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const fullRide: Ride = { ...activeRide, id: 'ride-2', availableSeats: 0, status: 'full' };
+    const cancelledRide: Ride = { ...activeRide, id: 'ride-3', status: 'cancelled' };
+    const completedRide: Ride = { ...activeRide, id: 'ride-4', status: 'completed' };
+    const pastRide: Ride = { ...activeRide, id: 'ride-5', departureTime: pastDeparture };
+
+    expect(rideData.canCancel(activeRide)).toBe(true);
+    expect(rideData.canCancel(fullRide)).toBe(true);
+    expect(rideData.canCancel(cancelledRide)).toBe(false);
+    expect(rideData.canCancel(completedRide)).toBe(false);
+    expect(rideData.canCancel(pastRide)).toBe(false);
+
+    rideData.loadDriverRides();
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([activeRide]);
+
+    const cancelPromise = firstValueFrom(rideData.cancel$(activeRide));
+    const patchReq = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+    );
+    expect(patchReq.request.body).toEqual({ status: 'cancelled' });
+    const updated: Ride = { ...activeRide, status: 'cancelled' };
+    patchReq.flush(updated);
+
+    const result = await cancelPromise;
+    expect(result).toEqual(updated);
+    expect(rideData.driverRides()[0]).toEqual(updated);
+    expect(rideData.canCancel(updated)).toBe(false);
     http.verify();
   });
 });

@@ -1,4 +1,13 @@
-import { Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  ElementRef,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { Ride } from '../../../core/models/ride.model';
 import { RideRequest } from '../../../core/models/ride-request.model';
@@ -18,7 +27,13 @@ export class MyRides {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
+  private readonly cancelRideButton = viewChild<ElementRef<HTMLButtonElement>>('cancelRideButton');
+  private readonly keepRideButton = viewChild<ElementRef<HTMLButtonElement>>('keepRideButton');
+  private wasDialogOpen = false;
+
   readonly selectedRideId = signal<string | null>(null);
+  readonly cancelConfirming = signal(false);
+  readonly isCancelling = signal(false);
   readonly rides = this.rideData.driverRides;
 
   readonly selectedRide = computed<Ride | null>(() => {
@@ -43,6 +58,14 @@ export class MyRides {
     this.rideRequests().filter((request) => request.status === 'pending'),
   );
 
+  readonly notifiablePassengers = computed<string[]>(() => {
+    const names = [
+      ...this.acceptedRequests().map((request) => request.passengerId),
+      ...this.pendingRequests().map((request) => request.passengerId),
+    ];
+    return [...new Set(names.filter((name) => name.trim().length > 0))];
+  });
+
   readonly occupiedSeats = computed<number>(() => {
     const ride = this.selectedRide();
     if (!ride) return 0;
@@ -55,16 +78,15 @@ export class MyRides {
     return Math.round((this.occupiedSeats() / ride.totalSeats) * 100);
   });
 
-  readonly isBeforeDeparture = computed<boolean>(() => {
-    const ride = this.selectedRide();
-    if (!ride) return false;
-    return new Date(ride.departureTime).getTime() > Date.now();
-  });
-
   readonly canAcceptRequests = computed<boolean>(() => {
     const ride = this.selectedRide();
     if (!ride) return false;
     return this.rideData.canAcceptNewRequests(ride);
+  });
+
+  readonly canManageSelectedRide = computed<boolean>(() => {
+    const ride = this.selectedRide();
+    return !!ride && this.rideData.canCancel(ride);
   });
 
   readonly isLastAvailableSeat = computed<boolean>(() => {
@@ -72,11 +94,9 @@ export class MyRides {
     return !!ride && ride.status === 'active' && ride.availableSeats === 1;
   });
 
-  readonly canEditSelectedRide = computed<boolean>(() => {
-    const ride = this.selectedRide();
-    if (!ride || !this.isBeforeDeparture()) return false;
-    return ride.status === 'active' || ride.status === 'full';
-  });
+  readonly canEditSelectedRide = computed<boolean>(() => this.canManageSelectedRide());
+
+  readonly canCancelSelectedRide = computed<boolean>(() => this.canManageSelectedRide());
 
   constructor() {
     this.rideData.resetDriverRides();
@@ -94,7 +114,36 @@ export class MyRides {
     this.rideRequestData.loadForRide(rideId);
   });
 
+  private readonly handleCancelResult = effect(() => {
+    const result = this.rideRequestData.cancelResult();
+    if (!result) return;
+    this.isCancelling.set(false);
+    if ('ride' in result) {
+      this.cancelConfirming.set(false);
+    }
+  });
+
+  private readonly syncDialogFocus = effect(() => {
+    const isOpen = this.cancelConfirming();
+    const keepButton = this.keepRideButton();
+
+    if (isOpen && keepButton) {
+      keepButton.nativeElement.focus();
+      this.wasDialogOpen = true;
+      return;
+    }
+
+    if (!isOpen && this.wasDialogOpen) {
+      this.wasDialogOpen = false;
+      const trigger = this.cancelRideButton()?.nativeElement;
+      if (trigger && !trigger.disabled) {
+        trigger.focus();
+      }
+    }
+  });
+
   selectRide(rideId: string): void {
+    this.cancelConfirming.set(false);
     this.selectedRideId.set(rideId);
   }
 
@@ -109,6 +158,23 @@ export class MyRides {
     void this.router.navigate(['/driver/offer'], { queryParams: { rideId: ride.id } });
   }
 
+  openCancelConfirmation(): void {
+    if (!this.canCancelSelectedRide()) return;
+    this.cancelConfirming.set(true);
+  }
+
+  closeCancelConfirmation(): void {
+    if (this.isCancelling()) return;
+    this.cancelConfirming.set(false);
+  }
+
+  confirmCancelRide(): void {
+    const ride = this.selectedRide();
+    if (!ride || !this.canCancelSelectedRide() || this.isCancelling()) return;
+    this.isCancelling.set(true);
+    this.rideRequestData.cancelRide(ride);
+  }
+
   acceptRequest(request: RideRequest): void {
     const ride = this.selectedRide();
     if (!ride || !this.canAcceptRequests()) return;
@@ -117,7 +183,7 @@ export class MyRides {
 
   rejectRequest(request: RideRequest): void {
     const ride = this.selectedRide();
-    if (!ride || !this.isBeforeDeparture()) return;
+    if (!ride || !this.canManageSelectedRide()) return;
     this.rideRequestData.reject(request, ride);
   }
 }

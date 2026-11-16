@@ -6,6 +6,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { describe, expect, it } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
+import { Notification } from '../../../core/models/notification.model';
 import { Ride } from '../../../core/models/ride.model';
 import { RideRequest } from '../../../core/models/ride-request.model';
 import { AuthData } from '../../../core/services/auth-data';
@@ -281,6 +282,184 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     await harness.fixture.whenStable();
 
     expect(TestBed.inject(Router).url).toBe('/driver/offer?rideId=ride-1');
+    http.verify();
+  });
+
+  it('exige confirmação antes de cancelar a oferta, altera pedidos pendentes para cancelados e registra avisos internos para confirmados e anteriormente pendentes', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const requestData = TestBed.inject(RideRequestData);
+    authenticateDriver(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const ride: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const requests: RideRequest[] = [
+      {
+        id: 'req-accepted',
+        rideId: 'ride-1',
+        passengerId: 'Mariana Silva',
+        status: 'accepted',
+        createdAt: '2026-01-01T07:00:00.000Z',
+      },
+      {
+        id: 'req-pending',
+        rideId: 'ride-1',
+        passengerId: 'Lucas Andrade',
+        status: 'pending',
+        createdAt: '2026-01-01T07:10:00.000Z',
+      },
+      {
+        id: 'req-rejected',
+        rideId: 'ride-1',
+        passengerId: 'Rafael Costa',
+        status: 'rejected',
+        createdAt: '2026-01-01T07:20:00.000Z',
+      },
+    ];
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([ride]);
+    await harness.fixture.whenStable();
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
+      .flush(requests);
+    await harness.fixture.whenStable();
+
+    // 1. Clicar em "Cancelar" apenas abre o diálogo de confirmação, sem enviar requisições
+    const cancelBtn = root.querySelector<HTMLButtonElement>('[data-testid="cancel-ride-button"]');
+    expect(cancelBtn).not.toBeNull();
+    expect(cancelBtn!.disabled).toBe(false);
+    cancelBtn!.click();
+    await harness.fixture.whenStable();
+
+    http.expectNone((req) => req.method === 'PATCH' || req.method === 'POST');
+    const dialog = root.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog!.textContent).toContain('Tem certeza que deseja cancelar?');
+    expect(dialog!.textContent).toContain('Mariana Silva');
+    expect(dialog!.textContent).toContain('Lucas Andrade');
+    expect(dialog!.textContent?.toUpperCase()).not.toContain('SMS');
+
+    // 2. Desistir fecha o diálogo sem cancelar a oferta
+    const keepBtn = root.querySelector<HTMLButtonElement>('[data-testid="keep-ride-button"]');
+    expect(keepBtn).not.toBeNull();
+    keepBtn!.click();
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector('[role="dialog"]')).toBeNull();
+    http.expectNone((req) => req.method === 'PATCH' || req.method === 'POST');
+
+    // 3. Reabrir e confirmar cancelamento
+    cancelBtn!.click();
+    await harness.fixture.whenStable();
+
+    const confirmBtn = root.querySelector<HTMLButtonElement>('[data-testid="confirm-cancel-ride-button"]');
+    expect(confirmBtn).not.toBeNull();
+    confirmBtn!.click();
+
+    const patchRide = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+    );
+    expect(patchRide.request.body).toEqual({ status: 'cancelled' });
+    patchRide.flush({ ...ride, status: 'cancelled' });
+
+    const getRideRequests = http.expectOne(
+      (req) =>
+        req.url === `${environment.apiUrl}/ride_requests` &&
+        req.method === 'GET' &&
+        req.params.get('rideId') === 'ride-1',
+    );
+    getRideRequests.flush(requests);
+
+    http.expectNone(`${environment.apiUrl}/ride_requests/req-accepted`);
+    http.expectNone(`${environment.apiUrl}/ride_requests/req-rejected`);
+
+    const patchPending = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/ride_requests/req-pending` && req.method === 'PATCH',
+    );
+    expect(patchPending.request.body).toEqual({ status: 'cancelled' });
+    patchPending.flush({ ...requests[1], status: 'cancelled' });
+
+    const notifReqs = http.match(
+      (req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'POST',
+    );
+    expect(notifReqs.map((req) => (req.request.body as { recipientId: string }).recipientId)).toEqual([
+      'Mariana Silva',
+      'Lucas Andrade',
+    ]);
+    notifReqs.forEach((req, index) => {
+      const body = req.request.body as Omit<Notification, 'id'>;
+      req.flush({ id: `notif-${index + 1}`, ...body });
+    });
+
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector('[role="dialog"]')).toBeNull();
+    expect(root.textContent).toContain('Cancelada');
+    expect(root.textContent).toContain('0 aguardando');
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="edit-ride-button"]')?.disabled).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="cancel-ride-button"]')?.disabled).toBe(true);
+    expect(requestData.requests().find((r) => r.id === 'req-pending')?.status).toBe('cancelled');
+    expect(requestData.requests().find((r) => r.id === 'req-accepted')?.status).toBe('accepted');
+
+    http.verify();
+  });
+
+  it('desabilita o cancelamento para oferta passada ou já cancelada', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    authenticateDriver(http);
+
+    const pastRide: Ride = {
+      id: 'ride-past',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(Date.now() - 60 * 1000).toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([pastRide]);
+    await harness.fixture.whenStable();
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-past')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    const cancelBtn = root.querySelector<HTMLButtonElement>('[data-testid="cancel-ride-button"]');
+    expect(cancelBtn).not.toBeNull();
+    expect(cancelBtn!.disabled).toBe(true);
     http.verify();
   });
 });

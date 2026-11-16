@@ -31,7 +31,7 @@
   - Teste primeiro: verificar bloqueio de alterações de trajeto, data, horário, valor e redução de vagas; permitir aumento dentro dos limites e verificar que uma oferta esgotada retorna a ativa quando há vaga disponível.
   - Arquivos previstos: `apps/web/src/app/features/driver/offer-ride/`, `apps/web/src/app/features/driver/my-rides/` e `apps/web/src/app/core/services/ride-data*`.
 
-- [ ] **Tarefa 5 — Cancelar oferta e registrar avisos**
+- [x] **Tarefa 5 — Cancelar oferta e registrar avisos**
   - Cobre: CA7.
   - Teste primeiro: verificar o cancelamento antes da viagem, a mudança dos pedidos pendentes para cancelados e a criação de um aviso interno para cada passageiro confirmado ou com pedido anteriormente pendente.
   - Arquivos previstos: `apps/web/src/app/features/driver/my-rides/`, `apps/web/src/app/core/models/notification.model.ts`, `apps/web/src/app/core/services/ride-data*`, `apps/web/src/app/core/services/ride-request-data*`, `apps/web/src/app/core/services/notification-data*` e `apps/api/db.json`.

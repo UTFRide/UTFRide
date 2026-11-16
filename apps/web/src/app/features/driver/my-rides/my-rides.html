@@ -1,4 +1,4 @@
-<div class="min-h-screen bg-fundo pb-24 font-sans text-texto">
+<div class="min-h-screen bg-fundo pb-24 font-sans text-texto" [inert]="cancelConfirming()">
   <header class="sticky top-0 z-40 border-b border-borda bg-superficie/95 px-space-lg py-space-md backdrop-blur">
     <div class="mx-auto flex max-w-2xl items-center justify-between">
       <a routerLink="/rides" class="flex items-center gap-space-sm">
@@ -57,7 +57,20 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-space-sm">
-          @if (ride.status === 'full') {
+          @if (ride.status === 'cancelled') {
+            <div class="inline-flex items-center gap-space-xs rounded-full bg-perigo-fundo px-space-md py-space-xs text-label-pill text-perigo">
+              <span class="h-2 w-2 rounded-full bg-perigo"></span>
+              <span>Cancelada</span>
+            </div>
+            <span class="rounded-full bg-fundo px-space-md py-space-xs text-label-pill text-texto-suave">
+              Oferta encerrada pelo motorista
+            </span>
+          } @else if (ride.status === 'completed') {
+            <div class="inline-flex items-center gap-space-xs rounded-full bg-fundo px-space-md py-space-xs text-label-pill text-texto-suave">
+              <span class="h-2 w-2 rounded-full bg-texto-suave"></span>
+              <span>Concluída</span>
+            </div>
+          } @else if (ride.status === 'full') {
             <div class="inline-flex items-center gap-space-xs rounded-full bg-perigo-fundo px-space-md py-space-xs text-label-pill text-perigo">
               <span class="h-2 w-2 rounded-full bg-perigo"></span>
               <span>Esgotada • {{ occupiedSeats() }} de {{ ride.totalSeats }} vagas ocupadas</span>
@@ -80,7 +93,7 @@
                 {{ passengerInitials(confirmed.passengerId) }}
               </div>
             }
-            @if (ride.availableSeats > 0) {
+            @if (ride.status !== 'cancelled' && ride.availableSeats > 0) {
               <div class="flex h-8 w-8 items-center justify-center rounded-full border border-borda bg-superficie text-texto-suave shadow-sm">
                 <span class="material-symbols-outlined text-body-md" aria-hidden="true">person_add</span>
               </div>
@@ -88,7 +101,9 @@
           </div>
           <div class="flex flex-col">
             <span class="text-label-md text-texto">Ocupação: {{ occupancyPercentage() }}%</span>
-            @if (ride.status === 'full' || ride.availableSeats === 0) {
+            @if (ride.status === 'cancelled') {
+              <span class="text-body-sm text-perigo">Oferta cancelada — não aceita novos pedidos</span>
+            } @else if (ride.status === 'full' || ride.availableSeats === 0) {
               <span class="text-body-sm text-perigo">Oferta esgotada — não aceita novos pedidos</span>
             } @else if (ride.availableSeats === 1) {
               <span class="text-body-sm text-texto-suave">Falta apenas 1 passageiro para lotar</span>
@@ -97,6 +112,16 @@
             }
           </div>
         </div>
+
+        @if (ride.status === 'cancelled') {
+          <div
+            role="status"
+            class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-body-sm text-perigo"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">info</span>
+            <span>Esta oferta foi cancelada e não aceita novos pedidos.</span>
+          </div>
+        }
       </section>
 
       <section class="flex flex-col gap-space-sm">
@@ -160,7 +185,7 @@
               <app-ride-request-card
                 [request]="pending"
                 [canAccept]="canAcceptRequests()"
-                [canReject]="isBeforeDeparture()"
+                [canReject]="canManageSelectedRide()"
                 [isLastSeat]="isLastAvailableSeat()"
                 (accepted)="acceptRequest($event)"
                 (rejected)="rejectRequest($event)"
@@ -171,16 +196,30 @@
       </section>
 
       <section class="flex flex-col gap-space-sm pt-space-xs">
-        <button
-          type="button"
-          data-testid="edit-ride-button"
-          [disabled]="!canEditSelectedRide()"
-          (click)="editSelectedRide()"
-          class="flex h-12 w-full items-center justify-center gap-space-xs rounded-xl border border-borda bg-superficie px-space-lg text-label-lg text-texto shadow-sm hover:bg-fundo disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
-        >
-          <span class="material-symbols-outlined text-body-lg" aria-hidden="true">edit</span>
-          <span>Editar Oferta</span>
-        </button>
+        <div class="grid grid-cols-2 gap-space-sm">
+          <button
+            type="button"
+            data-testid="edit-ride-button"
+            [disabled]="!canEditSelectedRide()"
+            (click)="editSelectedRide()"
+            class="flex h-12 w-full items-center justify-center gap-space-xs rounded-xl border border-borda bg-superficie px-space-lg text-label-lg text-texto shadow-sm hover:bg-fundo disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+          >
+            <span class="material-symbols-outlined text-body-lg" aria-hidden="true">edit</span>
+            <span>Editar Oferta</span>
+          </button>
+
+          <button
+            #cancelRideButton
+            type="button"
+            data-testid="cancel-ride-button"
+            [disabled]="!canCancelSelectedRide()"
+            (click)="openCancelConfirmation()"
+            class="flex h-12 w-full items-center justify-center gap-space-xs rounded-xl bg-perigo-fundo px-space-lg text-label-lg text-perigo shadow-sm hover:bg-borda disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+          >
+            <span class="material-symbols-outlined text-body-lg" aria-hidden="true">cancel</span>
+            <span>Cancelar</span>
+          </button>
+        </div>
       </section>
     } @else {
       <section class="flex flex-col items-center gap-space-md rounded-xl border border-borda bg-superficie p-space-xl text-center shadow-sm">
@@ -223,3 +262,70 @@
     </div>
   </nav>
 </div>
+
+@if (cancelConfirming() && selectedRide(); as rideToCancel) {
+  <div class="fixed inset-0 z-50 flex flex-col justify-end bg-secundaria/50 backdrop-blur-sm">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cancel-dialog-title"
+      tabindex="-1"
+      (keydown.escape)="closeCancelConfirmation()"
+      class="mx-auto flex max-h-screen w-full max-w-2xl flex-col gap-space-md overflow-y-auto rounded-t-2xl bg-superficie p-space-lg shadow-lg"
+    >
+      <div class="mx-auto h-1 w-10 rounded-full bg-trilho"></div>
+      <div class="flex items-center gap-space-md pt-space-xs">
+        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-perigo-fundo text-perigo">
+          <span class="material-symbols-outlined text-headline-md" aria-hidden="true">warning</span>
+        </div>
+        <div class="flex flex-col gap-space-xs">
+          <h2 id="cancel-dialog-title" class="text-headline-sm text-texto">Tem certeza que deseja cancelar?</h2>
+          <p class="text-body-sm text-texto-suave">
+            {{ rideToCancel.origin }} → {{ rideToCancel.destination }} • Esta ação não poderá ser desfeita
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-start gap-space-sm rounded-xl bg-fundo p-space-md text-body-md text-texto">
+        <span class="material-symbols-outlined shrink-0 text-body-lg text-perigo" aria-hidden="true">notifications_active</span>
+        <p>
+          <strong>Aviso importante:</strong>
+          @if (notifiablePassengers().length === 1) {
+            O passageiro ({{ notifiablePassengers()[0] }}) receberá um aviso interno de cancelamento no aplicativo.
+          } @else if (notifiablePassengers().length > 1) {
+            Os {{ notifiablePassengers().length }} passageiros ({{ notifiablePassengers().join(', ') }}) receberão um aviso interno de cancelamento no aplicativo.
+          } @else {
+            Nenhum passageiro confirmado ou com solicitação pendente será afetado por este cancelamento.
+          }
+          @if (pendingRequests().length > 0) {
+            As solicitações pendentes também passarão para canceladas.
+          }
+        </p>
+      </div>
+
+      <div class="flex flex-col gap-space-sm pt-space-xs">
+        <button
+          type="button"
+          data-testid="confirm-cancel-ride-button"
+          [disabled]="isCancelling()"
+          (click)="confirmCancelRide()"
+          class="flex h-12 w-full items-center justify-center gap-space-sm rounded-xl bg-perigo px-space-lg text-label-lg text-superficie shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          <span class="material-symbols-outlined text-body-lg" aria-hidden="true">delete_forever</span>
+          <span>{{ isCancelling() ? 'Cancelando oferta...' : 'Sim, Cancelar Carona' }}</span>
+        </button>
+
+        <button
+          #keepRideButton
+          type="button"
+          data-testid="keep-ride-button"
+          [disabled]="isCancelling()"
+          (click)="closeCancelConfirmation()"
+          class="flex h-12 w-full items-center justify-center rounded-xl border border-borda bg-fundo px-space-lg text-label-lg text-texto hover:bg-borda disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          Voltar e Manter Carona
+        </button>
+      </div>
+    </div>
+  </div>
+}
