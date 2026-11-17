@@ -17,10 +17,9 @@ import { environment } from '../../../environments/environment';
 import { Notification } from '../models/notification.model';
 import { Ride } from '../models/ride.model';
 import { RideRequest } from '../models/ride-request.model';
-import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
 import { NotificationData } from './notification-data';
-import { RideData, RideErrorResult } from './ride-data';
+import { RideData, RideErrorResult, RideUnauthorizedError } from './ride-data';
 
 export type RideRequestDecisionResult =
   | { request: RideRequest; ride: Ride }
@@ -34,7 +33,10 @@ export type CreateRideRequestResult =
   | { rideFull: true }
   | RideErrorResult;
 
-export type LoadRideRequestsResult = { requests: RideRequest[] } | RideErrorResult;
+export type LoadRideRequestsResult =
+  | { requests: RideRequest[] }
+  | { unauthorized: true }
+  | RideErrorResult;
 
 export type CancelRideResult =
   | { ride: Ride; cancelledRequests: RideRequest[]; notifications: Notification[] }
@@ -45,7 +47,6 @@ export type CancelRideResult =
 @Injectable({ providedIn: 'root' })
 export class RideRequestData {
   private readonly http = inject(HttpClient);
-  private readonly auth = inject(AuthData);
   private readonly rideData = inject(RideData);
   private readonly notificationData = inject(NotificationData);
   private readonly notice = inject(ErrorNotice);
@@ -68,15 +69,35 @@ export class RideRequestData {
       startWith(undefined),
       switchMap(() =>
         this.loadRideIds.pipe(
-          switchMap((rideId) =>
-            this.http
-              .get<RideRequest[]>(`${environment.apiUrl}/ride_requests`, { params: { rideId } })
-              .pipe(
-                tap((requests) => this.requestsState.set(requests)),
-                map((requests) => ({ requests })),
-                catchError((error: unknown) => of(this.mapError(error))),
-              ),
-          ),
+          switchMap((rideId) => {
+            if (!this.rideData.canOperateAsDriver()) {
+              this.requestsState.set([]);
+              return of({ unauthorized: true as const });
+            }
+
+            const knownRide = this.rideData.driverRides().find((item) => item.id === rideId);
+            if (knownRide) {
+              if (!this.rideData.canManageRide(knownRide)) {
+                this.requestsState.set([]);
+                return of({ unauthorized: true as const });
+              }
+              return this.fetchRequestsForRide(rideId);
+            }
+
+            return this.http.get<Ride>(`${environment.apiUrl}/rides/${rideId}`).pipe(
+              switchMap((ride) => {
+                if (!this.rideData.canManageRide(ride)) {
+                  this.requestsState.set([]);
+                  return of({ unauthorized: true as const });
+                }
+                return this.fetchRequestsForRide(rideId);
+              }),
+              catchError((error: unknown) => {
+                this.requestsState.set([]);
+                return of(this.mapError(error));
+              }),
+            );
+          }),
           startWith(undefined),
         ),
       ),
@@ -89,8 +110,7 @@ export class RideRequestData {
       switchMap(() =>
         this.decisionSubmissions.pipe(
           exhaustMap(({ type, request, ride }) => {
-            const driver = this.auth.currentUser();
-            if (!driver || driver.isBlocked || driver.id !== ride.driverId) {
+            if (!this.rideData.canManageRide(ride)) {
               return of({ unauthorized: true as const });
             }
 
@@ -124,7 +144,11 @@ export class RideRequestData {
                       items.map((item) => (item.id === updatedRequest.id ? updatedRequest : item)),
                     ),
                   ),
-                  catchError((error: unknown) => of(this.mapError(error))),
+                  catchError((error: unknown) =>
+                    error instanceof RideUnauthorizedError
+                      ? of({ unauthorized: true as const })
+                      : of(this.mapError(error)),
+                  ),
                 );
             }
 
@@ -183,8 +207,7 @@ export class RideRequestData {
       switchMap(() =>
         this.cancelSubmissions.pipe(
           exhaustMap((ride) => {
-            const driver = this.auth.currentUser();
-            if (!driver || driver.isBlocked || driver.id !== ride.driverId) {
+            if (!this.rideData.canManageRide(ride)) {
               return of({ unauthorized: true as const });
             }
 
@@ -204,7 +227,11 @@ export class RideRequestData {
                     ),
                   ),
               ),
-              catchError((error: unknown) => of(this.mapError(error))),
+              catchError((error: unknown) =>
+                error instanceof RideUnauthorizedError
+                  ? of({ unauthorized: true as const })
+                  : of(this.mapError(error)),
+              ),
             );
           }),
           startWith(undefined),
@@ -241,6 +268,16 @@ export class RideRequestData {
   reset(): void {
     this.requestsState.set([]);
     this.resets.next();
+  }
+
+  private fetchRequestsForRide(rideId: string): Observable<LoadRideRequestsResult> {
+    return this.http
+      .get<RideRequest[]>(`${environment.apiUrl}/ride_requests`, { params: { rideId } })
+      .pipe(
+        tap((requests) => this.requestsState.set(requests)),
+        map((requests) => ({ requests })),
+        catchError((error: unknown) => of(this.mapError(error))),
+      );
   }
 
   private cancelPendingAndNotify(

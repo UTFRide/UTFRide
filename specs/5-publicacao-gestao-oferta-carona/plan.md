@@ -41,7 +41,7 @@
   - Teste primeiro: verificar que o sino abre os avisos do aluno autenticado, incluindo cancelamentos como passageiro confirmado ou com pedido anteriormente pendente, sem exibir avisos de outro aluno.
   - Arquivos previstos: componentes do cabeçalho e avisos em `apps/web/src/app/`, `apps/web/src/app/core/services/notification-data*` e rotas ou telas autenticadas necessárias para acessar os avisos.
 
-- [ ] **Tarefa 7 — Restringir operações por aluno**
+- [x] **Tarefa 7 — Restringir operações por aluno**
   - Cobre: CA9.
   - Teste primeiro: verificar que outro aluno não consegue editar, cancelar ou decidir solicitações da oferta, e que um aluno bloqueado não consegue publicar; testar as operações e não apenas a visibilidade dos controles.
   - Arquivos previstos: `apps/web/src/app/features/driver/`, `apps/web/src/app/core/services/ride-data*`, `apps/web/src/app/core/services/ride-request-data*` e `apps/web/src/app/core/services/auth-data*`.

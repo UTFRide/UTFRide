@@ -400,4 +400,174 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     expect(root.textContent).toContain('Ativa');
     http.verify();
   });
+
+  it('impede que aluno bloqueado publique oferta, inclusive em tentativa direta de submit, e exibe alerta acessível', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const authData = TestBed.inject(AuthData);
+    const rideData = TestBed.inject(RideData);
+    authenticateStudent(http);
+
+    vi.spyOn(authData, 'currentUser').mockReturnValue({
+      id: 'driver-1',
+      name: 'Carlos Motorista',
+      email: 'motorista@alunos.utfpr.edu.br',
+      registrationNumber: '2020123',
+      whatsapp: '41999998888',
+      role: 'student',
+      isBlocked: true,
+      isEmailConfirmed: true,
+      ratingAverage: 5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const harness = await RouterTestingHarness.create('/driver/offer');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    const initialAlerts = Array.from(root.querySelectorAll('[role="alert"]'))
+      .map((el) => el.textContent ?? '')
+      .join(' ');
+    expect(initialAlerts.toLowerCase()).toContain('bloquead');
+
+    setField(root, 'origin', 'Portão');
+    setField(root, 'destination', 'UTFPR - Sede Centro');
+    const future = new Date(2026, 10, 17, 7, 30, 0);
+    setField(root, 'departureDate', formatLocalDate(future));
+    setField(root, 'departureTime', formatLocalTime(future));
+    setField(root, 'pricePerSeat', '8');
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
+
+    // Tentativa direta (além do botão desabilitado)
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await harness.fixture.whenStable();
+
+    http.expectNone(`${environment.apiUrl}/rides`);
+    expect(rideData.publishResult()).toEqual({ unauthorized: true });
+    expect(root.textContent).not.toContain('Carona Publicada!');
+    const alertsAfterSubmit = Array.from(root.querySelectorAll('[role="alert"]'))
+      .map((el) => el.textContent ?? '')
+      .join(' ');
+    expect(alertsAfterSubmit.length).toBeGreaterThan(0);
+    http.verify();
+  });
+
+  it('impede edição ao navegar para /driver/offer?rideId=... de oferta de outro aluno e exibe alerta acessível', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const rideData = TestBed.inject(RideData);
+    authenticateStudent(http); // driver-1
+
+    const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-other');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    const foreignRide: Ride = {
+      id: 'ride-other',
+      driverId: 'driver-2',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 10,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-other` && req.method === 'GET')
+      .flush(foreignRide);
+    await harness.fixture.whenStable();
+
+    expect(rideData.editingRide()).toBeNull();
+    expect(rideData.editRideLoadResult()).toEqual({ unauthorized: true });
+    expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
+
+    const alertsText = Array.from(root.querySelectorAll('[role="alert"]'))
+      .map((el) => el.textContent ?? '')
+      .join(' ');
+    expect(alertsText).toContain('permissão');
+
+    // Tentativa direta de submit não deve criar nova oferta nem editar a alheia
+    setField(root, 'origin', 'Portão');
+    setField(root, 'destination', 'UTFPR - Sede Centro');
+    await harness.fixture.whenStable();
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await harness.fixture.whenStable();
+
+    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(`${environment.apiUrl}/rides/ride-other`);
+    http.verify();
+  });
+
+  it('impede atualização quando o aluno deixa de ser o autor antes de salvar edição já aberta', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const authData = TestBed.inject(AuthData);
+    const rideData = TestBed.inject(RideData);
+    authenticateStudent(http);
+
+    const existingRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(2026, 10, 17, 7, 30, 0).toISOString(),
+      totalSeats: 3,
+      availableSeats: 3,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    rideData.startEditing(existingRide);
+
+    const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-1');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    authData.login('outro@alunos.utfpr.edu.br', 'senha123');
+    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+      {
+        id: 'driver-2',
+        name: 'Outro Aluno',
+        email: 'outro@alunos.utfpr.edu.br',
+        password: 'senha123',
+        registrationNumber: '2020999',
+        whatsapp: '41988887777',
+        role: 'student',
+        isBlocked: false,
+        isEmailConfirmed: true,
+        ratingAverage: 5,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    await harness.fixture.whenStable();
+
+    setField(root, 'origin', 'Água Verde');
+    await harness.fixture.whenStable();
+    expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
+
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await harness.fixture.whenStable();
+
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.updateResult()).toEqual({ unauthorized: true });
+    const alertsText = Array.from(root.querySelectorAll('[role="alert"]'))
+      .map((el) => el.textContent ?? '')
+      .join(' ');
+    expect(alertsText.toLowerCase()).toContain('autor');
+    http.verify();
+  });
 });

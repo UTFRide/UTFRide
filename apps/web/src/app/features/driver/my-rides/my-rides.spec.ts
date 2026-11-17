@@ -3,14 +3,16 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
 import { Notification } from '../../../core/models/notification.model';
 import { Ride } from '../../../core/models/ride.model';
 import { RideRequest } from '../../../core/models/ride-request.model';
 import { AuthData } from '../../../core/services/auth-data';
+import { RideData } from '../../../core/services/ride-data';
 import { RideRequestData } from '../../../core/services/ride-request-data';
+import { MyRides } from './my-rides';
 
 function authenticateDriver(http: HttpTestingController): void {
   const auth = TestBed.inject(AuthData);
@@ -460,6 +462,137 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     const cancelBtn = root.querySelector<HTMLButtonElement>('[data-testid="cancel-ride-button"]');
     expect(cancelBtn).not.toBeNull();
     expect(cancelBtn!.disabled).toBe(true);
+    http.verify();
+  });
+
+  it('impede que outro aluno edite, cancele ou decida solicitações mesmo em chamadas diretas e exibe alerta acessível', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const authData = TestBed.inject(AuthData);
+    const requestData = TestBed.inject(RideRequestData);
+    authenticateDriver(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const ride: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const pendingRequest: RideRequest = {
+      id: 'req-pending',
+      rideId: 'ride-1',
+      passengerId: 'Lucas Andrade',
+      status: 'pending',
+      createdAt: '2026-01-01T07:10:00.000Z',
+    };
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    const root = harness.routeNativeElement as HTMLElement;
+    const component = harness.routeDebugElement?.componentInstance as MyRides;
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([ride]);
+    await harness.fixture.whenStable();
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
+      .flush([pendingRequest]);
+    await harness.fixture.whenStable();
+
+    // Outro aluno assume a sessão após o carregamento da tela
+    authData.login('outro@alunos.utfpr.edu.br', 'senha123');
+    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+      {
+        id: 'driver-2',
+        name: 'Outro Aluno',
+        email: 'outro@alunos.utfpr.edu.br',
+        password: 'senha123',
+        registrationNumber: '2020999',
+        whatsapp: '41988887777',
+        role: 'student',
+        isBlocked: false,
+        isEmailConfirmed: true,
+        ratingAverage: 5,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="edit-ride-button"]')!.disabled).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="cancel-ride-button"]')!.disabled).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="accept-request-req-pending"]')!.disabled).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="reject-request-req-pending"]')!.disabled).toBe(true);
+    expect(root.textContent).not.toContain('Sem vagas disponíveis');
+
+    // Tentativas diretas das operações reais
+    component.editSelectedRide();
+    await harness.fixture.whenStable();
+    expect(TestBed.inject(Router).url).toBe('/driver/my-rides');
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain('autor');
+
+    component.confirmCancelRide();
+    await harness.fixture.whenStable();
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(`${environment.apiUrl}/ride_requests`);
+    http.expectNone(`${environment.apiUrl}/notifications`);
+    expect(requestData.cancelResult()).toEqual({ unauthorized: true });
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain('autor');
+
+    component.acceptRequest(pendingRequest);
+    await harness.fixture.whenStable();
+    http.expectNone(`${environment.apiUrl}/ride_requests/req-pending`);
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(requestData.decisionResult()).toEqual({ unauthorized: true });
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain('autor');
+
+    component.rejectRequest(pendingRequest);
+    await harness.fixture.whenStable();
+    http.expectNone(`${environment.apiUrl}/ride_requests/req-pending`);
+    expect(requestData.decisionResult()).toEqual({ unauthorized: true });
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain('autor');
+
+    http.verify();
+  });
+
+  it('impede gerenciamento em Minhas Ofertas quando o aluno está bloqueado e exibe alerta acessível', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const authData = TestBed.inject(AuthData);
+    const rideData = TestBed.inject(RideData);
+    authenticateDriver(http);
+
+    vi.spyOn(authData, 'currentUser').mockReturnValue({
+      id: 'driver-1',
+      name: 'Carlos Motorista',
+      email: 'motorista@alunos.utfpr.edu.br',
+      registrationNumber: '2020123',
+      whatsapp: '41999998888',
+      role: 'student',
+      isBlocked: true,
+      isEmailConfirmed: true,
+      ratingAverage: 5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    const root = harness.routeNativeElement as HTMLElement;
+    await harness.fixture.whenStable();
+
+    http.expectNone(`${environment.apiUrl}/rides`);
+    expect(rideData.driverRidesResult()).toEqual({ unauthorized: true });
+    expect(root.querySelector('[role="alert"]')?.textContent?.toLowerCase()).toContain('bloquead');
     http.verify();
   });
 });

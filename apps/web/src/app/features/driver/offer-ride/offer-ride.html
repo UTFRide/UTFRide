@@ -36,6 +36,32 @@
       </p>
     </div>
 
+    @if (blockedStudentNotice(); as blockedMessage) {
+      <div
+        role="alert"
+        data-testid="blocked-offer-alert"
+        class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+      >
+        <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">block</span>
+        <div class="flex flex-col gap-space-xs">
+          <span class="text-label-md">Acesso restrito para ofertas</span>
+          <p class="text-body-sm">{{ blockedMessage }}</p>
+        </div>
+      </div>
+    } @else if (authorizationError(); as authError) {
+      <div
+        role="alert"
+        data-testid="driver-authorization-error"
+        class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+      >
+        <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">gpp_bad</span>
+        <div class="flex flex-col gap-space-xs">
+          <span class="text-label-md">Operação não permitida</span>
+          <p class="text-body-sm">{{ authError }}</p>
+        </div>
+      </div>
+    }
+
     <form [formGroup]="form" (ngSubmit)="submit()" class="flex flex-col gap-space-lg">
       <section class="flex flex-col gap-space-md rounded-2xl border border-borda bg-superficie p-space-lg shadow-sm">
         <div class="flex items-center justify-between">
@@ -260,7 +286,7 @@
 
       <button
         type="submit"
-        [disabled]="form.invalid || loading()"
+        [disabled]="form.invalid || loading() || submitBlocked()"
         class="flex h-13 w-full items-center justify-center gap-space-sm rounded-2xl bg-primaria px-space-lg text-label-lg text-texto shadow-sm hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
       >
         <span class="material-symbols-outlined" aria-hidden="true">{{ isEditMode() ? 'save' : 'add_circle' }}</span>

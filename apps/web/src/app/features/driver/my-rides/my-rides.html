@@ -37,6 +37,20 @@
       </div>
     </div>
 
+    @if (authorizationError(); as authError) {
+      <div
+        role="alert"
+        data-testid="my-rides-authorization-error"
+        class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+      >
+        <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">gpp_bad</span>
+        <div class="flex flex-col gap-space-xs">
+          <span class="text-label-md">Operação não permitida</span>
+          <p class="text-body-sm">{{ authError }}</p>
+        </div>
+      </div>
+    }
+
     @if (rides().length > 1) {
       <div class="flex flex-wrap gap-space-sm">
         @for (item of rides(); track item.id) {
@@ -239,13 +253,21 @@
     } @else {
       <section class="flex flex-col items-center gap-space-md rounded-xl border border-borda bg-superficie p-space-xl text-center shadow-sm">
         <span class="material-symbols-outlined text-headline-lg text-texto-suave" aria-hidden="true">local_offer</span>
-        <p class="text-body-md text-texto-suave">Você ainda não possui ofertas de carona cadastradas.</p>
-        <a
-          routerLink="/driver/offer"
-          class="inline-flex h-12 items-center justify-center rounded-xl bg-primaria px-space-lg text-label-lg text-texto hover:bg-primaria-hover"
-        >
-          Oferecer Carona
-        </a>
+        <p class="text-body-md text-texto-suave">
+          @if (isBlockedStudent()) {
+            Sua conta está bloqueada e não pode ofertar ou gerenciar caronas.
+          } @else {
+            Você ainda não possui ofertas de carona cadastradas.
+          }
+        </p>
+        @if (!isBlockedStudent()) {
+          <a
+            routerLink="/driver/offer"
+            class="inline-flex h-12 items-center justify-center rounded-xl bg-primaria px-space-lg text-label-lg text-texto hover:bg-primaria-hover"
+          >
+            Oferecer Carona
+          </a>
+        }
       </section>
     }
   </main>

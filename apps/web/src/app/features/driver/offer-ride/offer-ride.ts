@@ -93,8 +93,23 @@ export class OfferRide {
   readonly loading = signal(false);
   readonly submitAttempted = signal(false);
   readonly publishedRide = signal<Ride | null>(null);
+  readonly authorizationError = signal<string | null>(null);
+  readonly editAccessDenied = signal(false);
+  readonly canOffer = this.rideData.canOffer;
+  readonly blockedStudentNotice = computed<string | null>(() =>
+    this.authData.isBlocked()
+      ? 'Sua conta está bloqueada e não pode publicar ou editar ofertas de carona.'
+      : null,
+  );
   readonly editingRide = this.rideData.editingRide;
   readonly isEditMode = computed(() => this.editingRide() !== null);
+  readonly canManageEditingRide = computed<boolean>(() => {
+    const ride = this.editingRide();
+    return !ride || this.rideData.canManageRide(ride);
+  });
+  readonly submitBlocked = computed<boolean>(
+    () => !this.canOffer() || this.editAccessDenied() || !this.canManageEditingRide(),
+  );
   readonly hasConfirmedPassengers = computed(() => {
     const ride = this.editingRide();
     return !!ride && ride.availableSeats < ride.totalSeats;
@@ -130,12 +145,22 @@ export class OfferRide {
     const routeRideId = this.route.snapshot.queryParamMap.get('rideId');
     const initialEditing = this.editingRide();
     if (initialEditing && (!routeRideId || initialEditing.id === routeRideId)) {
-      this.populateFormFromRide(initialEditing);
+      if (this.rideData.canManageRide(initialEditing)) {
+        this.populateFormFromRide(initialEditing);
+      } else {
+        this.rideData.clearEditing();
+        this.editAccessDenied.set(true);
+        this.authorizationError.set('Você não tem permissão para editar esta oferta de carona.');
+      }
     } else if (routeRideId) {
       const fromDriverRides = this.rideData.driverRides().find((item) => item.id === routeRideId);
       if (fromDriverRides) {
-        this.rideData.startEditing(fromDriverRides);
-        this.populateFormFromRide(fromDriverRides);
+        if (this.rideData.startEditing(fromDriverRides)) {
+          this.populateFormFromRide(fromDriverRides);
+        } else {
+          this.editAccessDenied.set(true);
+          this.authorizationError.set('Você não tem permissão para editar esta oferta de carona.');
+        }
       } else {
         this.rideData.loadRideForEdit(routeRideId);
       }
@@ -149,7 +174,29 @@ export class OfferRide {
   private readonly syncLoadedEditingRide = effect(() => {
     const ride = this.editingRide();
     if (!ride || this.populatedRideId === ride.id) return;
+    if (!this.rideData.canManageRide(ride)) {
+      this.rideData.clearEditing();
+      this.editAccessDenied.set(true);
+      this.authorizationError.set('Você não tem permissão para editar esta oferta de carona.');
+      return;
+    }
     this.populateFormFromRide(ride);
+  });
+
+  private readonly handleEditRideLoadResult = effect(() => {
+    const result = this.rideData.editRideLoadResult();
+    if (!result) return;
+    if ('unauthorized' in result) {
+      this.editAccessDenied.set(true);
+      this.authorizationError.set(
+        this.authData.isBlocked()
+          ? 'Sua conta está bloqueada e não pode editar ofertas de carona.'
+          : 'Você não tem permissão para editar esta oferta de carona.',
+      );
+    } else if ('ride' in result) {
+      this.editAccessDenied.set(false);
+      this.authorizationError.set(null);
+    }
   });
 
   private readonly handlePublishResult = effect(() => {
@@ -157,7 +204,14 @@ export class OfferRide {
     if (!result) return;
     this.loading.set(false);
     if ('ride' in result) {
+      this.authorizationError.set(null);
       this.publishedRide.set(result.ride);
+    } else if ('unauthorized' in result) {
+      this.authorizationError.set(
+        this.authData.isBlocked()
+          ? 'Sua conta está bloqueada e não pode publicar ofertas de carona.'
+          : 'Você não tem permissão para publicar ofertas de carona.',
+      );
     }
   });
 
@@ -166,7 +220,14 @@ export class OfferRide {
     if (!result) return;
     this.loading.set(false);
     if ('ride' in result) {
+      this.authorizationError.set(null);
       this.publishedRide.set(result.ride);
+    } else if ('unauthorized' in result) {
+      this.authorizationError.set(
+        this.authData.isBlocked()
+          ? 'Sua conta está bloqueada e não pode editar ofertas de carona.'
+          : 'Apenas o motorista autor com conta ativa pode editar esta oferta.',
+      );
     }
   });
 
@@ -291,6 +352,8 @@ export class OfferRide {
 
   resetForAnotherRide(): void {
     this.publishedRide.set(null);
+    this.authorizationError.set(null);
+    this.editAccessDenied.set(false);
     this.populatedRideId = null;
     this.submitAttempted.set(false);
     this.rideData.resetPublish();
@@ -309,8 +372,13 @@ export class OfferRide {
 
   submit(): void {
     this.submitAttempted.set(true);
+    this.authorizationError.set(null);
     this.form.updateValueAndValidity();
     this.form.markAllAsTouched();
+    if (this.editAccessDenied()) {
+      this.authorizationError.set('Você não tem permissão para editar esta oferta de carona.');
+      return;
+    }
     if (this.form.invalid || this.loading()) return;
 
     const { origin, destination, notes, departureDate, departureTime, totalSeats, pricePerSeat } =

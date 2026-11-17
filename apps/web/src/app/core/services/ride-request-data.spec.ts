@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 import { environment } from '../../../environments/environment';
 import { Notification } from '../models/notification.model';
 import { Ride } from '../models/ride.model';
@@ -394,6 +395,138 @@ describe('RideRequestData', () => {
       notifications: [],
     });
     expect(notificationData.notifications()).toEqual([]);
+
+    http.verify();
+  });
+
+  it('impede que outro aluno carregue, aceite, rejeite ou cancele solicitações de uma oferta', () => {
+    const requestData = TestBed.inject(RideRequestData);
+    const authData = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    // Autentica outro aluno (driver-2)
+    authData.login('outro@alunos.utfpr.edu.br', 'senha123');
+    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+      {
+        id: 'driver-2',
+        name: 'Outro Motorista',
+        email: 'outro@alunos.utfpr.edu.br',
+        password: 'senha123',
+        registrationNumber: '2020999',
+        whatsapp: '41988887777',
+        role: 'student',
+        isBlocked: false,
+        isEmailConfirmed: true,
+        ratingAverage: 5,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const rideFromDriver1: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const pendingRequest: RideRequest = {
+      id: 'req-1',
+      rideId: 'ride-1',
+      passengerId: 'Mariana Silva',
+      status: 'pending',
+      createdAt: '2026-01-01T08:00:00.000Z',
+    };
+
+    // 1. Outro aluno não pode carregar solicitações de oferta alheia
+    requestData.loadForRide('ride-1');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
+      .flush(rideFromDriver1);
+    http.expectNone(`${environment.apiUrl}/ride_requests`);
+    expect(requestData.requests()).toEqual([]);
+    expect(requestData.loadResult()).toEqual({ unauthorized: true });
+
+    // 2. Outro aluno não pode aceitar nem rejeitar solicitação
+    requestData.accept(pendingRequest, rideFromDriver1);
+    http.expectNone(`${environment.apiUrl}/ride_requests/req-1`);
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(requestData.decisionResult()).toEqual({ unauthorized: true });
+
+    requestData.reject(pendingRequest, rideFromDriver1);
+    http.expectNone(`${environment.apiUrl}/ride_requests/req-1`);
+    expect(requestData.decisionResult()).toEqual({ unauthorized: true });
+
+    // 3. Outro aluno não pode cancelar oferta alheia
+    requestData.cancelRide(rideFromDriver1);
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(`${environment.apiUrl}/ride_requests`);
+    http.expectNone(`${environment.apiUrl}/notifications`);
+    expect(requestData.cancelResult()).toEqual({ unauthorized: true });
+
+    http.verify();
+  });
+
+  it('impede que aluno bloqueado (mesmo sendo autor) carregue, aceite, rejeite ou cancele solicitações de uma oferta', () => {
+    const requestData = TestBed.inject(RideRequestData);
+    const authData = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const rideFromDriver1: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const pendingRequest: RideRequest = {
+      id: 'req-1',
+      rideId: 'ride-1',
+      passengerId: 'Mariana Silva',
+      status: 'pending',
+      createdAt: '2026-01-01T08:00:00.000Z',
+    };
+
+    vi.spyOn(authData, 'currentUser').mockReturnValue({
+      id: 'driver-1',
+      name: 'Carlos Motorista',
+      email: 'motorista@alunos.utfpr.edu.br',
+      registrationNumber: '2020123',
+      whatsapp: '41999998888',
+      role: 'student',
+      isBlocked: true,
+      isEmailConfirmed: true,
+      ratingAverage: 5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    requestData.loadForRide('ride-1');
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(`${environment.apiUrl}/ride_requests`);
+    expect(requestData.loadResult()).toEqual({ unauthorized: true });
+
+    requestData.accept(pendingRequest, rideFromDriver1);
+    http.expectNone(`${environment.apiUrl}/ride_requests/req-1`);
+    expect(requestData.decisionResult()).toEqual({ unauthorized: true });
+
+    requestData.reject(pendingRequest, rideFromDriver1);
+    http.expectNone(`${environment.apiUrl}/ride_requests/req-1`);
+    expect(requestData.decisionResult()).toEqual({ unauthorized: true });
+
+    requestData.cancelRide(rideFromDriver1);
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(requestData.cancelResult()).toEqual({ unauthorized: true });
 
     http.verify();
   });

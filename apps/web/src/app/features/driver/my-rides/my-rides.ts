@@ -6,6 +6,7 @@ import {
   ElementRef,
   inject,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
@@ -40,6 +41,8 @@ export class MyRides {
   readonly notifications = this.notificationData.userNotifications;
   readonly notificationsError = this.notificationData.loadError;
   readonly studentName = computed(() => this.authData.currentUser()?.name ?? 'Aluno UTFPR');
+  readonly isBlockedStudent = this.authData.isBlocked;
+  readonly authorizationError = signal<string | null>(null);
   readonly selectedRideId = signal<string | null>(null);
   readonly cancelConfirming = signal(false);
   readonly isCancelling = signal(false);
@@ -52,6 +55,12 @@ export class MyRides {
   });
 
   readonly activeRideId = computed<string | null>(() => this.selectedRide()?.id ?? null);
+
+  private readonly activeManagedRideId = computed<string | null>(() => {
+    const ride = this.selectedRide();
+    if (!ride || !this.rideData.canManageRide(ride)) return null;
+    return ride.id;
+  });
 
   readonly rideRequests = computed<RideRequest[]>(() => {
     const rideId = this.activeRideId();
@@ -90,7 +99,7 @@ export class MyRides {
   readonly canAcceptRequests = computed<boolean>(() => {
     const ride = this.selectedRide();
     if (!ride) return false;
-    return this.rideData.canAcceptNewRequests(ride);
+    return this.rideData.canManageRide(ride) && this.rideData.canAcceptNewRequests(ride);
   });
 
   readonly canManageSelectedRide = computed<boolean>(() => {
@@ -118,9 +127,43 @@ export class MyRides {
   }
 
   private readonly loadRequestsForActiveRide = effect(() => {
-    const rideId = this.activeRideId();
+    const rideId = this.activeManagedRideId();
     if (!rideId) return;
-    this.rideRequestData.loadForRide(rideId);
+    untracked(() => this.rideRequestData.loadForRide(rideId));
+  });
+
+  private readonly handleDriverRidesResult = effect(() => {
+    const result = this.rideData.driverRidesResult();
+    if (!result) return;
+    if ('unauthorized' in result) {
+      this.authorizationError.set(
+        this.authData.isBlocked()
+          ? 'Sua conta está bloqueada e não pode gerenciar ou ofertar caronas.'
+          : 'Você não tem permissão para gerenciar ofertas de carona.',
+      );
+    } else if ('rides' in result) {
+      this.authorizationError.set(null);
+    }
+  });
+
+  private readonly handleLoadRequestsResult = effect(() => {
+    const result = this.rideRequestData.loadResult();
+    if (!result) return;
+    if ('unauthorized' in result) {
+      this.authorizationError.set(
+        'Apenas o motorista autor com conta ativa pode consultar solicitações desta oferta.',
+      );
+    }
+  });
+
+  private readonly handleDecisionResult = effect(() => {
+    const result = this.rideRequestData.decisionResult();
+    if (!result) return;
+    if ('unauthorized' in result) {
+      this.authorizationError.set(
+        'Apenas o motorista autor com conta ativa pode decidir solicitações desta oferta.',
+      );
+    }
   });
 
   private readonly handleCancelResult = effect(() => {
@@ -129,6 +172,11 @@ export class MyRides {
     this.isCancelling.set(false);
     if ('ride' in result) {
       this.cancelConfirming.set(false);
+    } else if ('unauthorized' in result) {
+      this.cancelConfirming.set(false);
+      this.authorizationError.set(
+        'Apenas o motorista autor com conta ativa pode cancelar esta oferta.',
+      );
     }
   });
 
@@ -153,6 +201,7 @@ export class MyRides {
 
   selectRide(rideId: string): void {
     this.cancelConfirming.set(false);
+    this.authorizationError.set(null);
     this.selectedRideId.set(rideId);
   }
 
@@ -162,12 +211,30 @@ export class MyRides {
 
   editSelectedRide(): void {
     const ride = this.selectedRide();
-    if (!ride || !this.canEditSelectedRide()) return;
-    this.rideData.startEditing(ride);
+    if (!ride) return;
+    this.authorizationError.set(null);
+    if (!this.rideData.canManageRide(ride)) {
+      this.authorizationError.set(
+        'Apenas o motorista autor com conta ativa pode editar esta oferta.',
+      );
+      return;
+    }
+    if (!this.canEditSelectedRide() || !this.rideData.startEditing(ride)) {
+      return;
+    }
     void this.router.navigate(['/driver/offer'], { queryParams: { rideId: ride.id } });
   }
 
   openCancelConfirmation(): void {
+    const ride = this.selectedRide();
+    if (!ride) return;
+    this.authorizationError.set(null);
+    if (!this.rideData.canManageRide(ride)) {
+      this.authorizationError.set(
+        'Apenas o motorista autor com conta ativa pode cancelar esta oferta.',
+      );
+      return;
+    }
     if (!this.canCancelSelectedRide()) return;
     this.cancelConfirming.set(true);
   }
@@ -179,20 +246,39 @@ export class MyRides {
 
   confirmCancelRide(): void {
     const ride = this.selectedRide();
-    if (!ride || !this.canCancelSelectedRide() || this.isCancelling()) return;
+    if (!ride || this.isCancelling()) return;
+    this.authorizationError.set(null);
+    if (!this.rideData.canManageRide(ride)) {
+      this.isCancelling.set(true);
+      this.rideRequestData.cancelRide(ride);
+      return;
+    }
+    if (!this.canCancelSelectedRide()) return;
     this.isCancelling.set(true);
     this.rideRequestData.cancelRide(ride);
   }
 
   acceptRequest(request: RideRequest): void {
     const ride = this.selectedRide();
-    if (!ride || !this.canAcceptRequests()) return;
+    if (!ride) return;
+    this.authorizationError.set(null);
+    if (!this.rideData.canManageRide(ride)) {
+      this.rideRequestData.accept(request, ride);
+      return;
+    }
+    if (!this.canAcceptRequests()) return;
     this.rideRequestData.accept(request, ride);
   }
 
   rejectRequest(request: RideRequest): void {
     const ride = this.selectedRide();
-    if (!ride || !this.canManageSelectedRide()) return;
+    if (!ride) return;
+    this.authorizationError.set(null);
+    if (!this.rideData.canManageRide(ride)) {
+      this.rideRequestData.reject(request, ride);
+      return;
+    }
+    if (!this.canManageSelectedRide()) return;
     this.rideRequestData.reject(request, ride);
   }
 }

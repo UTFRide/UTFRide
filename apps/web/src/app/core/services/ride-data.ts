@@ -1,11 +1,30 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { catchError, exhaustMap, map, Observable, of, startWith, Subject, switchMap, tap } from 'rxjs';
+import {
+  catchError,
+  exhaustMap,
+  map,
+  merge,
+  Observable,
+  of,
+  startWith,
+  Subject,
+  switchMap,
+  tap,
+  throwError,
+} from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Ride, RideDraft, RideStatus } from '../models/ride.model';
-import { AuthData } from './auth-data';
+import { AuthData, AuthenticatedUser } from './auth-data';
 import { ErrorNotice } from './error-notice';
+
+export class RideUnauthorizedError extends Error {
+  constructor() {
+    super('Operação permitida apenas ao motorista autor com conta ativa.');
+    this.name = 'RideUnauthorizedError';
+  }
+}
 
 export type RideErrorResult = { connectionError: true } | { requestError: true };
 
@@ -20,6 +39,8 @@ export type UpdateRideResult =
 
 export type DriverRidesResult = { rides: Ride[] } | { unauthorized: true } | RideErrorResult;
 
+export type EditRideLoadResult = { ride: Ride } | { unauthorized: true } | RideErrorResult;
+
 @Injectable({ providedIn: 'root' })
 export class RideData {
   private readonly http = inject(HttpClient);
@@ -30,6 +51,8 @@ export class RideData {
   private readonly updateSubmissions = new Subject<{ ride: Ride; draft: RideDraft }>();
   private readonly updateResets = new Subject<void>();
   private readonly editRideLoads = new Subject<string>();
+  private readonly editLoadResets = new Subject<void>();
+  private readonly editLoadResults = new Subject<EditRideLoadResult>();
   private readonly driverRidesLoads = new Subject<void>();
   private readonly driverRidesResets = new Subject<void>();
   private readonly driverRidesState = signal<Ride[]>([]);
@@ -37,30 +60,38 @@ export class RideData {
 
   readonly driverRides = computed(() => this.driverRidesState());
   readonly editingRide = computed(() => this.editingRideState());
+  readonly canOffer = this.auth.canOffer;
 
-  private readonly editRideLoader = toSignal(
-    this.updateResets.pipe(
+  readonly editRideLoadResult = toSignal<EditRideLoadResult | undefined>(
+    this.editLoadResets.pipe(
       startWith(undefined),
       switchMap(() =>
-        this.editRideLoads.pipe(
-          switchMap((rideId) => {
-            const driver = this.auth.currentUser();
-            if (!driver || driver.isBlocked) {
-              this.editingRideState.set(null);
-              return of(undefined);
-            }
+        merge(
+          this.editRideLoads.pipe(
+            switchMap((rideId) => {
+              if (!this.canOperateAsDriver()) {
+                this.editingRideState.set(null);
+                return of({ unauthorized: true as const });
+              }
 
-            return this.http.get<Ride>(`${environment.apiUrl}/rides/${rideId}`).pipe(
-              tap((ride) => {
-                if (ride.driverId === driver.id) {
+              return this.http.get<Ride>(`${environment.apiUrl}/rides/${rideId}`).pipe(
+                map((ride) => {
+                  if (!this.canManageRide(ride)) {
+                    this.editingRideState.set(null);
+                    return { unauthorized: true as const };
+                  }
                   this.editingRideState.set(ride);
-                }
-              }),
-              catchError((error: unknown) => of(this.mapError(error))),
-            );
-          }),
-          startWith(undefined),
-        ),
+                  return { ride };
+                }),
+                catchError((error: unknown) => {
+                  this.editingRideState.set(null);
+                  return of(this.mapError(error));
+                }),
+              );
+            }),
+          ),
+          this.editLoadResults,
+        ).pipe(startWith(undefined)),
       ),
     ),
   );
@@ -71,7 +102,7 @@ export class RideData {
       switchMap(() =>
         this.driverRidesLoads.pipe(
           switchMap(() => {
-            const driver = this.auth.currentUser();
+            const driver = this.getAuthorizedDriver();
             if (!driver) {
               this.driverRidesState.set([]);
               return of({ unauthorized: true as const });
@@ -80,6 +111,7 @@ export class RideData {
             return this.http
               .get<Ride[]>(`${environment.apiUrl}/rides`, { params: { driverId: driver.id } })
               .pipe(
+                map((rides) => rides.filter((ride) => ride.driverId === driver.id)),
                 tap((rides) => this.driverRidesState.set(rides)),
                 map((rides) => ({ rides })),
                 catchError((error: unknown) => of(this.mapError(error))),
@@ -97,8 +129,8 @@ export class RideData {
       switchMap(() =>
         this.publishSubmissions.pipe(
           exhaustMap((draft) => {
-            const driver = this.auth.currentUser();
-            if (!driver || driver.isBlocked) {
+            const driver = this.getAuthorizedDriver();
+            if (!driver) {
               return of({ unauthorized: true as const });
             }
 
@@ -133,8 +165,7 @@ export class RideData {
       switchMap(() =>
         this.updateSubmissions.pipe(
           exhaustMap(({ ride, draft }) => {
-            const driver = this.auth.currentUser();
-            if (!driver || driver.isBlocked || driver.id !== ride.driverId) {
+            if (!this.canManageRide(ride)) {
               return of({ unauthorized: true as const });
             }
 
@@ -200,18 +231,43 @@ export class RideData {
     this.publishResets.next();
   }
 
-  startEditing(ride: Ride): void {
+  canOperateAsDriver(): boolean {
+    return this.auth.canOffer();
+  }
+
+  canManageRide(ride: Ride): boolean {
+    const driver = this.getAuthorizedDriver();
+    return driver !== null && driver.id === ride.driverId;
+  }
+
+  private getAuthorizedDriver(): AuthenticatedUser | null {
+    const driver = this.auth.currentUser();
+    return this.auth.canOffer() && driver ? driver : null;
+  }
+
+  startEditing(ride: Ride): boolean {
+    if (!this.canManageRide(ride)) {
+      this.editingRideState.set(null);
+      this.updateResets.next();
+      this.editLoadResults.next({ unauthorized: true as const });
+      return false;
+    }
+
+    this.editLoadResets.next();
     this.editingRideState.set(ride);
     this.updateResets.next();
+    return true;
   }
 
   loadRideForEdit(rideId: string): void {
     this.notice.message.set('');
+    this.editLoadResets.next();
     this.editRideLoads.next(rideId);
   }
 
   clearEditing(): void {
     this.editingRideState.set(null);
+    this.editLoadResets.next();
     this.updateResets.next();
   }
 
@@ -244,12 +300,17 @@ export class RideData {
 
   canCancel(ride: Ride): boolean {
     return (
+      this.canManageRide(ride) &&
       (ride.status === 'active' || ride.status === 'full') &&
       new Date(ride.departureTime).getTime() > Date.now()
     );
   }
 
   cancel$(ride: Ride): Observable<Ride> {
+    if (!this.canManageRide(ride)) {
+      return throwError(() => new RideUnauthorizedError());
+    }
+
     return this.http
       .patch<Ride>(`${environment.apiUrl}/rides/${ride.id}`, { status: 'cancelled' })
       .pipe(
@@ -265,6 +326,10 @@ export class RideData {
   }
 
   occupySeat$(ride: Ride): Observable<Ride> {
+    if (!this.canManageRide(ride)) {
+      return throwError(() => new RideUnauthorizedError());
+    }
+
     const availableSeats = Math.max(0, ride.availableSeats - 1);
     const status: RideStatus = availableSeats === 0 ? 'full' : 'active';
     return this.http

@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
+import { vi } from 'vitest';
 import { environment } from '../../../environments/environment';
 import { Ride } from '../models/ride.model';
 import { AuthData } from './auth-data';
@@ -9,12 +10,13 @@ import { RideData } from './ride-data';
 
 function authenticateStudent(http: HttpTestingController, overrides: Record<string, unknown> = {}): void {
   const auth = TestBed.inject(AuthData);
-  auth.login('motorista@alunos.utfpr.edu.br', 'senha123');
+  const email = (overrides['email'] as string | undefined) ?? 'motorista@alunos.utfpr.edu.br';
+  auth.login(email, 'senha123');
   http.expectOne((request) => request.url.endsWith('/users')).flush([
     {
       id: 'driver-1',
       name: 'Carlos Motorista',
-      email: 'motorista@alunos.utfpr.edu.br',
+      email,
       password: 'senha123',
       registrationNumber: '2020123',
       whatsapp: '41999998888',
@@ -408,6 +410,275 @@ describe('RideData', () => {
     expect(result).toEqual(updated);
     expect(rideData.driverRides()[0]).toEqual(updated);
     expect(rideData.canCancel(updated)).toBe(false);
+    http.verify();
+  });
+
+  it('impede que aluno bloqueado publique oferta (canOffer false e não dispara POST /rides)', () => {
+    const rideData = TestBed.inject(RideData);
+    const authData = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
+
+    vi.spyOn(authData, 'currentUser').mockReturnValue({
+      id: 'driver-1',
+      name: 'Carlos Motorista',
+      email: 'motorista@alunos.utfpr.edu.br',
+      registrationNumber: '2020123',
+      whatsapp: '41999998888',
+      role: 'student',
+      isBlocked: true,
+      isEmailConfirmed: true,
+      ratingAverage: 5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(rideData.canOffer()).toBe(false);
+    rideData.publish({
+      origin: 'Portão',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 2,
+      pricePerSeat: 8,
+    });
+
+    http.expectNone(`${environment.apiUrl}/rides`);
+    expect(rideData.publishResult()).toEqual({ unauthorized: true });
+    http.verify();
+  });
+
+  it('impede que perfil de suporte publique oferta (canOffer false e não dispara POST /rides)', () => {
+    const rideData = TestBed.inject(RideData);
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http, {
+      id: 'support-1',
+      email: 'suporte@alunos.utfpr.edu.br',
+      role: 'support',
+    });
+
+    expect(rideData.canOffer()).toBe(false);
+    rideData.publish({
+      origin: 'Portão',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 2,
+      pricePerSeat: 8,
+    });
+
+    http.expectNone(`${environment.apiUrl}/rides`);
+    expect(rideData.publishResult()).toEqual({ unauthorized: true });
+    http.verify();
+  });
+
+  it('impede que outro aluno inicie edição, carregue edição, atualize, ocupe vaga ou cancele oferta', async () => {
+    const rideData = TestBed.inject(RideData);
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http, { id: 'driver-2', email: 'outro@alunos.utfpr.edu.br' });
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const rideFromDriver1: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    expect(rideData.canManageRide(rideFromDriver1)).toBe(false);
+    expect(rideData.canCancel(rideFromDriver1)).toBe(false);
+    expect(rideData.startEditing(rideFromDriver1)).toBe(false);
+    expect(rideData.editingRide()).toBeNull();
+    expect(rideData.editRideLoadResult()).toEqual({ unauthorized: true });
+
+    rideData.loadRideForEdit('ride-1');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
+      .flush(rideFromDriver1);
+    expect(rideData.editingRide()).toBeNull();
+    expect(rideData.editRideLoadResult()).toEqual({ unauthorized: true });
+
+    rideData.update(rideFromDriver1, {
+      origin: 'Cabral',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      pricePerSeat: 10,
+    });
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.updateResult()).toEqual({ unauthorized: true });
+
+    await expect(firstValueFrom(rideData.cancel$(rideFromDriver1))).rejects.toThrow();
+    await expect(firstValueFrom(rideData.occupySeat$(rideFromDriver1))).rejects.toThrow();
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+
+    http.verify();
+  });
+
+  it('impede que aluno bloqueado (mesmo sendo o autor) inicie edição, carregue edição, carregue ofertas, atualize, ocupe vaga ou cancele oferta', async () => {
+    const rideData = TestBed.inject(RideData);
+    const authData = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const rideFromDriver1: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    vi.spyOn(authData, 'currentUser').mockReturnValue({
+      id: 'driver-1',
+      name: 'Carlos Motorista',
+      email: 'motorista@alunos.utfpr.edu.br',
+      registrationNumber: '2020123',
+      whatsapp: '41999998888',
+      role: 'student',
+      isBlocked: true,
+      isEmailConfirmed: true,
+      ratingAverage: 5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(rideData.canManageRide(rideFromDriver1)).toBe(false);
+    expect(rideData.canCancel(rideFromDriver1)).toBe(false);
+    expect(rideData.startEditing(rideFromDriver1)).toBe(false);
+    expect(rideData.editingRide()).toBeNull();
+
+    rideData.loadRideForEdit('ride-1');
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.editRideLoadResult()).toEqual({ unauthorized: true });
+
+    rideData.loadDriverRides();
+    http.expectNone(`${environment.apiUrl}/rides`);
+    expect(rideData.driverRidesResult()).toEqual({ unauthorized: true });
+
+    rideData.update(rideFromDriver1, {
+      origin: 'Cabral',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      pricePerSeat: 10,
+    });
+    await expect(firstValueFrom(rideData.cancel$(rideFromDriver1))).rejects.toThrow();
+    await expect(firstValueFrom(rideData.occupySeat$(rideFromDriver1))).rejects.toThrow();
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.updateResult()).toEqual({ unauthorized: true });
+
+    http.verify();
+  });
+
+  it('filtra em loadDriverRides ofertas que não pertencem ao motorista autenticado', () => {
+    const rideData = TestBed.inject(RideData);
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const ownRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 3,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const foreignRide: Ride = {
+      ...ownRide,
+      id: 'ride-2',
+      driverId: 'driver-2',
+    };
+
+    rideData.loadDriverRides();
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([ownRide, foreignRide]);
+
+    expect(rideData.driverRides()).toEqual([ownRide]);
+    expect(rideData.driverRidesResult()).toEqual({ rides: [ownRide] });
+    http.verify();
+  });
+
+  it('delega a elegibilidade de motorista para AuthData.canOffer em canOffer, canOperateAsDriver e nas operações', async () => {
+    const authData = TestBed.inject(AuthData);
+    const canOfferSpy = vi.spyOn(authData, 'canOffer');
+    const rideData = TestBed.inject(RideData);
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const ownRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    expect(rideData.canOffer).toBe(authData.canOffer);
+    expect(rideData.canOffer()).toBe(true);
+    expect(rideData.canOperateAsDriver()).toBe(true);
+    expect(rideData.canManageRide(ownRide)).toBe(true);
+
+    canOfferSpy.mockReturnValue(false);
+
+    expect(rideData.canOffer()).toBe(false);
+    expect(rideData.canOperateAsDriver()).toBe(false);
+    expect(rideData.canManageRide(ownRide)).toBe(false);
+    expect(rideData.canCancel(ownRide)).toBe(false);
+    expect(rideData.startEditing(ownRide)).toBe(false);
+
+    rideData.loadDriverRides();
+    http.expectNone(`${environment.apiUrl}/rides`);
+    expect(rideData.driverRidesResult()).toEqual({ unauthorized: true });
+
+    rideData.loadRideForEdit('ride-1');
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.editRideLoadResult()).toEqual({ unauthorized: true });
+
+    rideData.publish({
+      origin: 'Portão',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: futureDeparture,
+      totalSeats: 2,
+      pricePerSeat: 8,
+    });
+    http.expectNone(`${environment.apiUrl}/rides`);
+    expect(rideData.publishResult()).toEqual({ unauthorized: true });
+
+    rideData.update(ownRide, {
+      origin: 'Cabral',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      pricePerSeat: 10,
+    });
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    expect(rideData.updateResult()).toEqual({ unauthorized: true });
+
+    await expect(firstValueFrom(rideData.cancel$(ownRide))).rejects.toThrow();
+    await expect(firstValueFrom(rideData.occupySeat$(ownRide))).rejects.toThrow();
+    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+
     http.verify();
   });
 });

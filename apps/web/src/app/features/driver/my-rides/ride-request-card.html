@@ -26,7 +26,7 @@
     </div>
   }
 
-  @if (!canAccept()) {
+  @if (!canAccept() && canReject()) {
     <div class="flex items-start gap-space-sm rounded-lg bg-perigo-fundo p-space-md text-perigo">
       <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">block</span>
       <p class="text-label-pill">
