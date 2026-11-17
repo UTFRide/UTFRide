@@ -255,6 +255,7 @@ export class RideRequestData {
     this.decisionSubmissions.next({ type: 'reject', request, ride });
   }
 
+  // TODO #6: Criação provisória de solicitações (createSubmissions / createResult / createRequest) usada antes da US03; conectar/substituir pelo fluxo do passageiro na Issue #6.
   createRequest(ride: Ride, passengerId: string): void {
     this.notice.message.set('');
     this.createSubmissions.next({ ride, passengerId });

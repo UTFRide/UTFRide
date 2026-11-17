@@ -140,7 +140,10 @@
                   fontWeight: '600',
                 },
               ],
-              'headline-sm': ['18px', { lineHeight: '24px', fontWeight: '600' }],
+              'headline-sm': [
+                '18px',
+                { lineHeight: '24px', fontWeight: '600' },
+              ],
               'headline-lg': [
                 '24px',
                 {
@@ -202,7 +205,11 @@
         class="h-16 px-4 sm:px-6 flex items-center justify-between max-w-2xl lg:max-w-3xl mx-auto w-full"
       >
         <div class="flex items-center gap-space-sm">
-          <img alt="Logo UTFRide" class="h-8 w-auto object-contain" src="../logo.png" /><span
+          <img
+            alt="Logo UTFRide"
+            class="h-8 w-auto object-contain"
+            src="../logo.png"
+          /><span
             class="font-headline-sm text-headline-sm text-on-surface tracking-tight font-bold"
             >UTFRide</span
           >
@@ -225,7 +232,12 @@
     </header>
     <main
       class="flex-1 w-full bg-surface pt-16 px-4 sm:px-6 flex flex-col"
-      style="min-height: 100vh; height: auto; padding-bottom: 24px; overflow-y: visible"
+      style="
+        min-height: 100vh;
+        height: auto;
+        padding-bottom: 24px;
+        overflow-y: visible;
+      "
     >
       <div class="flex flex-col w-full pb-4 max-w-lg lg:max-w-2xl mx-auto">
         <!-- Top Progress & Context Navigation -->
@@ -235,9 +247,13 @@
             type="button"
             onclick="window.location.href = './1._landing_page_visitante.html'"
           >
-            <span class="material-symbols-outlined text-[20px]">arrow_back</span>
+            <span class="material-symbols-outlined text-[20px]"
+              >arrow_back</span
+            >
           </button>
-          <div class="h-8 flex items-center px-space-md rounded-full bg-surface-container-low">
+          <div
+            class="h-8 flex items-center px-space-md rounded-full bg-surface-container-low"
+          >
             <span
               class="font-label-pill text-label-pill text-on-surface-variant uppercase tracking-wider"
               >Passo 1 de 2 • Identificação</span
@@ -248,7 +264,9 @@
         <div
           class="bg-inverse-surface rounded-xl p-space-lg mb-space-lg relative overflow-hidden shadow-md"
         >
-          <div class="flex items-center justify-between gap-space-md relative z-10">
+          <div
+            class="flex items-center justify-between gap-space-md relative z-10"
+          >
             <div class="flex flex-col">
               <span
                 class="font-label-pill text-label-pill text-primary-container uppercase font-bold tracking-widest mb-1"
@@ -263,12 +281,18 @@
             <div
               class="flex-shrink-0 w-16 h-16 rounded-xl bg-primary-container/20 flex items-center justify-center p-1"
             >
-              <img alt="UTFRide Selo" class="w-full h-full object-contain" src="../logo.png" />
+              <img
+                alt="UTFRide Selo"
+                class="w-full h-full object-contain"
+                src="../logo.png"
+              />
             </div>
           </div>
-          <p class="font-body-sm text-body-sm text-surface-dim mt-space-sm relative z-10">
-            Junte-se à maior rede de caronas universitárias da UTFPR. Rápido, seguro e exclusivo
-            para alunos.
+          <p
+            class="font-body-sm text-body-sm text-surface-dim mt-space-sm relative z-10"
+          >
+            Junte-se à maior rede de caronas universitárias da UTFPR. Rápido,
+            seguro e exclusivo para alunos.
           </p>
           <div
             class="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-primary-container/10 pointer-events-none"
@@ -285,12 +309,16 @@
             >error</span
           >
           <div class="flex-1">
-            <p class="font-label-md text-label-md font-bold text-on-error-container">
+            <p
+              class="font-label-md text-label-md font-bold text-on-error-container"
+            >
               Validação necessária
             </p>
-            <p class="font-body-sm text-body-sm text-on-error-container leading-tight mt-0.5">
-              Use seu e-mail institucional oficial da UTFPR (@alunos.utfpr.edu.br) para ter acesso
-              liberado.
+            <p
+              class="font-body-sm text-body-sm text-on-error-container leading-tight mt-0.5"
+            >
+              Use seu e-mail institucional oficial da UTFPR
+              (@alunos.utfpr.edu.br) para ter acesso liberado.
             </p>
           </div>
         </div>
@@ -305,17 +333,24 @@
             >warning</span
           >
           <div class="flex-1">
-            <p class="font-label-md text-label-md font-bold text-on-primary-fixed">
+            <p
+              class="font-label-md text-label-md font-bold text-on-primary-fixed"
+            >
               Atenção ao cadastro
             </p>
-            <p class="font-body-sm text-body-sm text-on-primary-fixed-variant leading-tight mt-0.5">
-              Caso seu e-mail ou matrícula já estejam registrados, faça login diretamente para
-              continuar.
+            <p
+              class="font-body-sm text-body-sm text-on-primary-fixed-variant leading-tight mt-0.5"
+            >
+              Caso seu e-mail ou matrícula já estejam registrados, faça login
+              diretamente para continuar.
             </p>
           </div>
         </div>
         <!-- Form Fields Stack -->
-        <form class="flex flex-col gap-space-md" onsubmit="event.preventDefault()">
+        <form
+          class="flex flex-col gap-space-md"
+          onsubmit="event.preventDefault()"
+        >
           <!-- 1. Nome Completo -->
           <div class="flex flex-col gap-1.5">
             <label
@@ -323,7 +358,9 @@
               for="full-name"
             >
               <span class="">Nome completo</span>
-              <span class="font-label-pill text-label-pill text-tertiary">Como no crachá</span>
+              <span class="font-label-pill text-label-pill text-tertiary"
+                >Como no crachá</span
+              >
             </label>
             <div class="relative flex items-center">
               <span
@@ -365,13 +402,18 @@
             <p
               class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1 pl-1"
             >
-              <span class="material-symbols-outlined text-[14px] text-outline">info</span>
+              <span class="material-symbols-outlined text-[14px] text-outline"
+                >info</span
+              >
               Obrigatório domínio institucional da UTFPR.
             </p>
           </div>
           <!-- 3. Matrícula -->
           <div class="flex flex-col gap-1.5">
-            <label class="font-label-lg text-label-lg font-bold text-on-surface" for="student-id">
+            <label
+              class="font-label-lg text-label-lg font-bold text-on-surface"
+              for="student-id"
+            >
               Número de Matrícula
             </label>
             <div class="relative flex items-center">
@@ -411,19 +453,25 @@
             <div
               class="bg-surface-container-high rounded-lg p-space-sm flex items-start gap-space-xs mt-1"
             >
-              <span class="material-symbols-outlined text-[16px] text-tertiary flex-shrink-0 mt-0.5"
+              <span
+                class="material-symbols-outlined text-[16px] text-tertiary flex-shrink-0 mt-0.5"
                 >lock</span
               >
-              <span class="font-body-sm text-body-sm text-on-secondary-fixed-variant leading-snug">
-                Seu contato só será compartilhado com motoristas ou passageiros após a carona ser
-                confirmada.
+              <span
+                class="font-body-sm text-body-sm text-on-secondary-fixed-variant leading-snug"
+              >
+                Seu contato só será compartilhado com motoristas ou passageiros
+                após a carona ser confirmada.
               </span>
             </div>
           </div>
           <!-- 5. Senha e Confirmação de Senha -->
           <div class="grid grid-cols-1 gap-space-md">
             <div class="flex flex-col gap-1.5">
-              <label class="font-label-lg text-label-lg font-bold text-on-surface" for="password">
+              <label
+                class="font-label-lg text-label-lg font-bold text-on-surface"
+                for="password"
+              >
                 Senha de acesso
               </label>
               <div class="relative flex items-center">
@@ -442,7 +490,9 @@
                   onclick="togglePasswordVisibility('password', this)"
                   type="button"
                 >
-                  <span class="material-symbols-outlined text-[20px]">visibility</span>
+                  <span class="material-symbols-outlined text-[20px]"
+                    >visibility</span
+                  >
                 </button>
               </div>
             </div>
@@ -469,7 +519,9 @@
                   onclick="togglePasswordVisibility('confirm-password', this)"
                   type="button"
                 >
-                  <span class="material-symbols-outlined text-[20px]">visibility</span>
+                  <span class="material-symbols-outlined text-[20px]"
+                    >visibility</span
+                  >
                 </button>
               </div>
             </div>
@@ -486,13 +538,13 @@
               class="font-body-sm text-body-sm text-on-surface-variant leading-snug cursor-pointer"
               for="terms"
             >
-              Declaro que sou aluno regularmente matriculado na UTFPR e aceito os termos de uso e
-              diretrizes comunitárias de carona solidária.
+              Declaro que sou aluno regularmente matriculado na UTFPR e aceito
+              os termos de uso e diretrizes comunitárias de carona solidária.
             </label>
           </div>
           <p class="font-body-sm text-body-sm text-on-surface-variant leading-snug pt-space-sm">
-            Após criar sua conta, a confirmação do e-mail será simulada automaticamente. Em seguida,
-            entre pela tela de login.
+            Após criar sua conta, a confirmação do e-mail será simulada automaticamente.
+            Em seguida, entre pela tela de login.
           </p>
           <!-- Main Action CTA: 52px Canary Gold Button -->
           <div class="pt-space-sm">
@@ -501,12 +553,16 @@
               href="./3._login_e_estados_de_erro.html"
             >
               <span class="">Criar conta</span>
-              <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+              <span class="material-symbols-outlined text-[20px]"
+                >arrow_forward</span
+              >
             </a>
           </div>
         </form>
         <!-- Footer Link -->
-        <div class="flex flex-col items-center justify-center mt-space-lg text-center">
+        <div
+          class="flex flex-col items-center justify-center mt-space-lg text-center"
+        >
           <p class="font-body-md text-body-md text-tertiary">
             Já tem uma conta?
             <a
@@ -524,7 +580,8 @@
               style="font-variation-settings: 'FILL' 1"
               >verified_user</span
             >
-            <span class="font-label-pill text-label-pill text-on-surface-variant"
+            <span
+              class="font-label-pill text-label-pill text-on-surface-variant"
               >Ambiente Seguro UTFPR • SSO Pronto</span
             >
           </div>

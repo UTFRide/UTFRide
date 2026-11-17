@@ -56,7 +56,7 @@
   - Teste primeiro: preencher ou alterar uma oferta sem salvar, sair e voltar, e verificar que o formulário não restaura as alterações descartadas nem publica ou altera a oferta.
   - Arquivos previstos: `apps/web/src/app/features/driver/offer-ride/` e seus testes.
 
-- [ ] **Tarefa 10 — Limpar diff fora de escopo e marcar dívida declarada da US03**
+- [x] **Tarefa 10 — Limpar diff fora de escopo e marcar dívida declarada da US03**
   - Cobre: pendências da Auditoria Final (reverter arquivo de protótipo fora do escopo da Issue #5 e adicionar `// TODO #6` para a premissa vinculada à US03 em `Assume que`, mantendo sem alterações o escopo futuro da Entrega 3 conforme decisão do engenheiro).
   - Teste primeiro: executar a suíte completa (`npm test`, `npm run lint` e `npm run build` em `apps/web`) e confirmar `git diff` limpo sobre `docs/prototipo/`.
   - Arquivos previstos: `docs/prototipo/models/2._cadastro_de_aluno.html` (reversão para `develop`) e `apps/web/src/app/core/services/ride-request-data.ts`.
