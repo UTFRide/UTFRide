@@ -70,7 +70,7 @@ A confirmação de e-mail é simulada automaticamente, sem envio de e-mail; cons
 
 ---
 
-### US02 — Publicação e Gestão de Oferta de Carona · `Must Have` · `M` · Status: `Ready`
+### US02 — Publicação e Gestão de Oferta de Carona · `Must Have` · `M` · Status: `Implementada` (aguardando auditoria final e PR)
 
 **Como** motorista, **eu quero** publicar uma oferta de carona informando origem, destino, data, horário, número de vagas e o valor a ser cobrado, **para que** outros alunos possam encontrar e solicitar uma carona.
 

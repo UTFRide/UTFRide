@@ -1,0 +1,60 @@
+<article class="flex flex-col gap-space-md rounded-xl border border-borda bg-superficie p-space-md shadow-sm">
+  <div class="flex items-start justify-between gap-space-sm">
+    <div class="flex min-w-0 items-center gap-space-md">
+      <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primaria text-label-lg text-texto">
+        {{ request().passengerId | initials }}
+      </div>
+      <div class="flex min-w-0 flex-col">
+        <div class="flex items-center gap-space-xs">
+          <span class="truncate text-label-lg text-texto">{{ request().passengerId }}</span>
+          <span class="material-symbols-outlined text-body-md text-primaria-escura" aria-hidden="true">verified</span>
+        </div>
+        <span class="text-body-sm text-texto-suave">Solicitação de vaga • UTFPR</span>
+      </div>
+    </div>
+    <span class="rounded-full bg-pendente-fundo px-space-sm py-space-xs text-label-pill text-pendente">
+      Pendente
+    </span>
+  </div>
+
+  @if (isLastSeat() && canAccept()) {
+    <div class="flex items-start gap-space-sm rounded-lg bg-pendente-fundo p-space-md text-pendente">
+      <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">info</span>
+      <p class="text-label-pill">
+        <strong>Regra RN05:</strong> Ao aceitar esta última vaga disponível, a oferta mudará instantaneamente para o status “Esgotada” e não receberá mais pedidos no feed.
+      </p>
+    </div>
+  }
+
+  @if (!canAccept() && canReject()) {
+    <div class="flex items-start gap-space-sm rounded-lg bg-perigo-fundo p-space-md text-perigo">
+      <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">block</span>
+      <p class="text-label-pill">
+        Sem vagas disponíveis: a solicitação permanece pendente, mas não pode ser aceita enquanto a oferta estiver esgotada.
+      </p>
+    </div>
+  }
+
+  <div class="grid grid-cols-2 gap-space-sm pt-space-xs">
+    <button
+      type="button"
+      [attr.data-testid]="'reject-request-' + request().id"
+      [disabled]="!canReject()"
+      (click)="rejected.emit(request())"
+      class="flex h-12 items-center justify-center gap-space-xs rounded-lg border border-borda bg-fundo text-label-lg text-texto hover:bg-borda disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+    >
+      <span class="material-symbols-outlined text-body-lg" aria-hidden="true">close</span>
+      <span>Recusar</span>
+    </button>
+    <button
+      type="button"
+      [attr.data-testid]="'accept-request-' + request().id"
+      [disabled]="!canAccept()"
+      (click)="accepted.emit(request())"
+      class="flex h-12 items-center justify-center gap-space-xs rounded-lg bg-primaria text-label-lg text-texto shadow-sm hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+    >
+      <span class="material-symbols-outlined text-body-lg" aria-hidden="true">check</span>
+      <span>Aceitar Vaga</span>
+    </button>
+  </div>
+</article>

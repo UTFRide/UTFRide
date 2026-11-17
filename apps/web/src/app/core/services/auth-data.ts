@@ -6,6 +6,8 @@ import { environment } from '../../../environments/environment';
 import { ErrorNotice } from './error-notice';
 import { Registration, User } from '../models/user.model';
 
+export type AuthenticatedUser = Omit<User, 'password'>;
+
 @Injectable({ providedIn: 'root' })
 export class AuthData {
   private readonly http = inject(HttpClient);
@@ -15,14 +17,45 @@ export class AuthData {
   private readonly loginSubmissions = new Subject<{ email: string; password: string }>();
   private readonly loginResets = new Subject<void>();
   private readonly authenticatedUser = signal<User | null>(null);
+  readonly currentUser = computed<AuthenticatedUser | null>(() => {
+    const user = this.authenticatedUser();
+    if (!user) return null;
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      registrationNumber: user.registrationNumber,
+      whatsapp: user.whatsapp,
+      role: user.role,
+      isBlocked: user.isBlocked,
+      isEmailConfirmed: user.isEmailConfirmed,
+      ratingAverage: user.ratingAverage,
+      createdAt: user.createdAt,
+    };
+  });
   readonly isAuthenticated = computed(() => this.authenticatedUser() !== null);
+  readonly isBlocked = computed(() => this.currentUser()?.isBlocked === true);
+  readonly canOffer = computed(() => {
+    const user = this.currentUser();
+    return user !== null && !user.isBlocked && user.role !== 'support';
+  });
   readonly loginResult = toSignal(this.loginResets.pipe(
     startWith(undefined),
     switchMap(() => this.loginSubmissions.pipe(
       exhaustMap(({ email, password }) => this.http.get<User[]>(`${environment.apiUrl}/users`, { params: { email } }).pipe(
-        map((users) => users.find((user) => user.email === email && user.password === password && !user.isBlocked && user.isEmailConfirmed) ?? null),
-        tap((user) => this.authenticatedUser.set(user)),
-        map((user) => ({ user })),
+        map((users) => {
+          const matched = users.find(
+            (user) => user.email === email && user.password === password && user.isEmailConfirmed,
+          );
+          if (!matched) {
+            return { user: null };
+          }
+          if (matched.isBlocked) {
+            return { user: null, blocked: true as const };
+          }
+          return { user: matched };
+        }),
+        tap((result) => this.authenticatedUser.set(result.user)),
         catchError((error: unknown) => {
           if (!(error instanceof HttpErrorResponse)) {
             this.notice.message.set('Falha inesperada. Tente novamente.');

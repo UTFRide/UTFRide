@@ -20,6 +20,130 @@ describe('AuthData', () => {
     expect(service.result()).toEqual({ duplicate: false, user });
     http.verify();
   });
+
+  it('disponibiliza o perfil do aluno autenticado sem expor a senha', () => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    expect(service.currentUser()).toBeNull();
+
+    service.login('ana@alunos.utfpr.edu.br', 'senha123');
+    http.expectOne((request) => request.url === 'http://localhost:3000/users').flush([
+      {
+        id: '1',
+        name: 'Ana',
+        email: 'ana@alunos.utfpr.edu.br',
+        password: 'senha123',
+        registrationNumber: '123',
+        whatsapp: '41987654321',
+        role: 'student',
+        isBlocked: false,
+        isEmailConfirmed: true,
+        ratingAverage: 4.5,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    expect(service.currentUser()).toEqual({
+      id: '1',
+      name: 'Ana',
+      email: 'ana@alunos.utfpr.edu.br',
+      registrationNumber: '123',
+      whatsapp: '41987654321',
+      role: 'student',
+      isBlocked: false,
+      isEmailConfirmed: true,
+      ratingAverage: 4.5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(service.currentUser()).not.toHaveProperty('password');
+
+    service.logout();
+    expect(service.currentUser()).toBeNull();
+    http.verify();
+  });
+
+  it('impede login de conta bloqueada (isBlocked: true) mantendo usuário não autenticado e inapto a ofertar', () => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    service.login('bloqueado@alunos.utfpr.edu.br', 'senha123');
+    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+      {
+        id: 'blocked-1',
+        name: 'Aluno Bloqueado',
+        email: 'bloqueado@alunos.utfpr.edu.br',
+        password: 'senha123',
+        registrationNumber: '999',
+        whatsapp: '41999990000',
+        role: 'student',
+        isBlocked: true,
+        isEmailConfirmed: true,
+        ratingAverage: 4.0,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    expect(service.currentUser()).toBeNull();
+    expect(service.isAuthenticated()).toBe(false);
+    expect(service.canOffer()).toBe(false);
+    expect(service.loginResult()).toEqual({ user: null, blocked: true });
+    http.verify();
+  });
+
+  it('expõe canOffer e isBlocked coerentes com o perfil autenticado', () => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    expect(service.canOffer()).toBe(false);
+    expect(service.isBlocked()).toBe(false);
+
+    service.login('ana@alunos.utfpr.edu.br', 'senha123');
+    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+      {
+        id: '1',
+        name: 'Ana',
+        email: 'ana@alunos.utfpr.edu.br',
+        password: 'senha123',
+        registrationNumber: '123',
+        whatsapp: '41987654321',
+        role: 'student',
+        isBlocked: false,
+        isEmailConfirmed: true,
+        ratingAverage: 4.5,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    expect(service.canOffer()).toBe(true);
+    expect(service.isBlocked()).toBe(false);
+
+    service.login('suporte@alunos.utfpr.edu.br', 'senha123');
+    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+      {
+        id: 'support-1',
+        name: 'Suporte',
+        email: 'suporte@alunos.utfpr.edu.br',
+        password: 'senha123',
+        registrationNumber: '000',
+        whatsapp: '41900000000',
+        role: 'support',
+        isBlocked: false,
+        isEmailConfirmed: true,
+        ratingAverage: 5,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    expect(service.canOffer()).toBe(false);
+
+    service.logout();
+    expect(service.canOffer()).toBe(false);
+    http.verify();
+  });
 });
 
 describe('classificação de falhas de autenticação', () => {
