@@ -55,6 +55,7 @@ No MVP, a base simulada prevista na arquitetura contém ofertas, solicitações 
 
 | Premissa | Issue que fecha |
 | -------- | --------------- |
+| Solicitações de exemplo e criação de pedidos de vaga pelo fluxo do passageiro (`RideRequestData.createRequest`) | #6 |
 
 ## Depende de
 
