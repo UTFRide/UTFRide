@@ -43,6 +43,10 @@ export class MyRides {
   readonly studentName = computed(() => this.authData.currentUser()?.name ?? 'Aluno UTFPR');
   readonly isBlockedStudent = this.authData.isBlocked;
   readonly authorizationError = signal<string | null>(null);
+  readonly loadRidesError = signal<string | null>(null);
+  readonly requestsError = signal<string | null>(null);
+  readonly decisionError = signal<string | null>(null);
+  readonly cancelError = signal<string | null>(null);
   readonly selectedRideId = signal<string | null>(null);
   readonly cancelConfirming = signal(false);
   readonly isCancelling = signal(false);
@@ -136,13 +140,21 @@ export class MyRides {
     const result = this.rideData.driverRidesResult();
     if (!result) return;
     if ('unauthorized' in result) {
+      this.loadRidesError.set(null);
       this.authorizationError.set(
         this.authData.isBlocked()
           ? 'Sua conta está bloqueada e não pode gerenciar ou ofertar caronas.'
           : 'Você não tem permissão para gerenciar ofertas de carona.',
       );
+    } else if ('connectionError' in result) {
+      this.loadRidesError.set(
+        'Falha de conexão ao carregar suas ofertas. Verifique sua internet e tente novamente.',
+      );
+    } else if ('requestError' in result) {
+      this.loadRidesError.set('Não foi possível carregar suas ofertas. Tente novamente.');
     } else if ('rides' in result) {
       this.authorizationError.set(null);
+      this.loadRidesError.set(null);
     }
   });
 
@@ -150,9 +162,18 @@ export class MyRides {
     const result = this.rideRequestData.loadResult();
     if (!result) return;
     if ('unauthorized' in result) {
+      this.requestsError.set(null);
       this.authorizationError.set(
         'Apenas o motorista autor com conta ativa pode consultar solicitações desta oferta.',
       );
+    } else if ('connectionError' in result) {
+      this.requestsError.set(
+        'Falha de conexão ao carregar solicitações. Verifique sua internet e tente novamente.',
+      );
+    } else if ('requestError' in result) {
+      this.requestsError.set('Não foi possível carregar as solicitações. Tente novamente.');
+    } else if ('requests' in result) {
+      this.requestsError.set(null);
     }
   });
 
@@ -160,9 +181,18 @@ export class MyRides {
     const result = this.rideRequestData.decisionResult();
     if (!result) return;
     if ('unauthorized' in result) {
+      this.decisionError.set(null);
       this.authorizationError.set(
         'Apenas o motorista autor com conta ativa pode decidir solicitações desta oferta.',
       );
+    } else if ('connectionError' in result) {
+      this.decisionError.set(
+        'Falha de conexão ao atualizar a solicitação. Verifique sua internet e tente novamente.',
+      );
+    } else if ('requestError' in result || 'invalidState' in result || 'noAvailableSeats' in result) {
+      this.decisionError.set('Não foi possível atualizar a solicitação. Tente novamente.');
+    } else if ('request' in result) {
+      this.decisionError.set(null);
     }
   });
 
@@ -171,12 +201,20 @@ export class MyRides {
     if (!result) return;
     this.isCancelling.set(false);
     if ('ride' in result) {
+      this.cancelError.set(null);
       this.cancelConfirming.set(false);
     } else if ('unauthorized' in result) {
+      this.cancelError.set(null);
       this.cancelConfirming.set(false);
       this.authorizationError.set(
         'Apenas o motorista autor com conta ativa pode cancelar esta oferta.',
       );
+    } else if ('connectionError' in result) {
+      this.cancelError.set(
+        'Falha de conexão ao cancelar a oferta. Verifique sua internet e tente novamente.',
+      );
+    } else if ('requestError' in result || 'invalidState' in result) {
+      this.cancelError.set('Não foi possível cancelar a oferta. Tente novamente.');
     }
   });
 
@@ -201,8 +239,23 @@ export class MyRides {
 
   selectRide(rideId: string): void {
     this.cancelConfirming.set(false);
+    this.cancelError.set(null);
+    this.requestsError.set(null);
+    this.decisionError.set(null);
     this.authorizationError.set(null);
     this.selectedRideId.set(rideId);
+  }
+
+  retryLoadRides(): void {
+    this.loadRidesError.set(null);
+    this.rideData.loadDriverRides();
+  }
+
+  retryLoadRequests(): void {
+    const rideId = this.activeManagedRideId();
+    if (!rideId) return;
+    this.requestsError.set(null);
+    this.rideRequestData.loadForRide(rideId);
   }
 
   loadNotifications(): void {
@@ -229,6 +282,7 @@ export class MyRides {
     const ride = this.selectedRide();
     if (!ride) return;
     this.authorizationError.set(null);
+    this.cancelError.set(null);
     if (!this.rideData.canManageRide(ride)) {
       this.authorizationError.set(
         'Apenas o motorista autor com conta ativa pode cancelar esta oferta.',
@@ -241,6 +295,7 @@ export class MyRides {
 
   closeCancelConfirmation(): void {
     if (this.isCancelling()) return;
+    this.cancelError.set(null);
     this.cancelConfirming.set(false);
   }
 
@@ -248,6 +303,7 @@ export class MyRides {
     const ride = this.selectedRide();
     if (!ride || this.isCancelling()) return;
     this.authorizationError.set(null);
+    this.cancelError.set(null);
     if (!this.rideData.canManageRide(ride)) {
       this.isCancelling.set(true);
       this.rideRequestData.cancelRide(ride);
@@ -262,6 +318,7 @@ export class MyRides {
     const ride = this.selectedRide();
     if (!ride) return;
     this.authorizationError.set(null);
+    this.decisionError.set(null);
     if (!this.rideData.canManageRide(ride)) {
       this.rideRequestData.accept(request, ride);
       return;
@@ -274,6 +331,7 @@ export class MyRides {
     const ride = this.selectedRide();
     if (!ride) return;
     this.authorizationError.set(null);
+    this.decisionError.set(null);
     if (!this.rideData.canManageRide(ride)) {
       this.rideRequestData.reject(request, ride);
       return;

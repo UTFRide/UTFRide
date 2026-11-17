@@ -595,4 +595,192 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     expect(root.querySelector('[role="alert"]')?.textContent?.toLowerCase()).toContain('bloquead');
     http.verify();
   });
+
+  it('informa falha de conexão dentro do modal ao cancelar oferta, mantém confirmação aberta sem inert no alerta e permite nova tentativa', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const requestData = TestBed.inject(RideRequestData);
+    authenticateDriver(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const ride: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const pendingRequest: RideRequest = {
+      id: 'req-pending',
+      rideId: 'ride-1',
+      passengerId: 'Lucas Andrade',
+      status: 'pending',
+      createdAt: '2026-01-01T07:10:00.000Z',
+    };
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([ride]);
+    await harness.fixture.whenStable();
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
+      .flush([pendingRequest]);
+    await harness.fixture.whenStable();
+
+    root.querySelector<HTMLButtonElement>('[data-testid="cancel-ride-button"]')!.click();
+    await harness.fixture.whenStable();
+
+    const confirmBtn = root.querySelector<HTMLButtonElement>('[data-testid="confirm-cancel-ride-button"]')!;
+    confirmBtn.click();
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH')
+      .error(new ProgressEvent('error'));
+    await harness.fixture.whenStable();
+
+    const dialog = root.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    const cancelErrorAlert = dialog!.querySelector('[data-testid="cancel-ride-error"]');
+    expect(cancelErrorAlert).not.toBeNull();
+    expect(cancelErrorAlert!.getAttribute('role')).toBe('alert');
+    expect(cancelErrorAlert!.closest('[inert]')).toBeNull();
+    expect(cancelErrorAlert!.textContent?.toLowerCase()).toContain('conexão');
+
+    expect(confirmBtn.disabled).toBe(false);
+    expect(confirmBtn.textContent).toContain('Sim, Cancelar Carona');
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="keep-ride-button"]')!.disabled).toBe(false);
+
+    // Nova tentativa pelo botão dentro do modal
+    confirmBtn.click();
+
+    const retryPatchRide = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+    );
+    retryPatchRide.flush({ ...ride, status: 'cancelled' });
+
+    http
+      .expectOne(
+        (req) =>
+          req.url === `${environment.apiUrl}/ride_requests` &&
+          req.method === 'GET' &&
+          req.params.get('rideId') === 'ride-1',
+      )
+      .flush([pendingRequest]);
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests/req-pending` && req.method === 'PATCH')
+      .flush({ ...pendingRequest, status: 'cancelled' });
+
+    const notifReq = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'POST',
+    );
+    notifReq.flush({ id: 'notif-1', ...(notifReq.request.body as Omit<Notification, 'id'>) });
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector('[role="dialog"]')).toBeNull();
+    expect(root.textContent).toContain('Cancelada');
+    expect(requestData.requests()[0].status).toBe('cancelled');
+    http.verify();
+  });
+
+  it('informa falha de conexão ao carregar ofertas ou decidir solicitação e permite nova tentativa', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    authenticateDriver(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const ride: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const pendingRequest: RideRequest = {
+      id: 'req-pending',
+      rideId: 'ride-1',
+      passengerId: 'Lucas Andrade',
+      status: 'pending',
+      createdAt: '2026-01-01T07:10:00.000Z',
+    };
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    // 1. Falha de conexão ao carregar ofertas
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .error(new ProgressEvent('error'));
+    await harness.fixture.whenStable();
+
+    const loadError = root.querySelector('[data-testid="my-rides-load-error"]');
+    expect(loadError).not.toBeNull();
+    expect(loadError!.getAttribute('role')).toBe('alert');
+    expect(loadError!.textContent?.toLowerCase()).toContain('conexão');
+    expect(root.textContent).not.toContain('Você ainda não possui ofertas de carona cadastradas');
+
+    const retryLoadBtn = root.querySelector<HTMLButtonElement>('[data-testid="retry-load-rides-button"]')!;
+    expect(retryLoadBtn).not.toBeNull();
+    retryLoadBtn.click();
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([ride]);
+    await harness.fixture.whenStable();
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
+      .flush([pendingRequest]);
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector('[data-testid="my-rides-load-error"]')).toBeNull();
+    expect(root.textContent).toContain('Batel → UTFPR Neoville');
+
+    // 2. Falha de conexão ao aceitar solicitação e nova tentativa
+    const acceptBtn = root.querySelector<HTMLButtonElement>('[data-testid="accept-request-req-pending"]')!;
+    acceptBtn.click();
+
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests/req-pending` && req.method === 'PATCH')
+      .error(new ProgressEvent('error'));
+    await harness.fixture.whenStable();
+
+    const decisionError = root.querySelector('[data-testid="request-decision-error"]');
+    expect(decisionError).not.toBeNull();
+    expect(decisionError!.getAttribute('role')).toBe('alert');
+    expect(decisionError!.textContent?.toLowerCase()).toContain('conexão');
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="accept-request-req-pending"]')!.disabled).toBe(false);
+
+    root.querySelector<HTMLButtonElement>('[data-testid="accept-request-req-pending"]')!.click();
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests/req-pending` && req.method === 'PATCH')
+      .flush({ ...pendingRequest, status: 'accepted' });
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH')
+      .flush({ ...ride, availableSeats: 1 });
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector('[data-testid="request-decision-error"]')).toBeNull();
+    expect(root.textContent).toContain('1 confirmado');
+    expect(root.textContent).toContain('0 aguardando');
+    http.verify();
+  });
 });

@@ -46,7 +46,7 @@
   - Teste primeiro: verificar que outro aluno não consegue editar, cancelar ou decidir solicitações da oferta, e que um aluno bloqueado não consegue publicar; testar as operações e não apenas a visibilidade dos controles.
   - Arquivos previstos: `apps/web/src/app/features/driver/`, `apps/web/src/app/core/services/ride-data*`, `apps/web/src/app/core/services/ride-request-data*` e `apps/web/src/app/core/services/auth-data*`.
 
-- [ ] **Tarefa 8 — Tratar falhas de conexão**
+- [x] **Tarefa 8 — Tratar falhas de conexão**
   - Cobre: CA10.
   - Teste primeiro: simular falha ao publicar, editar e cancelar; verificar mensagem, nova tentativa e preservação dos dados preenchidos enquanto a tela permanece aberta.
   - Arquivos previstos: `apps/web/src/app/features/driver/`, serviços de dados envolvidos e seus testes.

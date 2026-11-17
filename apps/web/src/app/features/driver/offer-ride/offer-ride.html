@@ -60,6 +60,28 @@
           <p class="text-body-sm">{{ authError }}</p>
         </div>
       </div>
+    } @else if (editLoadError(); as loadError) {
+      <div
+        role="alert"
+        data-testid="edit-load-error"
+        class="flex flex-col gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+      >
+        <div class="flex items-start gap-space-sm">
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <div class="flex flex-col gap-space-xs">
+            <span class="text-label-md">Não foi possível carregar a oferta</span>
+            <p class="text-body-sm">{{ loadError }}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          data-testid="retry-edit-load-button"
+          (click)="retryLoadEdit()"
+          class="self-start rounded-lg bg-superficie px-space-md py-space-xs text-label-md text-perigo shadow-sm hover:bg-fundo"
+        >
+          Tentar novamente
+        </button>
+      </div>
     }
 
     <form [formGroup]="form" (ngSubmit)="submit()" class="flex flex-col gap-space-lg">
@@ -283,6 +305,20 @@
           </div>
         </div>
       </section>
+
+      @if (operationError(); as opError) {
+        <div
+          role="alert"
+          data-testid="offer-operation-error"
+          class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+        >
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <div class="flex flex-col gap-space-xs">
+            <span class="text-label-md">Falha ao enviar oferta</span>
+            <p class="text-body-sm">{{ opError }}</p>
+          </div>
+        </div>
+      }
 
       <button
         type="submit"

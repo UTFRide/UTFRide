@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import { environment } from '../../../environments/environment';
 import { Ride } from '../models/ride.model';
 import { AuthData } from './auth-data';
+import { ErrorNotice } from './error-notice';
 import { RideData } from './ride-data';
 
 function authenticateStudent(http: HttpTestingController, overrides: Record<string, unknown> = {}): void {
@@ -678,6 +679,127 @@ describe('RideData', () => {
     await expect(firstValueFrom(rideData.cancel$(ownRide))).rejects.toThrow();
     await expect(firstValueFrom(rideData.occupySeat$(ownRide))).rejects.toThrow();
     http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+
+    http.verify();
+  });
+
+  it('informa falha de conexão (status 0) ao publicar, editar, carregar para edição e listar ofertas e permite nova tentativa preservando o estado', () => {
+    const rideData = TestBed.inject(RideData);
+    const errorNotice = TestBed.inject(ErrorNotice);
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const draft = {
+      origin: 'Portão',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      pricePerSeat: 7,
+      notes: 'Terminal do Portão',
+    };
+
+    // 1. Falha de conexão ao publicar + nova tentativa
+    rideData.publish(draft);
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.method === 'POST')
+      .error(new ProgressEvent('error'));
+
+    expect(rideData.publishResult()).toEqual({ connectionError: true });
+    expect(errorNotice.message()).toContain('Falha de conexão');
+
+    rideData.publish(draft);
+    expect(errorNotice.message()).toBe('');
+    const retryPublish = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/rides` && req.method === 'POST',
+    );
+    const createdRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      availableSeats: 3,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      ...draft,
+    };
+    retryPublish.flush(createdRide);
+    expect(rideData.publishResult()).toEqual({ ride: createdRide });
+
+    // 2. Falha de conexão ao listar ofertas do motorista + nova tentativa
+    rideData.loadDriverRides();
+    http
+      .expectOne(
+        (req) =>
+          req.url === `${environment.apiUrl}/rides` &&
+          req.method === 'GET' &&
+          req.params.get('driverId') === 'driver-1',
+      )
+      .error(new ProgressEvent('error'));
+
+    expect(rideData.driverRidesResult()).toEqual({ connectionError: true });
+    expect(errorNotice.message()).toContain('Falha de conexão');
+
+    rideData.loadDriverRides();
+    expect(errorNotice.message()).toBe('');
+    http
+      .expectOne(
+        (req) =>
+          req.url === `${environment.apiUrl}/rides` &&
+          req.method === 'GET' &&
+          req.params.get('driverId') === 'driver-1',
+      )
+      .flush([createdRide]);
+    expect(rideData.driverRides()).toEqual([createdRide]);
+    expect(rideData.driverRidesResult()).toEqual({ rides: [createdRide] });
+
+    // 3. Falha de conexão ao carregar oferta para edição + nova tentativa
+    rideData.loadRideForEdit('ride-1');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
+      .error(new ProgressEvent('error'));
+
+    expect(rideData.editRideLoadResult()).toEqual({ connectionError: true });
+    expect(rideData.editingRide()).toBeNull();
+    expect(errorNotice.message()).toContain('Falha de conexão');
+
+    rideData.loadRideForEdit('ride-1');
+    expect(errorNotice.message()).toBe('');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
+      .flush(createdRide);
+    expect(rideData.editRideLoadResult()).toEqual({ ride: createdRide });
+    expect(rideData.editingRide()).toEqual(createdRide);
+
+    // 4. Falha de conexão ao editar oferta + preservação do estado + nova tentativa
+    const updatedDraft = {
+      ...draft,
+      origin: 'Água Verde',
+      totalSeats: 4,
+      pricePerSeat: 10,
+    };
+    rideData.update(createdRide, updatedDraft);
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH')
+      .error(new ProgressEvent('error'));
+
+    expect(rideData.updateResult()).toEqual({ connectionError: true });
+    expect(errorNotice.message()).toContain('Falha de conexão');
+    expect(rideData.editingRide()).toEqual(createdRide);
+    expect(rideData.driverRides()[0]).toEqual(createdRide);
+
+    rideData.update(createdRide, updatedDraft);
+    expect(errorNotice.message()).toBe('');
+    const retryUpdate = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+    );
+    const updatedRide: Ride = {
+      ...createdRide,
+      ...updatedDraft,
+      availableSeats: 4,
+    };
+    retryUpdate.flush(updatedRide);
+    expect(rideData.updateResult()).toEqual({ ride: updatedRide });
+    expect(rideData.editingRide()).toEqual(updatedRide);
+    expect(rideData.driverRides()[0]).toEqual(updatedRide);
 
     http.verify();
   });

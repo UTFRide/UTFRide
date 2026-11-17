@@ -51,6 +51,30 @@
       </div>
     }
 
+    @if (loadRidesError(); as loadError) {
+      <div
+        role="alert"
+        data-testid="my-rides-load-error"
+        class="flex flex-col gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+      >
+        <div class="flex items-start gap-space-sm">
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <div class="flex flex-col gap-space-xs">
+            <span class="text-label-md">Falha ao carregar ofertas</span>
+            <p class="text-body-sm">{{ loadError }}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          data-testid="retry-load-rides-button"
+          (click)="retryLoadRides()"
+          class="self-start rounded-lg bg-superficie px-space-md py-space-xs text-label-md text-perigo shadow-sm hover:bg-fundo"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    }
+
     @if (rides().length > 1) {
       <div class="flex flex-wrap gap-space-sm">
         @for (item of rides(); track item.id) {
@@ -204,6 +228,38 @@
           </span>
         </div>
 
+        @if (requestsError(); as reqError) {
+          <div
+            role="alert"
+            data-testid="ride-requests-error"
+            class="flex flex-col gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+          >
+            <div class="flex items-start gap-space-sm">
+              <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+              <p class="text-body-sm">{{ reqError }}</p>
+            </div>
+            <button
+              type="button"
+              data-testid="retry-load-requests-button"
+              (click)="retryLoadRequests()"
+              class="self-start rounded-lg bg-superficie px-space-md py-space-xs text-label-md text-perigo shadow-sm hover:bg-fundo"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        }
+
+        @if (decisionError(); as decError) {
+          <div
+            role="alert"
+            data-testid="request-decision-error"
+            class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+            <p class="text-body-sm">{{ decError }}</p>
+          </div>
+        }
+
         @if (pendingRequests().length === 0) {
           <p class="rounded-xl border border-borda bg-superficie p-space-md text-body-sm text-texto-suave">
             Nenhuma solicitação pendente para esta oferta.
@@ -250,7 +306,7 @@
           </button>
         </div>
       </section>
-    } @else {
+    } @else if (!loadRidesError()) {
       <section class="flex flex-col items-center gap-space-md rounded-xl border border-borda bg-superficie p-space-xl text-center shadow-sm">
         <span class="material-symbols-outlined text-headline-lg text-texto-suave" aria-hidden="true">local_offer</span>
         <p class="text-body-md text-texto-suave">
@@ -339,6 +395,17 @@
           }
         </p>
       </div>
+
+      @if (cancelError(); as error) {
+        <div
+          role="alert"
+          data-testid="cancel-ride-error"
+          class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+        >
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <p class="text-body-sm">{{ error }}</p>
+        </div>
+      }
 
       <div class="flex flex-col gap-space-sm pt-space-xs">
         <button

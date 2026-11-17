@@ -7,6 +7,7 @@ import { Notification } from '../models/notification.model';
 import { Ride } from '../models/ride.model';
 import { RideRequest } from '../models/ride-request.model';
 import { AuthData } from './auth-data';
+import { ErrorNotice } from './error-notice';
 import { NotificationData } from './notification-data';
 import { RideData } from './ride-data';
 import { RideRequestData } from './ride-request-data';
@@ -527,6 +528,137 @@ describe('RideRequestData', () => {
     requestData.cancelRide(rideFromDriver1);
     http.expectNone(`${environment.apiUrl}/rides/ride-1`);
     expect(requestData.cancelResult()).toEqual({ unauthorized: true });
+
+    http.verify();
+  });
+
+  it('informa falha de conexão (status 0) ao carregar solicitações, decidir solicitação e cancelar oferta, preservando o estado e permitindo nova tentativa', () => {
+    const rideData = TestBed.inject(RideData);
+    const requestData = TestBed.inject(RideRequestData);
+    const errorNotice = TestBed.inject(ErrorNotice);
+    const http = TestBed.inject(HttpTestingController);
+    authenticateDriver(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const ride: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const pendingRequest: RideRequest = {
+      id: 'req-1',
+      rideId: 'ride-1',
+      passengerId: 'Lucas Andrade',
+      status: 'pending',
+      createdAt: '2026-01-01T08:00:00.000Z',
+    };
+
+    rideData.loadDriverRides();
+    http
+      .expectOne(
+        (req) =>
+          req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1',
+      )
+      .flush([ride]);
+
+    // 1. Falha de conexão ao carregar solicitações + nova tentativa
+    requestData.loadForRide('ride-1');
+    http
+      .expectOne(
+        (req) =>
+          req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1',
+      )
+      .error(new ProgressEvent('error'));
+
+    expect(requestData.loadResult()).toEqual({ connectionError: true });
+    expect(errorNotice.message()).toContain('Falha de conexão');
+
+    requestData.loadForRide('ride-1');
+    expect(errorNotice.message()).toBe('');
+    http
+      .expectOne(
+        (req) =>
+          req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1',
+      )
+      .flush([pendingRequest]);
+    expect(requestData.loadResult()).toEqual({ requests: [pendingRequest] });
+    expect(requestData.requests()).toEqual([pendingRequest]);
+
+    // 2. Falha de conexão ao aceitar solicitação + preservação do estado + nova tentativa
+    requestData.accept(pendingRequest, ride);
+    http
+      .expectOne(
+        (req) => req.url === `${environment.apiUrl}/ride_requests/req-1` && req.method === 'PATCH',
+      )
+      .error(new ProgressEvent('error'));
+
+    expect(requestData.decisionResult()).toEqual({ connectionError: true });
+    expect(errorNotice.message()).toContain('Falha de conexão');
+    expect(requestData.requests()[0].status).toBe('pending');
+    expect(rideData.driverRides()[0].availableSeats).toBe(2);
+
+    // 3. Falha de conexão ao cancelar oferta + preservação do estado + nova tentativa
+    requestData.cancelRide(ride);
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH')
+      .error(new ProgressEvent('error'));
+
+    expect(requestData.cancelResult()).toEqual({ connectionError: true });
+    expect(errorNotice.message()).toContain('Falha de conexão');
+    expect(rideData.driverRides()[0].status).toBe('active');
+    http.expectNone(`${environment.apiUrl}/ride_requests`);
+    http.expectNone(`${environment.apiUrl}/notifications`);
+
+    requestData.cancelRide(ride);
+    expect(errorNotice.message()).toBe('');
+    const retryCancelPatch = http.expectOne(
+      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+    );
+    const cancelledRide: Ride = { ...ride, status: 'cancelled' };
+    retryCancelPatch.flush(cancelledRide);
+    http
+      .expectOne(
+        (req) =>
+          req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1',
+      )
+      .flush([pendingRequest]);
+    http
+      .expectOne(
+        (req) => req.url === `${environment.apiUrl}/ride_requests/req-1` && req.method === 'PATCH',
+      )
+      .flush({ ...pendingRequest, status: 'cancelled' });
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'POST')
+      .flush({
+        id: 'notif-1',
+        recipientId: 'Lucas Andrade',
+        rideId: 'ride-1',
+        message: 'A carona Batel → UTFPR Neoville foi cancelada pelo motorista.',
+        createdAt: '2026-01-01T09:00:00.000Z',
+      });
+
+    expect(rideData.driverRides()[0].status).toBe('cancelled');
+    expect(requestData.requests()[0].status).toBe('cancelled');
+    expect(requestData.cancelResult()).toEqual({
+      ride: cancelledRide,
+      cancelledRequests: [{ ...pendingRequest, status: 'cancelled' }],
+      notifications: [
+        {
+          id: 'notif-1',
+          recipientId: 'Lucas Andrade',
+          rideId: 'ride-1',
+          message: 'A carona Batel → UTFPR Neoville foi cancelada pelo motorista.',
+          createdAt: '2026-01-01T09:00:00.000Z',
+        },
+      ],
+    });
 
     http.verify();
   });
