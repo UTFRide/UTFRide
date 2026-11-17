@@ -11,17 +11,23 @@ import {
 import { Router, RouterLink } from '@angular/router';
 import { Ride } from '../../../core/models/ride.model';
 import { RideRequest } from '../../../core/models/ride-request.model';
+import { AuthData } from '../../../core/services/auth-data';
+import { NotificationData } from '../../../core/services/notification-data';
 import { RideData } from '../../../core/services/ride-data';
 import { RideRequestData } from '../../../core/services/ride-request-data';
+import { NotificationBell } from '../../../shared/components/notification-bell/notification-bell';
 import { CurrencyBrlPipe } from '../../../shared/pipes/currency-brl-pipe';
-import { formatPassengerInitials, RideRequestCard } from './ride-request-card';
+import { InitialsPipe } from '../../../shared/pipes/initials-pipe';
+import { RideRequestCard } from './ride-request-card';
 
 @Component({
   selector: 'app-my-rides',
-  imports: [RouterLink, CurrencyBrlPipe, RideRequestCard],
+  imports: [RouterLink, CurrencyBrlPipe, RideRequestCard, NotificationBell, InitialsPipe],
   templateUrl: './my-rides.html',
 })
 export class MyRides {
+  private readonly authData = inject(AuthData);
+  private readonly notificationData = inject(NotificationData);
   private readonly rideData = inject(RideData);
   private readonly rideRequestData = inject(RideRequestData);
   private readonly router = inject(Router);
@@ -31,6 +37,9 @@ export class MyRides {
   private readonly keepRideButton = viewChild<ElementRef<HTMLButtonElement>>('keepRideButton');
   private wasDialogOpen = false;
 
+  readonly notifications = this.notificationData.userNotifications;
+  readonly notificationsError = this.notificationData.loadError;
+  readonly studentName = computed(() => this.authData.currentUser()?.name ?? 'Aluno UTFPR');
   readonly selectedRideId = signal<string | null>(null);
   readonly cancelConfirming = signal(false);
   readonly isCancelling = signal(false);
@@ -147,8 +156,8 @@ export class MyRides {
     this.selectedRideId.set(rideId);
   }
 
-  passengerInitials(passengerId: string): string {
-    return formatPassengerInitials(passengerId);
+  loadNotifications(): void {
+    this.notificationData.loadForCurrentUser();
   }
 
   editSelectedRide(): void {

@@ -1,0 +1,84 @@
+<div class="relative">
+  <button
+    #bellButton
+    type="button"
+    data-testid="notification-bell-button"
+    aria-label="Notificações"
+    [attr.aria-expanded]="isOpen()"
+    aria-controls="notifications-panel"
+    (click)="toggle()"
+    (keydown.escape)="close()"
+    class="relative flex h-10 w-10 items-center justify-center rounded-full border border-borda bg-superficie text-texto hover:bg-fundo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2"
+  >
+    <span class="material-symbols-outlined text-body-lg" aria-hidden="true">notifications</span>
+    @if (notifications().length > 0) {
+      <span
+        data-testid="notification-badge"
+        class="absolute -top-space-xs -right-space-xs flex h-5 min-w-5 items-center justify-center rounded-full bg-perigo px-space-xs text-label-pill text-superficie"
+      >
+        {{ notifications().length }}
+      </span>
+    }
+  </button>
+
+  @if (isOpen()) {
+    <section
+      id="notifications-panel"
+      data-testid="notifications-panel"
+      aria-label="Avisos internos"
+      tabindex="-1"
+      (keydown.escape)="close()"
+      class="absolute right-0 z-50 mt-space-sm flex w-80 max-w-xs flex-col gap-space-sm rounded-2xl border border-borda bg-superficie p-space-md shadow-lg"
+    >
+      <div class="flex items-center justify-between border-b border-borda pb-space-xs">
+        <h2 class="text-label-lg text-texto">Avisos Internos</h2>
+        <button
+          type="button"
+          data-testid="close-notifications-button"
+          aria-label="Fechar avisos"
+          (click)="close()"
+          class="flex h-7 w-7 items-center justify-center rounded-full text-texto-suave hover:bg-fundo hover:text-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2"
+        >
+          <span class="material-symbols-outlined text-body-md" aria-hidden="true">close</span>
+        </button>
+      </div>
+
+      @if (loadError(); as errorMessage) {
+        <div
+          role="alert"
+          data-testid="notifications-error"
+          class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-sm text-body-sm text-perigo"
+        >
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">error</span>
+          <p class="min-w-0 flex-1">{{ errorMessage }}</p>
+        </div>
+      } @else if (notifications().length === 0) {
+        <p
+          data-testid="empty-notifications"
+          class="py-space-md text-center text-body-sm text-texto-suave"
+        >
+          Você não possui avisos no momento.
+        </p>
+      } @else {
+        <ul role="list" class="flex max-h-72 flex-col gap-space-sm overflow-y-auto">
+          @for (item of notifications(); track item.id) {
+            <li
+              data-testid="notification-item"
+              class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-sm text-body-sm text-texto"
+            >
+              <span
+                class="material-symbols-outlined shrink-0 text-body-lg text-perigo"
+                aria-hidden="true"
+              >
+                cancel
+              </span>
+              <div class="flex min-w-0 flex-1 flex-col gap-space-xs">
+                <p class="text-body-sm text-texto">{{ item.message }}</p>
+              </div>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  }
+</div>

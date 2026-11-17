@@ -36,7 +36,7 @@
   - Teste primeiro: verificar o cancelamento antes da viagem, a mudança dos pedidos pendentes para cancelados e a criação de um aviso interno para cada passageiro confirmado ou com pedido anteriormente pendente.
   - Arquivos previstos: `apps/web/src/app/features/driver/my-rides/`, `apps/web/src/app/core/models/notification.model.ts`, `apps/web/src/app/core/services/ride-data*`, `apps/web/src/app/core/services/ride-request-data*`, `apps/web/src/app/core/services/notification-data*` e `apps/api/db.json`.
 
-- [ ] **Tarefa 6 — Exibir avisos internos**
+- [x] **Tarefa 6 — Exibir avisos internos**
   - Cobre: CA8.
   - Teste primeiro: verificar que o sino abre os avisos do aluno autenticado, incluindo cancelamentos como passageiro confirmado ou com pedido anteriormente pendente, sem exibir avisos de outro aluno.
   - Arquivos previstos: componentes do cabeçalho e avisos em `apps/web/src/app/`, `apps/web/src/app/core/services/notification-data*` e rotas ou telas autenticadas necessárias para acessar os avisos.

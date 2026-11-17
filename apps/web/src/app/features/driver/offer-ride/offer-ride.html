@@ -5,7 +5,22 @@
         <img src="/assets/logo.png" alt="UTFRide" class="h-8 w-auto object-contain" />
         <span class="text-headline-sm text-texto">UTFRide</span>
       </a>
-      <span class="text-label-md text-texto-suave">{{ isEditMode() ? 'Editar Oferta' : 'Oferecer Carona' }}</span>
+      <div class="flex items-center gap-space-md">
+        <span class="text-label-md text-texto-suave">{{ isEditMode() ? 'Editar Oferta' : 'Oferecer Carona' }}</span>
+        <app-notification-bell
+          [notifications]="notifications()"
+          [loadError]="notificationsError()"
+          (opened)="loadNotifications()"
+        />
+        <div
+          role="img"
+          data-testid="student-avatar"
+          [attr.aria-label]="'Foto do aluno ' + studentName()"
+          class="flex h-8 w-8 items-center justify-center rounded-full bg-primaria text-label-md text-texto"
+        >
+          {{ studentName() | initials }}
+        </div>
+      </div>
     </div>
   </header>
 

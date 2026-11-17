@@ -5,9 +5,24 @@
         <img src="/assets/logo.png" alt="UTFRide" class="h-8 w-auto object-contain" />
         <span class="text-headline-sm text-texto">UTFRide</span>
       </a>
-      <a routerLink="/driver/offer" class="text-label-md text-texto-suave hover:text-texto">
-        Oferecer Carona
-      </a>
+      <div class="flex items-center gap-space-md">
+        <a routerLink="/driver/offer" class="text-label-md text-texto-suave hover:text-texto">
+          Oferecer Carona
+        </a>
+        <app-notification-bell
+          [notifications]="notifications()"
+          [loadError]="notificationsError()"
+          (opened)="loadNotifications()"
+        />
+        <div
+          role="img"
+          data-testid="student-avatar"
+          [attr.aria-label]="'Foto do aluno ' + studentName()"
+          class="flex h-8 w-8 items-center justify-center rounded-full bg-primaria text-label-md text-texto"
+        >
+          {{ studentName() | initials }}
+        </div>
+      </div>
     </div>
   </header>
 
@@ -90,7 +105,7 @@
           <div class="flex -space-x-2 overflow-hidden">
             @for (confirmed of acceptedRequests(); track confirmed.id) {
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primaria text-label-md text-texto shadow-sm">
-                {{ passengerInitials(confirmed.passengerId) }}
+                {{ confirmed.passengerId | initials }}
               </div>
             }
             @if (ride.status !== 'cancelled' && ride.availableSeats > 0) {
@@ -145,7 +160,7 @@
               <div class="flex items-center justify-between rounded-xl border border-borda bg-superficie p-space-md shadow-sm">
                 <div class="flex min-w-0 items-center gap-space-md">
                   <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-sucesso-fundo text-label-lg text-sucesso">
-                    {{ passengerInitials(confirmed.passengerId) }}
+                    {{ confirmed.passengerId | initials }}
                   </div>
                   <div class="flex min-w-0 flex-col">
                     <div class="flex items-center gap-space-xs">

@@ -2,8 +2,12 @@ import { Component, computed, DestroyRef, effect, inject, signal } from '@angula
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Ride } from '../../../core/models/ride.model';
+import { AuthData } from '../../../core/services/auth-data';
+import { NotificationData } from '../../../core/services/notification-data';
 import { RideData } from '../../../core/services/ride-data';
+import { NotificationBell } from '../../../shared/components/notification-bell/notification-bell';
 import { CurrencyBrlPipe } from '../../../shared/pipes/currency-brl-pipe';
+import { InitialsPipe } from '../../../shared/pipes/initials-pipe';
 
 function requiredTrimmed(control: AbstractControl<string>): ValidationErrors | null {
   return control.value.trim().length > 0 ? null : { required: true };
@@ -64,14 +68,20 @@ function defaultTomorrowDate(): string {
 
 @Component({
   selector: 'app-offer-ride',
-  imports: [ReactiveFormsModule, RouterLink, CurrencyBrlPipe],
+  imports: [ReactiveFormsModule, RouterLink, CurrencyBrlPipe, NotificationBell, InitialsPipe],
   templateUrl: './offer-ride.html',
 })
 export class OfferRide {
+  private readonly authData = inject(AuthData);
+  private readonly notificationData = inject(NotificationData);
   private readonly rideData = inject(RideData);
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
   private populatedRideId: string | null = null;
+
+  readonly notifications = this.notificationData.userNotifications;
+  readonly notificationsError = this.notificationData.loadError;
+  readonly studentName = computed(() => this.authData.currentUser()?.name ?? 'Aluno UTFPR');
 
   readonly seatOptions = [1, 2, 3, 4] as const;
   readonly campusOptions = [
@@ -240,6 +250,10 @@ export class OfferRide {
     this.form.controls.destination.setValue(destination);
     this.form.controls.destination.markAsDirty();
     this.form.controls.destination.markAsTouched();
+  }
+
+  loadNotifications(): void {
+    this.notificationData.loadForCurrentUser();
   }
 
   isSeatOptionDisabled(seats: number): boolean {
