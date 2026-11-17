@@ -51,7 +51,7 @@
   - Teste primeiro: simular falha ao publicar, editar e cancelar; verificar mensagem, nova tentativa e preservação dos dados preenchidos enquanto a tela permanece aberta.
   - Arquivos previstos: `apps/web/src/app/features/driver/`, serviços de dados envolvidos e seus testes.
 
-- [ ] **Tarefa 9 — Descartar alterações não salvas**
+- [x] **Tarefa 9 — Descartar alterações não salvas**
   - Cobre: CA11.
   - Teste primeiro: preencher ou alterar uma oferta sem salvar, sair e voltar, e verificar que o formulário não restaura as alterações descartadas nem publica ou altera a oferta.
   - Arquivos previstos: `apps/web/src/app/features/driver/offer-ride/` e seus testes.

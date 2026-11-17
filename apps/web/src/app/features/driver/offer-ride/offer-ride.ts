@@ -1,6 +1,8 @@
-import { Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, signal, untracked } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { map } from 'rxjs';
 import { Ride } from '../../../core/models/ride.model';
 import { AuthData } from '../../../core/services/auth-data';
 import { NotificationData } from '../../../core/services/notification-data';
@@ -77,6 +79,11 @@ export class OfferRide {
   private readonly rideData = inject(RideData);
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly routeRideId = toSignal(
+    this.route.queryParamMap.pipe(map((params) => params.get('rideId'))),
+    { initialValue: this.route.snapshot.queryParamMap.get('rideId') },
+  );
+  private activeRouteRideId: string | null | undefined = undefined;
   private populatedRideId: string | null = null;
 
   readonly notifications = this.notificationData.userNotifications;
@@ -150,37 +157,18 @@ export class OfferRide {
   );
 
   constructor() {
-    this.rideData.resetPublish();
-    this.rideData.resetUpdate();
-    const routeRideId = this.route.snapshot.queryParamMap.get('rideId');
-    const initialEditing = this.editingRide();
-    if (initialEditing && (!routeRideId || initialEditing.id === routeRideId)) {
-      if (this.rideData.canManageRide(initialEditing)) {
-        this.populateFormFromRide(initialEditing);
-      } else {
-        this.rideData.clearEditing();
-        this.editAccessDenied.set(true);
-        this.authorizationError.set('Você não tem permissão para editar esta oferta de carona.');
-      }
-    } else if (routeRideId) {
-      const fromDriverRides = this.rideData.driverRides().find((item) => item.id === routeRideId);
-      if (fromDriverRides) {
-        if (this.rideData.startEditing(fromDriverRides)) {
-          this.populateFormFromRide(fromDriverRides);
-        } else {
-          this.editAccessDenied.set(true);
-          this.authorizationError.set('Você não tem permissão para editar esta oferta de carona.');
-        }
-      } else {
-        this.pendingEditRideId.set(routeRideId);
-        this.rideData.loadRideForEdit(routeRideId);
-      }
-    }
     this.destroyRef.onDestroy(() => {
       this.rideData.resetPublish();
       this.rideData.clearEditing();
     });
   }
+
+  private readonly syncRouteMode = effect(() => {
+    const routeRideId = this.routeRideId();
+    if (this.activeRouteRideId === routeRideId) return;
+    this.activeRouteRideId = routeRideId;
+    untracked(() => this.applyRouteMode(routeRideId));
+  });
 
   private readonly syncLoadedEditingRide = effect(() => {
     const ride = this.editingRide();
@@ -399,6 +387,50 @@ export class OfferRide {
   }
 
   resetForAnotherRide(): void {
+    this.resetToCreateMode();
+  }
+
+  private applyRouteMode(routeRideId: string | null): void {
+    if (!routeRideId) {
+      this.resetToCreateMode();
+      return;
+    }
+
+    this.resetLocalState();
+    this.rideData.resetPublish();
+    this.rideData.resetUpdate();
+    this.enableAllControls();
+
+    const currentEditing = this.editingRide();
+    if (currentEditing && currentEditing.id === routeRideId) {
+      if (this.rideData.canManageRide(currentEditing)) {
+        this.populateFormFromRide(currentEditing);
+      } else {
+        this.rideData.clearEditing();
+        this.editAccessDenied.set(true);
+        this.authorizationError.set('Você não tem permissão para editar esta oferta de carona.');
+      }
+      return;
+    }
+
+    this.rideData.clearEditing();
+    const fromDriverRides = this.rideData.driverRides().find((item) => item.id === routeRideId);
+    if (fromDriverRides) {
+      if (this.rideData.startEditing(fromDriverRides)) {
+        this.populateFormFromRide(fromDriverRides);
+      } else {
+        this.editAccessDenied.set(true);
+        this.authorizationError.set('Você não tem permissão para editar esta oferta de carona.');
+      }
+      return;
+    }
+
+    this.pendingEditRideId.set(routeRideId);
+    this.rideData.loadRideForEdit(routeRideId);
+  }
+
+  private resetLocalState(): void {
+    this.loading.set(false);
     this.publishedRide.set(null);
     this.authorizationError.set(null);
     this.operationError.set(null);
@@ -407,6 +439,10 @@ export class OfferRide {
     this.editAccessDenied.set(false);
     this.populatedRideId = null;
     this.submitAttempted.set(false);
+  }
+
+  private resetToCreateMode(): void {
+    this.resetLocalState();
     this.rideData.resetPublish();
     this.rideData.clearEditing();
     this.enableAllControls();

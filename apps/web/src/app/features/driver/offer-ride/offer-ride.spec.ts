@@ -795,4 +795,286 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
     http.verify();
   });
+
+  it('descarta preenchimento não salvo de nova oferta ao sair para outra rota e voltar para /driver/offer sem publicar', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
+
+    const harness = await RouterTestingHarness.create('/driver/offer');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    const customDate = new Date(2026, 10, 19, 14, 45, 0);
+    setField(root, 'origin', 'Portão');
+    setField(root, 'destination', 'UTFPR - Sede Neoville');
+    setField(root, 'notes', 'Em frente ao terminal');
+    setField(root, 'departureDate', formatLocalDate(customDate));
+    setField(root, 'departureTime', formatLocalTime(customDate));
+    root.querySelector<HTMLButtonElement>('[data-testid="seat-option-1"]')!.click();
+    setField(root, 'pricePerSeat', '15');
+    await harness.fixture.whenStable();
+
+    await harness.navigateByUrl('/rides');
+    http.expectNone((req) => req.url.includes('/rides') && req.method === 'POST');
+
+    await harness.navigateByUrl('/driver/offer');
+    const returnedRoot = harness.routeNativeElement as HTMLElement;
+    const defaultTomorrow = formatLocalDate(new Date(2026, 10, 17, 10, 0, 0));
+
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="origin"]')!.value).toBe('');
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="destination"]')!.value).toBe('');
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="notes"]')!.value).toBe('');
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="departureDate"]')!.value).toBe(
+      defaultTomorrow,
+    );
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="departureTime"]')!.value).toBe(
+      '07:15',
+    );
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="totalSeats"]')!.value).toBe('3');
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="pricePerSeat"]')!.value).toBe('8');
+    expect(returnedRoot.textContent).not.toContain('Carona Publicada!');
+    http.verify();
+  });
+
+  it('descarta alterações não salvas em modo de edição ao sair para outra rota e voltar para /driver/offer?rideId=...', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
+
+    const originalDeparture = new Date(2026, 10, 17, 7, 30, 0);
+    const savedRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: originalDeparture.toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      notes: 'Próximo ao shopping',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-1');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
+      .flush(savedRide);
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    const editedDeparture = new Date(2026, 10, 20, 9, 0, 0);
+    setField(root, 'origin', 'Origem Descartada');
+    setField(root, 'destination', 'Destino Descartado');
+    setField(root, 'notes', 'Nota Descartada');
+    setField(root, 'departureDate', formatLocalDate(editedDeparture));
+    setField(root, 'departureTime', formatLocalTime(editedDeparture));
+    root.querySelector<HTMLButtonElement>('[data-testid="seat-option-4"]')!.click();
+    setField(root, 'pricePerSeat', '22');
+    await harness.fixture.whenStable();
+
+    await harness.navigateByUrl('/rides');
+    http.expectNone((req) => req.method === 'PATCH' || req.method === 'POST');
+
+    await harness.navigateByUrl('/driver/offer?rideId=ride-1');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
+      .flush(savedRide);
+    await harness.fixture.whenStable();
+
+    const returnedRoot = harness.routeNativeElement as HTMLElement;
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="origin"]')!.value).toBe('Batel');
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="destination"]')!.value).toBe(
+      'UTFPR Neoville',
+    );
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="notes"]')!.value).toBe(
+      'Próximo ao shopping',
+    );
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="departureDate"]')!.value).toBe(
+      formatLocalDate(originalDeparture),
+    );
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="departureTime"]')!.value).toBe(
+      formatLocalTime(originalDeparture),
+    );
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="totalSeats"]')!.value).toBe('2');
+    expect(returnedRoot.querySelector<HTMLInputElement>('[formControlName="pricePerSeat"]')!.value).toBe('9');
+    expect(returnedRoot.textContent).not.toContain('Oferta Atualizada!');
+    http.verify();
+  });
+
+  it('descarta alterações não salvas e limpa estado residual ao navegar de /driver/offer?rideId=... para /driver/offer na mesma instância', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const rideData = TestBed.inject(RideData);
+    authenticateStudent(http);
+
+    const savedRideWithPassengers: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(2026, 10, 17, 7, 30, 0).toISOString(),
+      totalSeats: 2,
+      availableSeats: 1,
+      pricePerSeat: 9,
+      status: 'active',
+      notes: 'Próximo ao shopping',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-1');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
+      .flush(savedRideWithPassengers);
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    expect(root.querySelector<HTMLInputElement>('[formControlName="origin"]')!.disabled).toBe(true);
+    root.querySelector<HTMLButtonElement>('[data-testid="seat-option-4"]')!.click();
+    await harness.fixture.whenStable();
+    expect(root.querySelector<HTMLInputElement>('[formControlName="totalSeats"]')!.value).toBe('4');
+
+    // Navega na mesma rota sem rideId (Angular reutiliza a instância de OfferRide)
+    await harness.navigateByUrl('/driver/offer');
+    await harness.fixture.whenStable();
+
+    http.expectNone((req) => req.method === 'PATCH' || req.method === 'POST');
+    expect(rideData.editingRide()).toBeNull();
+
+    const defaultTomorrow = formatLocalDate(new Date(2026, 10, 17, 10, 0, 0));
+    const originInput = root.querySelector<HTMLInputElement>('[formControlName="origin"]')!;
+    const destinationInput = root.querySelector<HTMLInputElement>('[formControlName="destination"]')!;
+    const notesInput = root.querySelector<HTMLInputElement>('[formControlName="notes"]')!;
+    const dateInput = root.querySelector<HTMLInputElement>('[formControlName="departureDate"]')!;
+    const timeInput = root.querySelector<HTMLInputElement>('[formControlName="departureTime"]')!;
+    const priceInput = root.querySelector<HTMLInputElement>('[formControlName="pricePerSeat"]')!;
+
+    expect(originInput.disabled).toBe(false);
+    expect(destinationInput.disabled).toBe(false);
+    expect(notesInput.disabled).toBe(false);
+    expect(dateInput.disabled).toBe(false);
+    expect(timeInput.disabled).toBe(false);
+    expect(priceInput.disabled).toBe(false);
+
+    expect(originInput.value).toBe('');
+    expect(destinationInput.value).toBe('');
+    expect(notesInput.value).toBe('');
+    expect(dateInput.value).toBe(defaultTomorrow);
+    expect(timeInput.value).toBe('07:15');
+    expect(root.querySelector<HTMLInputElement>('[formControlName="totalSeats"]')!.value).toBe('3');
+    expect(priceInput.value).toBe('8');
+    expect(root.querySelector('h1')!.textContent).toContain('Oferecer uma Carona');
+    expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.textContent).toContain(
+      'Publicar Oferta de Carona',
+    );
+    http.verify();
+  });
+
+  it('limpa erros residuais e recarrega a oferta correta ao alternar query params na mesma instância de OfferRide', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
+
+    const foreignRide: Ride = {
+      id: 'ride-other',
+      driverId: 'driver-2',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(2026, 10, 17, 7, 30, 0).toISOString(),
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 10,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-other');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-other` && req.method === 'GET')
+      .flush(foreignRide);
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    expect(root.querySelector('[data-testid="driver-authorization-error"]')).not.toBeNull();
+
+    // Vai para nova oferta na mesma instância: erro de autorização deve sumir
+    await harness.navigateByUrl('/driver/offer');
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector('[data-testid="driver-authorization-error"]')).toBeNull();
+    setField(root, 'origin', 'Portão');
+    setField(root, 'destination', 'UTFPR - Sede Centro');
+    await harness.fixture.whenStable();
+    expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
+
+    // Vai para edição de ride-1 sem salvar a nova oferta, depois troca para ride-2 sem salvar ride-1
+    const ride1: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Água Verde',
+      destination: 'UTFPR Centro',
+      departureTime: new Date(2026, 10, 17, 8, 0, 0).toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 7,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const ride2: Ride = {
+      id: 'ride-2',
+      driverId: 'driver-1',
+      origin: 'Cabral',
+      destination: 'UTFPR Ecoville',
+      departureTime: new Date(2026, 10, 18, 9, 30, 0).toISOString(),
+      totalSeats: 4,
+      availableSeats: 4,
+      pricePerSeat: 11,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    await harness.navigateByUrl('/driver/offer?rideId=ride-1');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
+      .flush(ride1);
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector<HTMLInputElement>('[formControlName="origin"]')!.value).toBe('Água Verde');
+    setField(root, 'origin', 'Alteração Não Salva');
+
+    await harness.navigateByUrl('/driver/offer?rideId=ride-2');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-2` && req.method === 'GET')
+      .flush(ride2);
+    await harness.fixture.whenStable();
+
+    http.expectNone((req) => req.method === 'PATCH' || req.method === 'POST');
+    expect(root.querySelector<HTMLInputElement>('[formControlName="origin"]')!.value).toBe('Cabral');
+    expect(root.querySelector<HTMLInputElement>('[formControlName="destination"]')!.value).toBe(
+      'UTFPR Ecoville',
+    );
+    expect(root.querySelector<HTMLInputElement>('[formControlName="totalSeats"]')!.value).toBe('4');
+    expect(root.querySelector<HTMLInputElement>('[formControlName="pricePerSeat"]')!.value).toBe('11');
+    http.verify();
+  });
 });
