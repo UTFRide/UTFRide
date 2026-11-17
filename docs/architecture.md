@@ -37,7 +37,7 @@ A persistência do UTFRide evolui em duas fases bem demarcadas:
 - **Arquivo de Dados:** `apps/api/db.json`
 - **Execução:** `npm run server` na raiz do repositório; o servidor disponibiliza a API na porta 3000 e inclui o endpoint de verificação de duplicidade usado pelo cadastro.
 - **Camada de Integração:** `HttpClient` do Angular consumindo `http://localhost:3000/`.
-- **Coleções Mapeadas:** `users`, `rides`, `ride_requests`, `ride_searches`, `reviews`, `reports`.
+- **Coleções Mapeadas:** `users`, `rides`, `ride_requests`, `ride_searches`, `reviews`, `reports`, `notifications`.
 - **Cadastro e autenticação simulados:** o servidor do MVP acrescenta `POST /registration-exists` para consultar duplicidade de e-mail ou matrícula. A conta usa `password`, `whatsapp` e `isEmailConfirmed` em `users`; a sessão fica em memória no frontend. Essa simulação não fornece autenticação segura e não substitui o Supabase Auth da fase completa.
 
 ### 2.2 Fase Completa (Entrega 3) — Backend-as-a-Service (**Supabase**)
@@ -74,7 +74,7 @@ Todas as rotas de funcionalidades utilizam carregamento sob demanda (`loadCompon
 | `/register` | `RegisterComponent` | Público | Cadastro com e-mail institucional |
 | `/rides` | `RideListComponent` | Autenticado | Busca e listagem de ofertas de carona |
 | `/rides/:id` | `RideDetailComponent` | Autenticado | Detalhes da carona e solicitação de vaga |
-| `/driver/offer` | `OfferRideComponent` | Autenticado (Motorista) | Formulário de oferta de nova carona |
+| `/driver/offer` | `OfferRideComponent` | Autenticado (Motorista) | Formulário de publicação e edição de oferta de carona (`?rideId=`) |
 | `/driver/my-rides`| `MyRidesComponent` | Autenticado (Motorista) | Gestão de ofertas e solicitações de passageiros |
 | `/searches` | `RideSearchesComponent`| Autenticado (Passageiro) | Mural de pedidos ativos de carona |
 | `/reviews/history`| `ReviewHistoryComponent`| Autenticado | Histórico de viagens e formulário de avaliação |
@@ -153,6 +153,7 @@ Para garantir consistência e evitar ambiguidades conceituais, todos os termos u
 | **Busca de Carona** | `RideSearch` | Entidade | `id: string`<br>`passengerId: string`<br>`origin: string`<br>`destination: string`<br>`desiredTime: string`<br>`status: 'active' \| 'fulfilled' \| 'cancelled'`<br>`contactInfo: string`<br>`createdAt: string` |
 | **Feedback** | `Review` | Entidade | `id: string`<br>`rideId: string`<br>`reviewerId: string`<br>`reviewedId: string`<br>`rating: number` *(1 a 5)*<br>`comment?: string`<br>`createdAt: string` |
 | **Denúncia** | `Report` | Entidade | `id: string`<br>`reporterId: string`<br>`reportedUserId: string`<br>`rideId?: string`<br>`reason: string`<br>`status: 'pending' \| 'resolved' \| 'dismissed'`<br>`resolutionNotes?: string`<br>`createdAt: string` |
+| **Aviso interno** | `Notification` | Entidade | `id: string`<br>`recipientId: string`<br>`rideId: string`<br>`message: string`<br>`createdAt: string` |
 | **Suporte** | `role: 'support'` | Perfil / Permissão | Representado pelo valor de `role` no `User`, protegido por `supportGuard` na rota `/support` |
 
 ---
@@ -166,10 +167,12 @@ erDiagram
     USER ||--o{ RIDE_SEARCH : "posts as passenger"
     USER ||--o{ REVIEW : "writes or receives"
     USER ||--o{ REPORT : "files or is reported"
+    USER ||--o{ NOTIFICATION : "receives"
     
     RIDE ||--o{ RIDE_REQUEST : "receives"
     RIDE ||--o{ REVIEW : "evaluated in"
     RIDE ||--o{ REPORT : "associated with"
+    RIDE ||--o{ NOTIFICATION : "generates on cancellation"
 
     USER {
         string id PK
@@ -236,6 +239,14 @@ erDiagram
         string reason
         string status
         string resolution_notes
+        datetime created_at
+    }
+
+    NOTIFICATION {
+        string id PK
+        string recipient_id FK
+        string ride_id FK
+        string message
         datetime created_at
     }
 ```
