@@ -1,12 +1,13 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, Injector, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { RideData } from '../../../core/services/ride-data';
 import { CurrencyBrlPipe } from '../../../shared/pipes/currency-brl-pipe';
 import { InitialsPipe } from '../../../shared/pipes/initials-pipe';
 import { RideFilters } from '../ride-filters/ride-filters';
 
 @Component({
-  imports: [DatePipe, CurrencyBrlPipe, InitialsPipe, RideFilters],
+  imports: [DatePipe, RouterLink, CurrencyBrlPipe, InitialsPipe, RideFilters],
   templateUrl: './ride-list.html',
 })
 export class RideList {

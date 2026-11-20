@@ -39,6 +39,52 @@ describe('RideData', () => {
     });
   });
 
+  it('carrega a oferta por id com o resumo público e cancela a leitura anterior ao trocar o id', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const id = signal('ride-old');
+    const detail = TestBed.inject(RideData).loadRideDetail(id, TestBed.inject(Injector));
+    expect(detail()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    const oldRead = http.expectOne({ url: `${environment.apiUrl}/rides/ride-old`, method: 'GET' });
+
+    id.set('007');
+    TestBed.tick();
+    expect(oldRead.cancelled).toBe(true);
+    const ride: Ride = {
+      id: '007',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: '2026-01-01T08:00:00.000Z',
+      totalSeats: 2,
+      availableSeats: 0,
+      pricePerSeat: 9,
+      status: 'completed',
+      createdAt: '2025-12-30T10:00:00.000Z',
+    };
+    http.expectOne({ url: `${environment.apiUrl}/rides/007`, method: 'GET' }).flush(ride);
+    const summaries = http.expectOne(
+      (request) => request.url === `${environment.apiUrl}/driver-summaries`,
+    );
+    expect(summaries.request.method).toBe('GET');
+    expect(summaries.request.params.getAll('id')).toEqual(['driver-1']);
+    expect(detail()).toEqual({ status: 'loading' });
+    summaries.flush([{ id: 'driver-1', name: 'Carlos Motorista', ratingAverage: 5 }]);
+    expect(detail()).toEqual({
+      status: 'loaded',
+      ride: { ...ride, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+
+    id.set('ride-offline');
+    expect(detail()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    http
+      .expectOne({ url: `${environment.apiUrl}/rides/ride-offline`, method: 'GET' })
+      .error(new ProgressEvent('error'));
+    expect(detail()).toEqual({ status: 'error' });
+    http.verify();
+  });
+
   it('publica uma oferta ativa vinculada ao aluno autenticado', () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);

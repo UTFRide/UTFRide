@@ -677,6 +677,112 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     http.verify();
   });
 
+  it('abre o detalhe real pelo cartão, mostra os dados e consulta a própria solicitação (CA4)', async () => {
+    const { harness, root, http } = await openSearch();
+    const ride: Ride = {
+      id: '007',
+      driverId: 'driver-2',
+      origin: 'Praça do Japão',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: new Date(2030, 4, 11, 8, 15).toISOString(),
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 7.5,
+      status: 'active',
+      notes: 'Em frente à farmácia',
+      createdAt: new Date(2030, 4, 9, 16).toISOString(),
+    };
+    const driver = { id: 'driver-2', name: 'Camila Rocha', ratingAverage: 4.9 };
+    searchRequest(http).flush([ride]);
+    http.expectOne((request) => request.url === driverSummariesUrl).flush([driver]);
+    await harness.fixture.whenStable();
+
+    const detailLink = root.querySelector<HTMLAnchorElement>('article a[href="/rides/007"]');
+    expect(detailLink).not.toBeNull();
+    expect(detailLink!.textContent).toContain('Ver detalhes');
+    detailLink!.click();
+    await harness.fixture.whenStable();
+    expect(TestBed.inject(Router).url).toBe('/rides/007');
+    expect(harness.routeNativeElement).toBe(root);
+
+    http.expectOne({ url: `${ridesUrl}/007`, method: 'GET' }).flush(ride);
+    const driverSummary = http.expectOne((request) => request.url === driverSummariesUrl);
+    expect(driverSummary.request.params.getAll('id')).toEqual(['driver-2']);
+    driverSummary.flush([driver]);
+
+    await harness.fixture.whenStable();
+    const details = root.querySelector('main')!;
+    expect(details.textContent).toContain('Detalhes da Viagem');
+    expect(details.textContent).toContain('Praça do Japão');
+    expect(details.textContent).toContain('UTFPR - Sede Centro');
+    const departure = details.querySelector('time');
+    expect(departure?.dateTime).toBe(ride.departureTime);
+    expect(departure?.textContent).toContain('08:15');
+    expect(departure?.textContent).toContain('11/05/2030');
+    expect(details.textContent).toContain('Em frente à farmácia');
+    expect(details.textContent).toContain('2 de 3 vagas livres');
+    expect(details.textContent).toContain('R$ 7,50');
+    expect(details.textContent).toContain('Camila Rocha');
+    expect(details.querySelector('[data-testid="driver-initials"]')?.textContent?.trim()).toBe(
+      'CR',
+    );
+    expect(details.textContent).toContain('4,9');
+    expect(details.textContent).toContain('Carona ativa');
+    expect(details.textContent).toContain('Consultando sua solicitação');
+    expect(details.textContent).not.toContain('Você ainda não solicitou');
+
+    http
+      .expectOne((request) => request.url === `${environment.apiUrl}/ride_requests`)
+      .flush([
+        {
+          id: 'request-1',
+          rideId: '007',
+          passengerId: 'passenger-1',
+          status: 'pending',
+          createdAt: ride.createdAt,
+        },
+      ]);
+    await harness.fixture.whenStable();
+    expect(details.textContent).toContain('Aguardando aprovação do motorista');
+    expect(details.textContent).not.toContain('Consultando sua solicitação');
+
+    await harness.navigateByUrl('/rides/full-ride');
+    expect(details.textContent).toContain('Carregando detalhes');
+    expect(details.textContent).not.toContain('Aguardando aprovação do motorista');
+    expect(details.textContent).not.toContain('Praça do Japão');
+    http.expectOne({ url: `${ridesUrl}/full-ride`, method: 'GET' }).flush({
+      ...ride,
+      id: 'full-ride',
+      origin: 'Batel',
+      availableSeats: 0,
+      status: 'full',
+      notes: undefined,
+    });
+    http.expectOne((request) => request.url === driverSummariesUrl).flush([driver]);
+    http
+      .expectOne((request) => request.url === `${environment.apiUrl}/ride_requests`)
+      .error(new ProgressEvent('error'));
+    await harness.fixture.whenStable();
+    expect(details.textContent).toContain('Batel');
+    expect(details.textContent).toContain('Carona lotada');
+    expect(details.textContent).toContain('Não foi possível consultar sua solicitação');
+    expect(details.textContent).not.toContain('Você ainda não solicitou');
+
+    await harness.navigateByUrl('/rides/another-ride');
+    http.expectOne({ url: `${ridesUrl}/another-ride`, method: 'GET' }).flush({
+      ...ride,
+      id: 'another-ride',
+      notes: undefined,
+    });
+    http.expectOne((request) => request.url === driverSummariesUrl).flush([driver]);
+    http.expectOne((request) => request.url === `${environment.apiUrl}/ride_requests`).flush([]);
+    await harness.fixture.whenStable();
+    expect(details.textContent).toContain('Você ainda não solicitou uma vaga');
+    expect(details.textContent).not.toContain('Ponto de referência');
+    http.expectNone((request) => request.method !== 'GET' || request.url.endsWith('/users'));
+    http.verify();
+  });
+
   it('apresenta falha de busca sem confundi-la com lista vazia', async () => {
     const { harness, root, http } = await openSearch();
     openFilters(root, harness);

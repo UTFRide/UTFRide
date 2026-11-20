@@ -56,11 +56,17 @@ export type RideSearchResult =
   | { status: 'loaded'; rides: RideWithDriver[] }
   | { status: 'error' };
 
+export type RideDetailResult =
+  | { status: 'loading' }
+  | { status: 'loaded'; ride: RideWithDriver }
+  | { status: 'error' };
+
 interface RideSearchQuery extends RideSearchFilters {
   passengerId: string;
 }
 
 const searchLoading = { status: 'loading' } as const;
+const detailLoading = { status: 'loading' } as const;
 
 function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase();
@@ -293,6 +299,29 @@ export class RideData {
     return computed(() => {
       const latest = emission();
       return latest && sameSearch(latest.query, query()) ? latest.result : searchLoading;
+    });
+  }
+
+  loadRideDetail(rideId: Signal<string>, injector: Injector): Signal<RideDetailResult> {
+    const emission = toSignal(
+      toObservable(rideId, { injector }).pipe(
+        switchMap((id) =>
+          this.http.get<Ride>(`${environment.apiUrl}/rides/${encodeURIComponent(id)}`).pipe(
+            switchMap((ride) => this.enrichWithDrivers([ride])),
+            map(([ride]): RideDetailResult => ({ status: 'loaded', ride })),
+            catchError(() => of({ status: 'error' } as const)),
+            startWith(detailLoading),
+            map((result) => ({ id, result })),
+          ),
+        ),
+      ),
+      { injector },
+    );
+
+    return computed(() => {
+      const id = rideId();
+      const latest = emission();
+      return latest?.id === id ? latest.result : detailLoading;
     });
   }
 

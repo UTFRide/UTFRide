@@ -1,0 +1,186 @@
+<div class="space-y-space-md">
+  <h1 class="text-headline-sm">
+    <a
+      routerLink="/rides"
+      aria-label="Detalhes da Viagem, voltar à busca de caronas"
+      class="inline-flex items-center gap-space-sm rounded-xl focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+    >
+      <span class="material-symbols-outlined rounded-full bg-fundo p-space-sm" aria-hidden="true">
+        arrow_back
+      </span>
+      Detalhes da Viagem
+    </a>
+  </h1>
+
+  @let result = detail();
+  @switch (result.status) {
+    @case ('loading') {
+      <p role="status" class="rounded-xl bg-fundo p-space-lg text-body-md">
+        Carregando detalhes da carona…
+      </p>
+    }
+    @case ('error') {
+      <p role="alert" class="rounded-xl bg-perigo-fundo p-space-lg text-body-md">
+        Não foi possível carregar os detalhes da carona.
+      </p>
+    }
+    @case ('loaded') {
+      @let ride = result.ride;
+      <section
+        aria-label="Trajeto e valor"
+        class="space-y-space-lg rounded-xl border border-borda bg-superficie p-space-lg shadow-sm"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-space-sm">
+          <h2>
+            <time [attr.datetime]="ride.departureTime" class="flex flex-col gap-space-xs">
+              <span class="text-headline-sm"
+                >Saída às {{ ride.departureTime | date: 'HH:mm' }}</span
+              >
+              <span class="text-body-sm text-texto-suave">{{
+                ride.departureTime | date: 'dd/MM/yyyy'
+              }}</span>
+            </time>
+          </h2>
+          <div class="flex flex-col items-start gap-space-xs sm:items-end">
+            <p class="rounded-full bg-fundo px-space-md py-space-xs text-label-md">
+              {{ ride.availableSeats }} de {{ ride.totalSeats }}
+              {{ ride.totalSeats === 1 ? 'vaga livre' : 'vagas livres' }}
+            </p>
+            <p
+              class="rounded-full px-space-md py-space-xs text-label-pill"
+              [class.bg-sucesso-fundo]="ride.status === 'active'"
+              [class.bg-perigo-fundo]="ride.status === 'full' || ride.status === 'cancelled'"
+              [class.bg-fundo]="ride.status === 'completed'"
+            >
+              @switch (ride.status) {
+                @case ('active') {
+                  Carona ativa
+                }
+                @case ('full') {
+                  Carona lotada
+                }
+                @case ('completed') {
+                  Carona concluída
+                }
+                @case ('cancelled') {
+                  Carona cancelada
+                }
+                @default {
+                  Status da carona indisponível
+                }
+              }
+            </p>
+          </div>
+        </div>
+
+        <dl class="rounded-xl bg-fundo p-space-md">
+          <div
+            class="relative pb-space-md pl-space-xl before:absolute before:top-space-sm before:bottom-0 before:left-space-xs before:w-px before:bg-trilho"
+          >
+            <dt class="text-label-pill uppercase text-texto-suave">
+              <span
+                class="absolute top-space-xs left-0 size-space-sm rounded-full bg-sucesso"
+                aria-hidden="true"
+              ></span>
+              Ponto de embarque
+            </dt>
+            <dd class="mt-space-xs text-body-lg">{{ ride.origin }}</dd>
+          </div>
+          <div class="relative pl-space-xl">
+            <dt class="text-label-pill uppercase text-texto-suave">
+              <span
+                class="absolute top-0 left-0 size-space-sm bg-secundaria"
+                aria-hidden="true"
+              ></span>
+              Destino final
+            </dt>
+            <dd class="mt-space-xs text-body-lg">{{ ride.destination }}</dd>
+          </div>
+        </dl>
+
+        @if (ride.notes?.trim(); as notes) {
+          <div class="space-y-space-xs rounded-xl bg-fundo p-space-md">
+            <h3 class="text-label-md">Ponto de referência</h3>
+            <p class="text-body-md">{{ notes }}</p>
+          </div>
+        }
+
+        <div class="border-t border-borda pt-space-md">
+          <p class="text-body-sm text-texto-suave">Contribuição por vaga</p>
+          <p class="text-display-currency">{{ ride.pricePerSeat | currencyBrl }}</p>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="ride-driver-heading"
+        class="space-y-space-md rounded-xl border border-borda bg-superficie p-space-lg shadow-sm"
+      >
+        <h2 id="ride-driver-heading" class="text-headline-sm">Motorista</h2>
+        @if (ride.driver; as driver) {
+          <div class="flex items-center gap-space-md">
+            <span
+              data-testid="driver-initials"
+              aria-hidden="true"
+              class="grid shrink-0 place-items-center rounded-full bg-primaria p-space-md text-label-lg"
+            >
+              {{ driver.name | initials }}
+            </span>
+            <div class="min-w-0">
+              <p class="text-body-lg">{{ driver.name }}</p>
+              @if (driver.ratingAverage > 0) {
+                <p class="text-body-sm text-texto-suave">
+                  Avaliação média {{ driver.ratingAverage.toFixed(1).replace('.', ',') }}
+                </p>
+              } @else {
+                <p class="text-body-sm text-texto-suave">Sem avaliações</p>
+              }
+            </div>
+          </div>
+        } @else {
+          <p class="text-body-md text-texto-suave">Dados do motorista indisponíveis.</p>
+        }
+      </section>
+
+      <section
+        aria-labelledby="passenger-request-heading"
+        class="space-y-space-sm rounded-xl bg-fundo p-space-lg"
+      >
+        <h2 id="passenger-request-heading" class="text-headline-sm">Sua solicitação</h2>
+        @let requestResult = passengerRequest();
+        <p role="status" class="text-body-md">
+          @switch (requestResult.status) {
+            @case ('loading') {
+              Consultando sua solicitação…
+            }
+            @case ('error') {
+              Não foi possível consultar sua solicitação.
+            }
+            @case ('loaded') {
+              @switch (requestResult.request?.status) {
+                @case ('pending') {
+                  Aguardando aprovação do motorista
+                }
+                @case ('accepted') {
+                  Solicitação confirmada
+                }
+                @case ('rejected') {
+                  Solicitação rejeitada
+                }
+                @case ('cancelled') {
+                  Solicitação cancelada
+                }
+                @default {
+                  @if (requestResult.request === null) {
+                    Você ainda não solicitou uma vaga.
+                  } @else {
+                    Status da solicitação indisponível.
+                  }
+                }
+              }
+            }
+          }
+        </p>
+      </section>
+    }
+  }
+</div>

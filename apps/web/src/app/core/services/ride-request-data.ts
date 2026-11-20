@@ -1,8 +1,9 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { computed, inject, Injectable, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { computed, inject, Injectable, Injector, Signal, signal } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
   catchError,
+  EMPTY,
   exhaustMap,
   forkJoin,
   map,
@@ -17,6 +18,7 @@ import { environment } from '../../../environments/environment';
 import { Notification } from '../models/notification.model';
 import { Ride } from '../models/ride.model';
 import { RideRequest } from '../models/ride-request.model';
+import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
 import { NotificationData } from './notification-data';
 import { RideData, RideErrorResult, RideUnauthorizedError } from './ride-data';
@@ -38,15 +40,24 @@ export type LoadRideRequestsResult =
   | { unauthorized: true }
   | RideErrorResult;
 
+export type PassengerRequestResult =
+  | { status: 'loading' }
+  | { status: 'loaded'; request: RideRequest | null }
+  | { status: 'error' };
+
 export type CancelRideResult =
   | { ride: Ride; cancelledRequests: RideRequest[]; notifications: Notification[] }
   | { unauthorized: true }
   | { invalidState: true }
   | RideErrorResult;
 
+const passengerRequestLoading = { status: 'loading' } as const;
+const passengerRequestError = { status: 'error' } as const;
+
 @Injectable({ providedIn: 'root' })
 export class RideRequestData {
   private readonly http = inject(HttpClient);
+  private readonly auth = inject(AuthData);
   private readonly rideData = inject(RideData);
   private readonly notificationData = inject(NotificationData);
   private readonly notice = inject(ErrorNotice);
@@ -245,6 +256,35 @@ export class RideRequestData {
     this.loadRideIds.next(rideId);
   }
 
+  loadPassengerRequest(rideId: Signal<string>, injector: Injector): Signal<PassengerRequestResult> {
+    const passengerId = computed(() => this.auth.currentUser()?.id);
+    const query = computed(() => {
+      const currentPassenger = passengerId();
+      return currentPassenger ? { rideId: rideId(), passengerId: currentPassenger } : null;
+    });
+    const emission = toSignal(
+      toObservable(query, { injector }).pipe(
+        switchMap((selection) => {
+          if (!selection) return EMPTY;
+
+          return this.fetchPassengerRequest(selection.rideId, selection.passengerId).pipe(
+            startWith(passengerRequestLoading),
+            map((result) => ({ selection, result })),
+          );
+        }),
+      ),
+      { injector },
+    );
+
+    return computed(() => {
+      const selection = query();
+      if (!selection) return passengerRequestError;
+
+      const latest = emission();
+      return latest?.selection === selection ? latest.result : passengerRequestLoading;
+    });
+  }
+
   accept(request: RideRequest, ride: Ride): void {
     this.notice.message.set('');
     this.decisionSubmissions.next({ type: 'accept', request, ride });
@@ -269,6 +309,24 @@ export class RideRequestData {
   reset(): void {
     this.requestsState.set([]);
     this.resets.next();
+  }
+
+  private fetchPassengerRequest(rideId: string, passengerId: string): Observable<PassengerRequestResult> {
+    // _where preserva IDs textuais que o json-server converteria em filtros simples (ex.: "007").
+    const where = { rideId: { eq: rideId }, passengerId: { eq: passengerId } };
+    return this.http
+      .get<RideRequest[]>(`${environment.apiUrl}/ride_requests`, {
+        params: { _where: JSON.stringify(where) },
+      })
+      .pipe(
+        map((requests): PassengerRequestResult => {
+          const [latest] = requests
+            .filter((request) => request.rideId === rideId && request.passengerId === passengerId)
+            .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+          return { status: 'loaded', request: latest ?? null };
+        }),
+        catchError(() => of(passengerRequestError)),
+      );
   }
 
   private fetchRequestsForRide(rideId: string): Observable<LoadRideRequestsResult> {

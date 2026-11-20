@@ -91,7 +91,16 @@
                 {{ ride.availableSeats }} {{ ride.availableSeats === 1 ? 'vaga' : 'vagas' }}
               </p>
             </div>
-            <p class="text-display-currency">{{ ride.pricePerSeat | currencyBrl }}</p>
+            <div class="flex flex-wrap items-center gap-space-md">
+              <p class="text-display-currency">{{ ride.pricePerSeat | currencyBrl }}</p>
+              <a
+                [routerLink]="['/rides', ride.id]"
+                [attr.aria-label]="'Ver detalhes da carona de ' + ride.origin + ' para ' + ride.destination"
+                class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+              >
+                Ver detalhes
+              </a>
+            </div>
           </div>
         </article>
       } @empty {

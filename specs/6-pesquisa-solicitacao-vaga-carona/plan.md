@@ -26,7 +26,7 @@
   - Teste primeiro: testar two-way data binding via `model()` (`[(origin)]`, `[(destination)]`, `[(date)]`) entre `RideFilters` e `RideList` com sugestões de localidades; testar pipeline `toObservable()` -> `debounceTime` -> `distinctUntilChanged` -> `switchMap` -> `toSignal()` em `RideData`, exibindo apenas ofertas `active`, futuras, com `availableSeats > 0` e `driverId !== currentUser.id`; testar estado vazio com ação de limpar filtros (CA3) e descarte dos filtros ao sair e retornar à tela (CA11).
   - Arquivos previstos: `apps/web/src/app/core/models/ride.model.ts`, `apps/web/src/app/core/services/ride-data.ts`, `apps/web/src/app/core/services/ride-data.spec.ts`, `apps/web/src/app/features/rides/ride-filters/` e `apps/web/src/app/features/rides/ride-list/`.
 
-- [ ] **Tarefa 4 — Construir detalhe da oferta (`/rides/:id`) com `input.required()` e `@switch`**
+- [x] **Tarefa 4 — Construir detalhe da oferta (`/rides/:id`) com `input.required()` e `@switch`**
   - Cobre: CA4.
   - Teste primeiro: verificar navegação de `/rides` para `/rides/:id` recebendo o parâmetro automaticamente em `id = input.required<string>()`, carregando oferta e dados públicos do motorista (nome, iniciais, nota média, trajeto, data/horário, `notes`, vagas e `pricePerSeat | currencyBrl`), e exibindo o estado condicional da oferta/solicitação com `@switch` (`@case` / `@default`).
   - Arquivos previstos: `apps/web/src/app/core/services/ride-data.ts`, `apps/web/src/app/core/services/ride-data.spec.ts`, `apps/web/src/app/features/rides/ride-detail/` e `apps/web/src/app/app.routes.ts`.
