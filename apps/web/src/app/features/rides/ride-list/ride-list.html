@@ -1,4 +1,115 @@
 <h1 class="text-headline-md">Para onde você vai?</h1>
-<p class="mt-space-md text-body-md text-texto-suave">
-  A busca de caronas estará disponível em breve.
-</p>
+
+<section aria-labelledby="available-rides-title" class="mt-space-xl space-y-space-md">
+  @let result = search();
+  <div class="flex items-center justify-between gap-space-sm">
+    <div class="flex flex-wrap items-center gap-space-sm">
+      <h2 id="available-rides-title" class="text-headline-sm">Caronas disponíveis</h2>
+      @if (result.status === 'loaded' && result.rides.length > 0) {
+        <span class="rounded-full bg-fundo px-space-sm py-space-xs text-label-pill">
+          {{ result.rides.length }} {{ result.rides.length === 1 ? 'ativa' : 'ativas' }}
+        </span>
+      }
+    </div>
+    <button
+      type="button"
+      [attr.aria-expanded]="filtersOpen()"
+      aria-controls="ride-search-filters"
+      class="flex items-center gap-space-xs rounded-lg px-space-sm py-space-xs text-label-lg text-primaria-escura hover:bg-fundo focus-visible:ring-2 focus-visible:ring-texto"
+      (click)="toggleFilters()"
+    >
+      <span aria-hidden="true" class="material-symbols-outlined">tune</span>
+      Filtros
+    </button>
+  </div>
+
+  <div id="ride-search-filters" [hidden]="!filtersOpen()">
+    @if (filtersOpen()) {
+      <app-ride-filters [(origin)]="origin" [(destination)]="destination" [(date)]="date" />
+    }
+  </div>
+
+  @switch (result.status) {
+    @case ('loading') {
+      <p role="status" class="p-space-lg text-center text-body-md text-texto-suave">
+        Buscando caronas…
+      </p>
+    }
+    @case ('error') {
+      <p role="alert" class="rounded-xl border border-borda bg-fundo p-space-lg text-body-md">
+        Não foi possível carregar as caronas.
+      </p>
+    }
+    @case ('loaded') {
+      @for (ride of result.rides; track ride.id) {
+        <article class="space-y-space-md rounded-xl border border-borda bg-superficie p-space-lg">
+          <header class="flex items-center gap-space-sm">
+            @if (ride.driver; as driver) {
+              <div
+                aria-hidden="true"
+                class="grid aspect-square shrink-0 place-items-center rounded-full bg-primaria p-space-sm text-label-md"
+              >
+                {{ driver.name | initials }}
+              </div>
+              <div>
+                <p class="text-label-lg">{{ driver.name }}</p>
+                @if (driver.ratingAverage > 0) {
+                  <p class="flex items-center gap-space-xs text-body-sm text-texto-suave">
+                    <span aria-hidden="true" class="material-symbols-outlined text-primaria-escura"
+                      >star</span
+                    >
+                    <span class="sr-only">Avaliação do motorista</span>
+                    {{ driver.ratingAverage.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) }}
+                  </p>
+                } @else {
+                  <p class="text-body-sm text-texto-suave">Sem avaliações</p>
+                }
+              </div>
+            } @else {
+              <p class="text-label-lg">Motorista sem identificação</p>
+            }
+          </header>
+
+          <div class="flex gap-space-sm rounded-lg bg-fundo p-space-md">
+            <div aria-hidden="true" class="flex flex-col items-center self-stretch py-space-xs">
+              <span class="size-space-sm shrink-0 rounded-full bg-sucesso"></span>
+              <span class="w-px flex-1 bg-trilho"></span>
+              <span class="size-space-sm shrink-0 bg-primaria"></span>
+            </div>
+            <div class="min-w-0 space-y-space-sm">
+              <h3 class="text-label-lg">{{ ride.origin }}</h3>
+              <p class="text-label-md text-texto-suave">{{ ride.destination }}</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-end justify-between gap-space-sm">
+            <div>
+              <time [attr.datetime]="ride.departureTime" class="text-body-sm text-texto-suave">
+                {{ ride.departureTime | date: "dd/MM/yyyy 'às' HH:mm" }}
+              </time>
+              <p class="text-label-md">
+                {{ ride.availableSeats }} {{ ride.availableSeats === 1 ? 'vaga' : 'vagas' }}
+              </p>
+            </div>
+            <p class="text-display-currency">{{ ride.pricePerSeat | currencyBrl }}</p>
+          </div>
+        </article>
+      } @empty {
+        <div
+          class="space-y-space-md rounded-xl border border-borda bg-fundo p-space-lg text-center"
+        >
+          <p role="status" class="text-body-md text-texto-suave">
+            Nenhuma carona disponível para esta busca.
+          </p>
+          <button
+            type="button"
+            class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+            (click)="clearFilters()"
+          >
+            Limpar filtros
+          </button>
+        </div>
+      }
+    }
+  }
+</section>

@@ -1,5 +1,6 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { vi } from 'vitest';
@@ -801,6 +802,158 @@ describe('RideData', () => {
     expect(rideData.editingRide()).toEqual(updatedRide);
     expect(rideData.driverRides()[0]).toEqual(updatedRide);
 
+    http.verify();
+  });
+});
+
+describe('Busca de ofertas em RideData (CA1)', () => {
+  const ridesUrl = `${environment.apiUrl}/rides`;
+  const usersUrl = `${environment.apiUrl}/users`;
+  const driverSummariesUrl = `${environment.apiUrl}/driver-summaries`;
+  const filters = { origin: '', destination: '', date: '' };
+  const debounceMs = 250;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date(2030, 4, 9, 18));
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  function startSearch(http: HttpTestingController) {
+    authenticateStudent(http);
+    const criteria = signal(filters);
+    const rideData = TestBed.inject(RideData);
+    const result = rideData.searchAvailableRides(criteria, TestBed.inject(Injector));
+    return { criteria, result };
+  }
+
+  function runDebounce(): void {
+    TestBed.tick();
+    vi.advanceTimersByTime(debounceMs);
+  }
+
+  it('aplica os três filtros e enriquece apenas as ofertas elegíveis com dados públicos do motorista', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const { criteria, result } = startSearch(http);
+    const eligible: Ride = {
+      id: 'ride-available',
+      driverId: '007',
+      origin: 'São José dos Pinhais (Centro)',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: new Date(2030, 4, 10, 23, 30).toISOString(),
+      totalSeats: 2,
+      availableSeats: 1,
+      pricePerSeat: 12,
+      status: 'active',
+      createdAt: new Date(2030, 4, 9, 16).toISOString(),
+    };
+    const another = { ...eligible, id: 'ride-another', driverId: 'driver-3' };
+
+    criteria.set({ origin: '  SÃO JOSÉ ', destination: 'sede centro', date: '2030-05-10' });
+    expect(result()).toEqual({ status: 'loading' });
+    runDebounce();
+    const ridesRequest = http.expectOne((request) => request.url === ridesUrl && request.method === 'GET');
+    expect(ridesRequest.request.params.get('_where')).toContain('"contains":"são josé"');
+    expect(ridesRequest.request.params.get('_where')).toContain('"contains":"sede centro"');
+    ridesRequest.flush([
+      eligible,
+      another,
+      { ...eligible, id: 'same-driver', departureTime: new Date(2030, 4, 10, 22).toISOString() },
+      { ...eligible, id: 'full', status: 'full' },
+      { ...eligible, id: 'cancelled', status: 'cancelled' },
+      { ...eligible, id: 'completed', status: 'completed' },
+      { ...eligible, id: 'zero-seats', status: 'active', availableSeats: 0 },
+      { ...eligible, id: 'passed', departureTime: new Date(2030, 4, 9, 17).toISOString() },
+      { ...eligible, id: 'own', driverId: 'driver-1' },
+      { ...eligible, id: 'wrong-origin', origin: 'Pinhais' },
+      { ...eligible, id: 'wrong-destination', destination: 'UTFPR Neoville' },
+      { ...eligible, id: 'wrong-date', departureTime: new Date(2030, 4, 11, 0).toISOString() },
+    ]);
+
+    http.expectNone((request) => request.url === usersUrl);
+    const driversRequest = http.expectOne(
+      (request) => request.url === driverSummariesUrl && request.method === 'GET',
+    );
+    expect(driversRequest.request.params.getAll('id')).toEqual(['007', 'driver-3']);
+    expect(result()).toEqual({ status: 'loading' });
+    driversRequest.flush([
+      { id: '007', name: 'Gabriela Silva', ratingAverage: 4.9 },
+      { id: 'driver-3', name: 'Camila Rocha', ratingAverage: 4.8 },
+    ]);
+
+    expect(result()).toEqual({
+      status: 'loaded',
+      rides: [
+        { ...eligible, driver: { name: 'Gabriela Silva', ratingAverage: 4.9 } },
+        { ...another, driver: { name: 'Camila Rocha', ratingAverage: 4.8 } },
+        {
+          ...eligible,
+          id: 'same-driver',
+          departureTime: new Date(2030, 4, 10, 22).toISOString(),
+          driver: { name: 'Gabriela Silva', ratingAverage: 4.9 },
+        },
+      ],
+    });
+    http.verify();
+  });
+
+  it('agrupa mudanças rápidas, ignora filtros equivalentes e cancela a consulta anterior', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const { criteria, result } = startSearch(http);
+
+    TestBed.tick();
+    vi.advanceTimersByTime(debounceMs - 1);
+    http.expectNone((request) => request.url === ridesUrl);
+    criteria.set({ ...filters, origin: 'Batel' });
+    TestBed.tick();
+    vi.advanceTimersByTime(debounceMs - 1);
+    http.expectNone((request) => request.url === ridesUrl);
+
+    vi.advanceTimersByTime(1);
+    const first = http.expectOne((request) => request.url === ridesUrl);
+    expect(first.request.params.get('_where')).toContain('"contains":"batel"');
+
+    criteria.set({ ...filters, origin: '  BATEL ' });
+    runDebounce();
+    http.expectNone((request) => request.url === ridesUrl);
+    expect(first.cancelled).toBe(false);
+
+    criteria.set({ ...filters, origin: 'Portão' });
+    expect(result()).toEqual({ status: 'loading' });
+    runDebounce();
+    const second = http.expectOne((request) => request.url === ridesUrl);
+    expect(second.request.params.get('_where')).toContain('"contains":"portão"');
+    expect(first.cancelled).toBe(true);
+    second.flush([]);
+
+    http.expectNone((request) => request.url === driverSummariesUrl);
+    expect(result()).toEqual({ status: 'loaded', rides: [] });
+    http.verify();
+  });
+
+  it('oculta a resposta anterior durante a espera e aceita novas buscas após falha', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const { criteria, result } = startSearch(http);
+
+    runDebounce();
+    const first = http.expectOne((request) => request.url === ridesUrl);
+    criteria.set({ ...filters, origin: 'Batel' });
+    first.flush([]);
+    expect(result()).toEqual({ status: 'loading' });
+
+    runDebounce();
+    http.expectOne((request) => request.url === ridesUrl).error(new ProgressEvent('error'));
+    expect(result()).toEqual({ status: 'error' });
+
+    criteria.set({ ...filters, origin: 'Portão' });
+    expect(result()).toEqual({ status: 'loading' });
+    runDebounce();
+    http.expectOne((request) => request.url === ridesUrl).flush([]);
+    expect(result()).toEqual({ status: 'loaded', rides: [] });
     http.verify();
   });
 });

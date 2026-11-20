@@ -4,6 +4,19 @@ import { createApp } from 'json-server/lib/app.js';
 export function createServer(db) {
   const app = createApp(db);
   return createHttpServer(async (req, res) => {
+    const [pathname] = req.url.split('?', 1);
+    if (pathname === '/driver-summaries' && req.method === 'GET') {
+      const { searchParams } = new URL(req.url, 'http://localhost');
+      const ids = new Set(searchParams.getAll('id'));
+      const drivers = db.data.users
+        .filter(({ id }) => ids.has(id))
+        .map(({ id, name, ratingAverage }) => ({ id, name, ratingAverage }));
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify(drivers));
+      return;
+    }
+
     if (req.url !== '/registration-exists' || req.method !== 'POST') {
       app.attach(req, res);
       return;

@@ -1,8 +1,11 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { computed, inject, Injectable, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { computed, DestroyRef, inject, Injectable, Injector, Signal, signal } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
   catchError,
+  debounceTime,
+  distinctUntilChanged,
+  EMPTY,
   exhaustMap,
   map,
   merge,
@@ -15,7 +18,14 @@ import {
   throwError,
 } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { Ride, RideDraft, RideStatus } from '../models/ride.model';
+import {
+  Ride,
+  RideDraft,
+  RideDriverSummary,
+  RideSearchFilters,
+  RideStatus,
+  RideWithDriver,
+} from '../models/ride.model';
 import { AuthData, AuthenticatedUser } from './auth-data';
 import { ErrorNotice } from './error-notice';
 
@@ -40,6 +50,30 @@ export type UpdateRideResult =
 export type DriverRidesResult = { rides: Ride[] } | { unauthorized: true } | RideErrorResult;
 
 export type EditRideLoadResult = { ride: Ride } | { unauthorized: true } | RideErrorResult;
+
+export type RideSearchResult =
+  | { status: 'loading' }
+  | { status: 'loaded'; rides: RideWithDriver[] }
+  | { status: 'error' };
+
+interface RideSearchQuery extends RideSearchFilters {
+  passengerId: string;
+}
+
+const searchLoading = { status: 'loading' } as const;
+
+function normalizeSearchText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function sameSearch(left: RideSearchQuery | null, right: RideSearchQuery | null): boolean {
+  return (
+    left?.passengerId === right?.passengerId &&
+    left?.origin === right?.origin &&
+    left?.destination === right?.destination &&
+    left?.date === right?.date
+  );
+}
 
 @Injectable({ providedIn: 'root' })
 export class RideData {
@@ -221,6 +255,94 @@ export class RideData {
       ),
     ),
   );
+
+  searchAvailableRides(filters: Signal<RideSearchFilters>, injector: Injector): Signal<RideSearchResult> {
+    const destroyRef = injector.get(DestroyRef);
+    const query = computed<RideSearchQuery | null>(() => {
+      const passengerId = this.auth.currentUser()?.id;
+      if (!passengerId) return null;
+
+      const { origin, destination, date } = filters();
+      return {
+        passengerId,
+        origin: normalizeSearchText(origin),
+        destination: normalizeSearchText(destination),
+        date,
+      };
+    });
+
+    const emission = toSignal(
+      toObservable(query, { injector }).pipe(
+        debounceTime(250),
+        distinctUntilChanged(sameSearch),
+        switchMap((currentQuery) => {
+          // O debounce emite o último valor quando toObservable encerra ao destruir a tela.
+          const response: Observable<RideSearchResult> = currentQuery && !destroyRef.destroyed
+            ? this.loadAvailableRides(currentQuery)
+            : EMPTY;
+          return response.pipe(
+            startWith(searchLoading),
+            map((result) => ({ query: currentQuery, result })),
+          );
+        }),
+      ),
+      { injector },
+    );
+
+    // Durante o debounce, só uma resposta dos filtros atuais pode aparecer na tela.
+    return computed(() => {
+      const latest = emission();
+      return latest && sameSearch(latest.query, query()) ? latest.result : searchLoading;
+    });
+  }
+
+  private loadAvailableRides(query: RideSearchQuery): Observable<RideSearchResult> {
+    const { passengerId, origin, destination, date } = query;
+    const where = {
+      status: { eq: 'active' },
+      availableSeats: { gt: 0 },
+      driverId: { ne: passengerId },
+      ...(origin ? { origin: { contains: origin } } : {}),
+      ...(destination ? { destination: { contains: destination } } : {}),
+    };
+    const localDay = date ? new Date(`${date}T00:00:00`).toDateString() : '';
+
+    return this.http
+      .get<Ride[]>(`${environment.apiUrl}/rides`, { params: { _where: JSON.stringify(where) } })
+      .pipe(
+        map((rides) =>
+          rides.filter(
+            (ride) =>
+              this.canAcceptNewRequests(ride) &&
+              ride.driverId !== passengerId &&
+              normalizeSearchText(ride.origin).includes(origin) &&
+              normalizeSearchText(ride.destination).includes(destination) &&
+              (!localDay || new Date(ride.departureTime).toDateString() === localDay),
+          ),
+        ),
+        switchMap((rides) => this.enrichWithDrivers(rides)),
+        map((rides) => ({ status: 'loaded' as const, rides })),
+        catchError(() => of({ status: 'error' as const })),
+      );
+  }
+
+  private enrichWithDrivers(rides: Ride[]): Observable<RideWithDriver[]> {
+    if (!rides.length) return of([]);
+
+    const ids = [...new Set(rides.map((ride) => ride.driverId))];
+    return this.http
+      .get<(RideDriverSummary & { id: string })[]>(`${environment.apiUrl}/driver-summaries`, {
+        params: { id: ids },
+      })
+      .pipe(
+        map((summaries) => {
+          const drivers = new Map(
+            summaries.map(({ id, name, ratingAverage }) => [id, { name, ratingAverage }]),
+          );
+          return rides.map((ride) => ({ ...ride, driver: drivers.get(ride.driverId) ?? null }));
+        }),
+      );
+  }
 
   publish(draft: RideDraft): void {
     this.notice.message.set('');

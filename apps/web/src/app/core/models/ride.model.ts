@@ -1,3 +1,5 @@
+import type { User } from './user.model';
+
 export type RideStatus = 'active' | 'full' | 'completed' | 'cancelled';
 
 export interface RideDraft {
@@ -15,4 +17,16 @@ export interface Ride extends RideDraft {
   availableSeats: number;
   status: RideStatus;
   createdAt: string;
+}
+
+export interface RideSearchFilters {
+  origin: string;
+  destination: string;
+  date: string;
+}
+
+export type RideDriverSummary = Pick<User, 'name' | 'ratingAverage'>;
+
+export interface RideWithDriver extends Ride {
+  driver: RideDriverSummary | null;
 }

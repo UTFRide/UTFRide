@@ -21,7 +21,7 @@
   - Teste primeiro: verificar que `LocationData` consulta `GET` na API de Localidades do IBGE (municípios do PR) e expõe os nomes via `toSignal()`; simular erro de rede (status 0) e erro HTTP (500/404) e confirmar que o retorno degrada silenciosamente para lista vazia sem preencher `ErrorNotice`.
   - Arquivos previstos: `apps/web/src/app/core/services/location-data.ts`, `apps/web/src/app/core/services/location-data.spec.ts`, `apps/web/src/app/core/interceptors/error-interceptor.ts`, `apps/web/src/app/core/interceptors/error-interceptor.spec.ts`.
 
-- [ ] **Tarefa 3 — Implementar busca reativa de ofertas e componente de filtros com `model()`**
+- [x] **Tarefa 3 — Implementar busca reativa de ofertas e componente de filtros com `model()`**
   - Cobre: CA1, CA3 e CA11.
   - Teste primeiro: testar two-way data binding via `model()` (`[(origin)]`, `[(destination)]`, `[(date)]`) entre `RideFilters` e `RideList` com sugestões de localidades; testar pipeline `toObservable()` -> `debounceTime` -> `distinctUntilChanged` -> `switchMap` -> `toSignal()` em `RideData`, exibindo apenas ofertas `active`, futuras, com `availableSeats > 0` e `driverId !== currentUser.id`; testar estado vazio com ação de limpar filtros (CA3) e descarte dos filtros ao sair e retornar à tela (CA11).
   - Arquivos previstos: `apps/web/src/app/core/models/ride.model.ts`, `apps/web/src/app/core/services/ride-data.ts`, `apps/web/src/app/core/services/ride-data.spec.ts`, `apps/web/src/app/features/rides/ride-filters/` e `apps/web/src/app/features/rides/ride-list/`.
