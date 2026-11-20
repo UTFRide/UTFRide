@@ -1,6 +1,6 @@
 ---
 issue: 6
-status: rascunho
+status: aprovada
 ---
 
 # US03 — Pesquisa e Solicitação de Vaga em Carona
@@ -29,11 +29,11 @@ Alunos da UTFPR que dependem de transporte para chegar ao campus precisam encont
 
 ## Telas do protótipo
 
-| Tela                                              | Arquivo em `docs/prototipo/`                          |
-| ------------------------------------------------- | ----------------------------------------------------- |
-| Buscar Caronas (Home)                             | `models/4._buscar_caronas_home.html`                  |
-| Detalhe da Oferta e Solicitar Vaga (Bottom Sheet) | `models/5._detalhe_da_oferta_e_solicitar_vaga.html`   |
-| Minhas Viagens (Passageiro)                       | `models/8._minhas_viagens_passageiro.html`            |
+| Tela                                              | Arquivo em `docs/prototipo/`                        |
+| ------------------------------------------------- | --------------------------------------------------- |
+| Buscar Caronas (Home)                             | `models/4._buscar_caronas_home.html`                |
+| Detalhe da Oferta e Solicitar Vaga (Bottom Sheet) | `models/5._detalhe_da_oferta_e_solicitar_vaga.html` |
+| Minhas Viagens (Passageiro)                       | `models/8._minhas_viagens_passageiro.html`          |
 
 **Alinhamento com o PRD e `docs/architecture.md`:** o PRD prevalece sobre elementos demonstrativos do protótipo. A listagem de busca exibe apenas ofertas ativas com vagas disponíveis (o estado de carona lotada da RN05 aparece em `/rides/:id`). O painel de "Simulação de Cenários" da tela 5 é meramente demonstrativo do protótipo e não entra na aplicação. Campos ausentes do modelo de domínio (`docs/architecture.md` §5) — como mapa/distância estimada, curso/departamento, modelo/placa do veículo e fotos externas — não são inventados; o avatar utiliza iniciais (`InitialsPipe`) e as observações da oferta usam o campo `notes`. Na tela 8, a aba de viagens encerradas/concluídas é apenas de visualização, sem os botões de avaliação e denúncia (escopo de US05 e US06).
 
