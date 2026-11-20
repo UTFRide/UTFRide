@@ -6,6 +6,7 @@ import {
   defer,
   EMPTY,
   exhaustMap,
+  filter,
   finalize,
   forkJoin,
   map,
@@ -20,7 +21,7 @@ import {
 import { environment } from '../../../environments/environment';
 import { HANDLE_SESSION_EXPIRATION_ONLY } from '../interceptors/error-interceptor';
 import { Notification } from '../models/notification.model';
-import { Ride } from '../models/ride.model';
+import { Ride, RideDriverSummary } from '../models/ride.model';
 import { RideRequest } from '../models/ride-request.model';
 import { AuthData, AuthenticatedUser, PassengerAccessRestriction } from './auth-data';
 import { ErrorNotice } from './error-notice';
@@ -54,6 +55,8 @@ export type CancelPassengerRequestResult =
   | { status: 'not-owned' | 'invalid-state' }
   | PassengerOperationFailure;
 
+type PassengerCancellationStatus = CancelPassengerRequestResult['status'] | 'cancelling';
+
 export type LoadRideRequestsResult =
   | { requests: RideRequest[] }
   | { unauthorized: true }
@@ -64,6 +67,17 @@ export type PassengerRequestResult = (
   | { status: 'loaded'; request: RideRequest | null }
   | { status: 'error' }
 ) & { revalidatedRide?: Ride };
+
+export interface PassengerTripSummary extends Pick<RideRequest, 'id' | 'status'> {
+  ride: Pick<Ride, 'origin' | 'destination' | 'departureTime' | 'pricePerSeat' | 'status'> | null;
+  driver: RideDriverSummary | null;
+  whatsapp?: string;
+}
+
+type PassengerTripsResult =
+  | { status: 'loading' }
+  | { status: 'loaded'; trips: PassengerTripSummary[] }
+  | { status: 'error' };
 
 export type CancelRideResult =
   | { ride: Ride; cancelledRequests: RideRequest[]; notifications: Notification[] }
@@ -97,11 +111,38 @@ export class RideRequestData {
     AuthenticatedUser,
     Map<string, Observable<CreateRideRequestResult>>
   >();
+  private readonly passengerCancellations = new WeakMap<
+    AuthenticatedUser,
+    Map<string, Observable<CancelPassengerRequestResult>>
+  >();
+  private readonly passengerCancellationSubmissions = new Subject<string>();
+  private readonly passengerTripsRefresh = new Subject<AuthenticatedUser>();
   private readonly cancelSubmissions = new Subject<Ride>();
   private readonly resets = new Subject<void>();
   private readonly requestsState = signal<RideRequest[]>([]);
 
   readonly requests = computed(() => this.requestsState());
+
+  private readonly passengerCancellationResult = toSignal(
+    this.passengerCancellationSubmissions.pipe(
+      switchMap((id) => {
+        const passenger = this.auth.currentUser();
+        if (!passenger) return EMPTY;
+
+        return this.cancelPassengerRequest(id).pipe(
+          map((result): PassengerCancellationStatus => result.status),
+          startWith('cancelling' as const),
+          filter(() => passenger === this.auth.currentUser()),
+          map((status) => ({ id, passenger, status })),
+        );
+      }),
+    ),
+  );
+
+  readonly passengerCancellation = computed(() => {
+    const result = this.passengerCancellationResult();
+    return result?.passenger === this.auth.currentUser() ? result : undefined;
+  });
 
   readonly loadResult = toSignal<LoadRideRequestsResult | undefined>(
     this.resets.pipe(
@@ -255,6 +296,43 @@ export class RideRequestData {
     this.loadRideIds.next(rideId);
   }
 
+  loadPassengerTrips(injector: Injector): Signal<PassengerTripsResult> {
+    const emission = toSignal(
+      toObservable(this.auth.currentUser, { injector }).pipe(
+        switchMap((passenger) => {
+          if (!passenger) return of(null);
+
+          return this.passengerTripsRefresh.pipe(
+            filter((refreshedPassenger) => refreshedPassenger === passenger),
+            startWith(passenger),
+            switchMap(() =>
+              this.http
+                .get<PassengerTripSummary[]>(`${environment.apiUrl}/passenger-trip-summaries`, {
+                  params: { passengerId: passenger.id },
+                  context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
+                })
+                .pipe(
+                  map((trips): PassengerTripsResult => ({ status: 'loaded', trips })),
+                  catchError(() => of({ status: 'error' } as const)),
+                  startWith({ status: 'loading' } as const),
+                  map((result) => ({ passenger, result })),
+                ),
+            ),
+          );
+        }),
+      ),
+      { injector },
+    );
+
+    return computed(() => {
+      const passenger = this.auth.currentUser();
+      if (!passenger) return { status: 'error' };
+
+      const latest = emission();
+      return latest?.passenger === passenger ? latest.result : { status: 'loading' };
+    });
+  }
+
   loadPassengerRequest(rideId: Signal<string>, injector: Injector): Signal<PassengerRequestResult> {
     const query = computed(() => {
       const passenger = this.auth.currentUser();
@@ -355,25 +433,30 @@ export class RideRequestData {
       const failure = this.passengerAccessFailure(passenger);
       if (failure) return of(failure);
 
-      const context = new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true);
-      const url = `${environment.apiUrl}/ride_requests/${encodeURIComponent(requestId)}`;
-      return this.http.get<RideRequest>(url, { context }).pipe(
-        switchMap((request): Observable<CancelPassengerRequestResult> => {
-          const failure = this.passengerAccessFailure(passenger);
-          if (failure) return of(failure);
-          if (request.id !== requestId) return of({ status: 'request-error' });
-          if (request.passengerId !== passenger.id) return of({ status: 'not-owned' });
-          if (request.status !== 'pending') return of({ status: 'invalid-state' });
+      const cancellations =
+        this.passengerCancellations.get(passenger) ??
+        new Map<string, Observable<CancelPassengerRequestResult>>();
+      this.passengerCancellations.set(passenger, cancellations);
+      const inProgress = cancellations.get(requestId);
+      if (inProgress) return inProgress;
 
-          return this.http.patch<RideRequest>(url, { status: 'cancelled' }, { context }).pipe(
-            map((updated): CancelPassengerRequestResult =>
-              this.passengerAccessFailure(passenger) ?? { status: 'cancelled', request: updated },
-            ),
-          );
+      const cancellation = this.patchPendingPassengerRequest(requestId, passenger).pipe(
+        tap(({ status }) => {
+          if (status === 'cancelled' || status === 'invalid-state' || status === 'not-owned') {
+            this.passengerTripsRefresh.next(passenger);
+          }
         }),
-        catchError((error: unknown) => of(this.passengerOperationError(error, passenger))),
+        finalize(() => cancellations.delete(requestId)),
+        shareReplay({ bufferSize: 1, refCount: false }),
       );
+      cancellations.set(requestId, cancellation);
+      return cancellation;
     });
+  }
+
+  cancelPassengerTrip(requestId: string): void {
+    if (this.passengerCancellation()?.status === 'cancelling') return;
+    this.passengerCancellationSubmissions.next(requestId);
   }
 
   cancelRide(ride: Ride): void {
@@ -384,6 +467,51 @@ export class RideRequestData {
   reset(): void {
     this.requestsState.set([]);
     this.resets.next();
+  }
+
+  private patchPendingPassengerRequest(
+    requestId: string,
+    passenger: AuthenticatedUser,
+  ): Observable<CancelPassengerRequestResult> {
+    const context = new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true);
+    const url = `${environment.apiUrl}/ride_requests/${encodeURIComponent(requestId)}`;
+    return this.http.get<RideRequest>(url, { context }).pipe(
+      switchMap((request): Observable<CancelPassengerRequestResult> => {
+        const failure = this.passengerAccessFailure(passenger);
+        if (failure) return of(failure);
+        if (request.id !== requestId) return of({ status: 'request-error' });
+        if (request.passengerId !== passenger.id) return of({ status: 'not-owned' });
+        if (request.status !== 'pending') return of({ status: 'invalid-state' });
+
+        return this.http
+          .patch<RideRequest>(
+            url,
+            { status: 'cancelled' },
+            { context, params: { passengerId: passenger.id } },
+          )
+          .pipe(
+            map((updated): CancelPassengerRequestResult => {
+              const failure = this.passengerAccessFailure(passenger);
+              if (failure) return failure;
+              return updated?.id === requestId &&
+                updated.passengerId === passenger.id &&
+                updated.status === 'cancelled'
+                ? { status: 'cancelled', request: updated }
+                : { status: 'request-error' };
+            }),
+            catchError((error: unknown): Observable<CancelPassengerRequestResult> => {
+              const failure = this.passengerAccessFailure(passenger);
+              if (failure) return of(failure);
+              if (error instanceof HttpErrorResponse) {
+                if (error.status === 409) return of({ status: 'invalid-state' });
+                if (error.status === 403) return of({ status: 'not-owned' });
+              }
+              return of(this.passengerOperationError(error, passenger));
+            }),
+          );
+      }),
+      catchError((error: unknown) => of(this.passengerOperationError(error, passenger))),
+    );
   }
 
   private submitPassengerRequest(

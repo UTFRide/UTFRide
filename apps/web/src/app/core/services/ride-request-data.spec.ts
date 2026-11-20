@@ -1,4 +1,4 @@
-import { provideHttpClient } from '@angular/common/http';
+import { HttpRequest, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -55,6 +55,8 @@ describe('RideRequestData', () => {
     let data: RideRequestData;
     const requestId = pendingPassengerRequest.id;
     const requestUrl = `${requestsUrl}/${requestId}`;
+    const isCancellationPatch = (request: HttpRequest<unknown>) =>
+      request.method === 'PATCH' && request.url === requestUrl;
     const restrictedAccounts = [
       { account: 'conta bloqueada', reason: 'blocked-account', role: 'student', isBlocked: true },
       { account: 'perfil de suporte', reason: 'support-profile', role: 'support', isBlocked: false },
@@ -90,7 +92,7 @@ describe('RideRequestData', () => {
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
 
       http.expectNone({ method: 'GET', url: requestUrl });
-      http.expectNone({ method: 'PATCH', url: requestUrl });
+      http.expectNone(isCancellationPatch);
       await expect(result).resolves.toEqual({ status: 'restricted', reason: account.reason });
       http.verify();
     });
@@ -101,8 +103,9 @@ describe('RideRequestData', () => {
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
       http.expectOne({ method: 'GET', url: requestUrl }).flush(pendingPassengerRequest);
 
-      const patch = http.expectOne({ method: 'PATCH', url: requestUrl });
+      const patch = http.expectOne(isCancellationPatch);
       expect(patch.request.body).toEqual({ status: 'cancelled' });
+      expect(patch.request.params.get('passengerId')).toBe(pendingPassengerRequest.passengerId);
       const cancelled = { ...pendingPassengerRequest, status: 'cancelled' };
       patch.flush(cancelled);
 
@@ -116,7 +119,7 @@ describe('RideRequestData', () => {
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
       http.expectOne({ method: 'GET', url: requestUrl }).flush(pendingPassengerRequest);
 
-      http.expectNone({ method: 'PATCH', url: requestUrl });
+      http.expectNone(isCancellationPatch);
       await expect(result).resolves.toEqual({ status: 'not-owned' });
       http.verify();
     });
@@ -132,7 +135,7 @@ describe('RideRequestData', () => {
           status,
         });
 
-        http.expectNone({ method: 'PATCH', url: requestUrl });
+        http.expectNone(isCancellationPatch);
         await expect(result).resolves.toEqual({ status: 'invalid-state' });
         http.verify();
       },
@@ -159,10 +162,67 @@ describe('RideRequestData', () => {
       authenticate(http, pendingPassengerRequest.passengerId);
       read.flush(pendingPassengerRequest);
 
-      http.expectNone({ method: 'PATCH', url: requestUrl });
+      http.expectNone(isCancellationPatch);
       await expect(result).resolves.toEqual({ status: 'unauthenticated' });
       http.verify();
     });
+
+    it('mantém um único cancelamento por sessão e pedido após sair da tela', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      authenticate(http, pendingPassengerRequest.passengerId);
+      const first = data.cancelPassengerRequest(requestId).subscribe();
+      const read = http.expectOne({ method: 'GET', url: requestUrl });
+      const duplicate = firstValueFrom(data.cancelPassengerRequest(requestId));
+      http.expectNone({ method: 'GET', url: requestUrl });
+
+      first.unsubscribe();
+      read.flush(pendingPassengerRequest);
+      const patch = http.expectOne(isCancellationPatch);
+      expect(patch.request.params.get('passengerId')).toBe(pendingPassengerRequest.passengerId);
+      const cancelled = { ...pendingPassengerRequest, status: 'cancelled' };
+      patch.flush(cancelled);
+
+      await expect(duplicate).resolves.toEqual({ status: 'cancelled', request: cancelled });
+      http.verify();
+    });
+  });
+
+  it('consulta somente o resumo das viagens da sessão e descarta respostas de sessões anteriores', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const data = TestBed.inject(RideRequestData);
+    const auth = TestBed.inject(AuthData);
+    const url = `${environment.apiUrl}/passenger-trip-summaries`;
+    const result = data.loadPassengerTrips(TestBed.inject(Injector));
+    TestBed.tick();
+    http.expectNone(url);
+
+    authenticate(http, '007');
+    TestBed.tick();
+    const previous = http.expectOne((request) => request.url === url && request.method === 'GET');
+    expect(previous.request.params.keys()).toEqual(['passengerId']);
+    expect(previous.request.params.get('passengerId')).toBe('007');
+    expect(result()).toEqual({ status: 'loading' });
+
+    // A autenticação nova com o mesmo ID também invalida a resposta anterior.
+    auth.logout();
+    authenticate(http, '007');
+    expect(result()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    expect(previous.cancelled).toBe(true);
+    const trip = { id: '008', status: 'accepted', ride: null, driver: null };
+    http.expectOne((request) => request.url === url).flush([trip]);
+    expect(result()).toEqual({ status: 'loaded', trips: [trip] });
+
+    auth.logout();
+    expect(result()).toEqual({ status: 'error' });
+    authenticate(http, '7');
+    expect(result()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    const failure = http.expectOne((request) => request.url === url && request.method === 'GET');
+    expect(failure.request.params.get('passengerId')).toBe('7');
+    failure.error(new ProgressEvent('error'));
+    expect(result()).toEqual({ status: 'error' });
+    http.verify();
   });
 
   it('consulta só o par oferta e passageiro da sessão, preservando ids textuais e isolando o resultado', () => {

@@ -21,9 +21,7 @@ export const routes: Routes = [
       {
         path: 'my-trips',
         loadComponent: () =>
-          import('./features/rides/rides-layout/my-trips-placeholder').then(
-            (m) => m.MyTripsPlaceholder,
-          ),
+          import('./features/rides/my-trips/my-trips').then((m) => m.MyTrips),
       },
       {
         path: ':id',

@@ -41,7 +41,7 @@
   - Teste primeiro: verificar no `RideRequestData` e na interface que usuários com `isBlocked: true` (RN07) ou `role: 'support'` (RN08) são impedidos de solicitar vaga ou cancelar solicitação, com mensagem clara de restrição e sem disparo de `POST`/`PATCH` na API.
   - Arquivos previstos: `apps/web/src/app/core/services/auth-data.ts`, `apps/web/src/app/core/services/ride-request-data.ts`, `apps/web/src/app/core/services/ride-request-data.spec.ts` e `apps/web/src/app/features/rides/ride-detail/`.
 
-- [ ] **Tarefa 7 — Implementar Minhas Viagens (`/rides/my-trips`) e cancelamento voluntário**
+- [x] **Tarefa 7 — Implementar Minhas Viagens (`/rides/my-trips`) e cancelamento voluntário**
   - Cobre: CA9.
   - Teste primeiro: verificar exibição em `/rides/my-trips` apenas das solicitações do passageiro autenticado organizadas em Pendentes, Confirmadas e Histórico/Encerradas (sem formulário de avaliação), com badges condicionais via `@switch`; verificar exibição do WhatsApp do motorista exclusivamente nas Confirmadas (`accepted`); verificar cancelamento voluntário de solicitação `pending` atualizando status para `cancelled` via `PATCH` sem alterar pedidos de outros passageiros.
   - Arquivos previstos: `apps/web/src/app/core/services/ride-request-data.ts`, `apps/web/src/app/core/services/ride-request-data.spec.ts`, `apps/web/src/app/features/rides/my-trips/` e `apps/web/src/app/app.routes.ts`.

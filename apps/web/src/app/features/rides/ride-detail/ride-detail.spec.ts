@@ -111,6 +111,15 @@ function expectNoPost(http: HttpTestingController): void {
   http.expectNone({ method: 'POST', url: requestsUrl });
 }
 
+function flushTrips(http: HttpTestingController): void {
+  http
+    .expectOne({
+      method: 'GET',
+      url: `${environment.apiUrl}/passenger-trip-summaries?passengerId=008`,
+    })
+    .flush([]);
+}
+
 describe('Carregamento sob demanda de RideDetail', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -230,6 +239,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     expect(findButton(root, confirmLabel)).toBeDefined();
     await harness.navigateByUrl('/rides/my-trips');
+    flushTrips(http);
     await harness.navigateByUrl('/rides/007');
     flushDetail(http, ride);
     await harness.fixture.whenStable();
@@ -508,6 +518,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     http.expectNone(`${ridesUrl}/007`);
 
     await harness.navigateByUrl('/rides/my-trips');
+    flushTrips(http);
     await harness.navigateByUrl('/rides/007');
     flushRide(http, ride);
     http.expectNone((request) => request.url === requestsUrl);
@@ -532,6 +543,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     const revalidation = http.expectOne({ method: 'GET', url: `${ridesUrl}/007` });
 
     await harness.navigateByUrl('/rides/my-trips');
+    flushTrips(http);
     await harness.navigateByUrl('/rides/007');
     flushRide(http, ride);
     http.expectNone((request) => request.url === requestsUrl);
@@ -570,6 +582,7 @@ describe('Solicitação de vaga em RideDetail', () => {
         operation.flush(ride);
         operation = http.expectOne({ method: 'POST', url: requestsUrl });
         await harness.navigateByUrl('/rides/my-trips');
+        flushTrips(http);
       }
 
       operation.flush(null, { status: 401, statusText: 'Unauthorized' });

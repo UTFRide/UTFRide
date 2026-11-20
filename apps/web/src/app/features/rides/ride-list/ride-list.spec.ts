@@ -662,6 +662,12 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
 
     await harness.navigateByUrl('/rides/my-trips');
     expect(pending.cancelled).toBe(true);
+    http
+      .expectOne({
+        method: 'GET',
+        url: `${environment.apiUrl}/passenger-trip-summaries?passengerId=passenger-1`,
+      })
+      .flush([]);
     await harness.navigateByUrl('/rides');
     openFilters(root, harness);
     const returned = fields(root);
