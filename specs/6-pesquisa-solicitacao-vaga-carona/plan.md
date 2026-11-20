@@ -36,7 +36,7 @@
   - Teste primeiro: verificar carregamento sob demanda do painel de confirmação com `@defer (on interaction)` e `@placeholder`, e que desistir/sair sem confirmar não cria solicitação (CA11); verificar revalidação da oferta na fonte de dados e criação de solicitação `pending` atualizando a tela (CA5); verificar bloqueio para oferta lotada (`availableSeats <= 0` ou `full`, inclusive em esgotamento concorrente), cancelada, concluída ou passada (CA6); verificar bloqueio de duplicidade com `pending`/`accepted`, bloqueio de auto-solicitação pelo motorista e permissão de nova solicitação após `cancelled`/`rejected` (CA7). Remover o `// TODO #6` em `RideRequestData`.
   - Arquivos previstos: `apps/web/src/app/core/services/ride-request-data.ts`, `apps/web/src/app/core/services/ride-request-data.spec.ts` e `apps/web/src/app/features/rides/ride-detail/`.
 
-- [ ] **Tarefa 6 — Bloquear operações de passageiro para usuário bloqueado e perfil suporte**
+- [x] **Tarefa 6 — Bloquear operações de passageiro para usuário bloqueado e perfil suporte**
   - Cobre: CA8.
   - Teste primeiro: verificar no `RideRequestData` e na interface que usuários com `isBlocked: true` (RN07) ou `role: 'support'` (RN08) são impedidos de solicitar vaga ou cancelar solicitação, com mensagem clara de restrição e sem disparo de `POST`/`PATCH` na API.
   - Arquivos previstos: `apps/web/src/app/core/services/auth-data.ts`, `apps/web/src/app/core/services/ride-request-data.ts`, `apps/web/src/app/core/services/ride-request-data.spec.ts` e `apps/web/src/app/features/rides/ride-detail/`.

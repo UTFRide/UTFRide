@@ -3,10 +3,12 @@ import { DeferBlockBehavior, DeferBlockState, TestBed } from '@angular/core/test
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { firstValueFrom } from 'rxjs';
+import { vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { appConfig } from '../../../app.config';
 import { Ride } from '../../../core/models/ride.model';
 import { RideRequest } from '../../../core/models/ride-request.model';
+import { User } from '../../../core/models/user.model';
 import { AuthData } from '../../../core/services/auth-data';
 import { ErrorNotice } from '../../../core/services/error-notice';
 import { RideRequestData } from '../../../core/services/ride-request-data';
@@ -55,7 +57,7 @@ function button(root: HTMLElement, label: string): HTMLButtonElement {
   return element;
 }
 
-function authenticate(http: HttpTestingController, id = '008'): void {
+function authenticate(http: HttpTestingController, id = '008', role: User['role'] = 'student'): void {
   TestBed.inject(AuthData).login('passageiro@alunos.utfpr.edu.br', 'senha123');
   http
     .expectOne((request) => request.url === `${environment.apiUrl}/users`)
@@ -67,7 +69,7 @@ function authenticate(http: HttpTestingController, id = '008'): void {
         password: 'senha123',
         registrationNumber: '2026001',
         whatsapp: '41999998888',
-        role: 'student',
+        role,
         isBlocked: false,
         isEmailConfirmed: true,
         ratingAverage: 0,
@@ -148,6 +150,56 @@ describe('Solicitação de vaga em RideDetail', () => {
   });
 
   afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it.each([
+    {
+      role: 'student',
+      isBlocked: true,
+      message: 'Sua conta está bloqueada. Você não pode solicitar vagas nem cancelar solicitações.',
+    },
+    {
+      role: 'support',
+      isBlocked: false,
+      message: 'Perfis de suporte não podem solicitar vagas nem cancelar solicitações.',
+    },
+  ] as const)('exibe "$message" e impede abrir a solicitação', async ({ role, isBlocked, message }) => {
+    const http = TestBed.inject(HttpTestingController);
+    authenticate(http, '008', role);
+    if (isBlocked) {
+      const auth = TestBed.inject(AuthData);
+      // Login recusa contas bloqueadas. Simula uma sessão corrente já bloqueada.
+      vi.spyOn(auth, 'currentUser').mockReturnValue({ ...auth.currentUser()!, isBlocked });
+    }
+    const ride = makeRide();
+    const harness = await RouterTestingHarness.create(`/rides/${ride.id}`);
+    flushDetail(http, ride);
+    await harness.fixture.whenStable();
+    const root = harness.routeNativeElement!.querySelector('main')!;
+
+    expect(root.querySelector('[role="alert"]')?.textContent ?? '').toContain(message);
+    expect(findButton(root, openLabel)).toBeUndefined();
+    expect(root.querySelector(panelSelector)).toBeNull();
+    expectNoPost(http);
+    http.expectNone((request) => request.method === 'PATCH');
+  });
+
+  it('descarta o painel aberto ao trocar de passageiro antes da confirmação', async () => {
+    const { http, harness, root } = await enterDetail(makeRide());
+    button(root, openLabel).click();
+    await harness.fixture.whenStable();
+    const staleConfirmation = button(root, confirmLabel);
+
+    TestBed.inject(AuthData).logout();
+    authenticate(http, '009');
+    staleConfirmation.click();
+    await harness.fixture.whenStable();
+    expectRequestRead(http, '007', '009').flush([]);
+    await harness.fixture.whenStable();
+
+    expect(button(root, openLabel).getAttribute('aria-expanded')).toBe('false');
+    expect(root.querySelector(panelSelector)).toBeNull();
+    expectNoPost(http);
+  });
 
   it('carrega o painel na interação, permite desistir e descarta o painel ao sair', async () => {
     const ride = makeRide();

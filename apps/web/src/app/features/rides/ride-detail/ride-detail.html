@@ -182,7 +182,18 @@
             }
           }
         </p>
-        @if (requestBlockReason(); as reason) {
+        @if (passengerRestriction(); as restriction) {
+          <p role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">
+            @switch (restriction) {
+              @case ('blocked-account') {
+                Sua conta está bloqueada. Você não pode solicitar vagas nem cancelar solicitações.
+              }
+              @case ('support-profile') {
+                Perfis de suporte não podem solicitar vagas nem cancelar solicitações.
+              }
+            }
+          </p>
+        } @else if (requestBlockReason(); as reason) {
           <p role="status" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">
             @switch (reason) {
               @case ('full') {

@@ -79,10 +79,13 @@ export class RideDetail {
     return detail.status === 'loaded' ? this.requests.requestBlockReason(detail.ride) : null;
   });
 
+  protected readonly passengerRestriction = this.auth.passengerRestriction;
+
   protected readonly canRequest = computed(() => {
     const request = this.passengerRequest();
     return (
       this.selection().passenger !== null &&
+      this.passengerRestriction() === null &&
       request.status === 'loaded' &&
       !isActiveRideRequest(request.request) &&
       this.requestBlockReason() === null
