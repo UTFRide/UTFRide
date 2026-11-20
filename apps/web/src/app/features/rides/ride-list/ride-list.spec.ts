@@ -1,14 +1,27 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Component, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, Router } from '@angular/router';
+import { By } from '@angular/platform-browser';
+import { provideRouter, Router, RouterOutlet } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { environment } from '../../../../environments/environment';
+import { appConfig } from '../../../app.config';
 import { routes } from '../../../app.routes';
 import { Notification } from '../../../core/models/notification.model';
 import { AuthData } from '../../../core/services/auth-data';
 import { ErrorNotice } from '../../../core/services/error-notice';
+import { RidesLayout } from '../rides-layout/rides-layout';
+import { RideList } from './ride-list';
+
+@Component({ template: '' })
+class MyTripsTestPage {}
+
+@Component({ template: '' })
+class RideDetailTestPage {
+  readonly id = input.required<string>();
+}
 
 function authenticatePassenger(
   http: HttpTestingController,
@@ -32,6 +45,111 @@ function authenticatePassenger(
     },
   ]);
 }
+
+describe('Navegação aninhada de caronas (CA1 e CA4)', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [...appConfig.providers, provideHttpClientTesting()],
+    });
+  });
+
+  it('habilita o binding de parâmetros de rota em inputs na configuração da aplicação', () => {
+    expect(TestBed.inject(Router).componentInputBindingEnabled).toBe(true);
+  });
+
+  it('renderiza a busca no outlet do layout e navega sem colisão para Viagens e para o detalhe', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const router = TestBed.inject(Router);
+    // Exercita a árvore real de rotas com destinos de teste sem dependências de dados.
+    router.resetConfig(
+      router.config.map((route) => {
+        if (route.path !== 'rides') return route;
+
+        return {
+          ...route,
+          children: route.children?.map((child) => {
+            if (child.path === 'my-trips') {
+              return { ...child, loadComponent: () => MyTripsTestPage };
+            }
+            if (child.path === ':id') {
+              return { ...child, loadComponent: () => RideDetailTestPage };
+            }
+            return child;
+          }),
+        };
+      }),
+    );
+    authenticatePassenger(http, {
+      id: 'passenger-1',
+      name: 'Mariana Silva',
+      email: 'mariana@alunos.utfpr.edu.br',
+    });
+
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/rides', RidesLayout);
+    const layout = harness.routeNativeElement!;
+    const outlet = harness.routeDebugElement!
+      .query(By.directive(RouterOutlet))
+      .injector.get(RouterOutlet);
+    expect(outlet.activatedRoute.routeConfig?.path).toBe('');
+    expect(outlet.component).toBeInstanceOf(RideList);
+
+    const links = [...layout.querySelectorAll<HTMLAnchorElement>('nav[aria-label] a')];
+    expect(
+      links.map((link) => [
+        link.querySelector('span:not([aria-hidden])')?.textContent?.trim(),
+        link.getAttribute('href'),
+      ]),
+    ).toEqual([
+      ['Buscar', '/rides'],
+      ['Oferecer', '/driver/offer'],
+      ['Ofertas', '/driver/my-rides'],
+      ['Viagens', '/rides/my-trips'],
+    ]);
+    expect([...layout.querySelectorAll('nav [aria-current="page"]')]).toEqual([links[0]]);
+
+    links[3].click();
+    await harness.fixture.whenStable();
+    expect(router.url).toBe('/rides/my-trips');
+    expect(outlet.activatedRoute.routeConfig?.path).toBe('my-trips');
+    expect(outlet.component).toBeInstanceOf(MyTripsTestPage);
+    expect(harness.routeNativeElement).toBe(layout);
+    expect([...layout.querySelectorAll('nav [aria-current="page"]')]).toEqual([links[3]]);
+
+    await harness.navigateByUrl('/rides/ride-123');
+    expect(outlet.activatedRoute.routeConfig?.path).toBe(':id');
+    const detail = outlet.component as RideDetailTestPage;
+    expect(detail).toBeInstanceOf(RideDetailTestPage);
+    expect(detail.id()).toBe('ride-123');
+    expect(harness.routeNativeElement).toBe(layout);
+    expect([...layout.querySelectorAll('nav [aria-current="page"]')]).toEqual([links[0]]);
+    http.verify();
+  });
+
+  it.each(['/rides', '/rides/my-trips', '/rides/ride-123'])(
+    'redireciona o visitante de %s para /login',
+    async (url) => {
+      await RouterTestingHarness.create(url);
+      expect(TestBed.inject(Router).url).toBe('/login');
+    },
+  );
+
+  it('volta a verificar a autenticação ao trocar de rota filha', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const auth = TestBed.inject(AuthData);
+    authenticatePassenger(http, {
+      id: 'passenger-1',
+      name: 'Mariana Silva',
+      email: 'mariana@alunos.utfpr.edu.br',
+    });
+
+    const harness = await RouterTestingHarness.create('/rides');
+    auth.logout();
+    await harness.navigateByUrl('/rides/my-trips');
+    expect(TestBed.inject(Router).url).toBe('/login');
+    http.verify();
+  });
+});
 
 describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
   it('posiciona o sino à esquerda da foto do aluno no cabeçalho e exibe apenas os avisos do passageiro autenticado (confirmado ou anteriormente pendente), sem exibir avisos de outro aluno', async () => {

@@ -11,7 +11,7 @@
 
 ## Tarefas
 
-- [ ] **Tarefa 1 — Configurar roteamento aninhado (`RidesLayout`) e `withComponentInputBinding()`**
+- [x] **Tarefa 1 — Configurar roteamento aninhado (`RidesLayout`) e `withComponentInputBinding()`**
   - Cobre: CA1 (estrutura aninhada com `children` e `<router-outlet />`) e CA4 (habilitação de `withComponentInputBinding()`).
   - Teste primeiro: verificar que `appConfig` registra `withComponentInputBinding()`, que `/rides` renderiza `RidesLayout` com cabeçalho (sino de notificações à esquerda do avatar com iniciais), `<router-outlet />` e navegação inferior (Buscar, Oferecer, Ofertas, Viagens), que as rotas filhas `''`, `'my-trips'` e `':id'` resolvem sem colisão e sob `authGuard`, mantendo os testes de avisos internos da US02 íntegros.
   - Arquivos previstos: `apps/web/src/app/app.config.ts`, `apps/web/src/app/app.routes.ts`, `apps/web/src/app/features/rides/rides-layout/` e `apps/web/src/app/features/rides/ride-list/ride-list.spec.ts`.
