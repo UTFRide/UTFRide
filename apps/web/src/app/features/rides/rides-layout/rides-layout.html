@@ -1,6 +1,8 @@
-<div class="flex min-h-screen flex-col bg-superficie font-sans text-texto">
+<div
+  class="flex min-h-screen flex-col bg-superficie font-sans text-texto [--rides-header-height:calc(var(--spacing-space-xl)+var(--spacing-space-lg)+var(--spacing-space-md)*2+1px)] [--rides-navigation-height:calc(var(--spacing-space-xl)*2+var(--spacing-space-lg)+1px)]"
+>
   <header
-    class="sticky top-0 z-40 border-b border-borda bg-superficie/95 px-space-lg py-space-md backdrop-blur"
+    class="sticky top-0 z-40 border-b border-borda bg-superficie/95 px-space-lg py-space-md backdrop-blur max-lg:h-(--rides-header-height) max-lg:shrink-0"
   >
     <div class="mx-auto flex max-w-2xl items-center justify-between">
       <a routerLink="/rides" class="flex items-center gap-space-sm">
@@ -31,9 +33,9 @@
 
   <nav
     aria-label="Navegação principal"
-    class="sticky bottom-0 z-40 w-full border-t border-borda bg-superficie/95 backdrop-blur"
+    class="sticky bottom-0 z-40 h-(--rides-navigation-height) w-full shrink-0 border-t border-borda bg-superficie/95 backdrop-blur"
   >
-    <div class="mx-auto flex h-16 max-w-2xl items-center justify-around px-space-xs">
+    <div class="mx-auto flex h-full max-w-2xl items-center justify-around px-space-xs">
       <a
         routerLink="/rides"
         [attr.aria-current]="tripsLink.isActive ? null : 'page'"

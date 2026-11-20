@@ -31,7 +31,7 @@
   - Teste primeiro: verificar navegação de `/rides` para `/rides/:id` recebendo o parâmetro automaticamente em `id = input.required<string>()`, carregando oferta e dados públicos do motorista (nome, iniciais, nota média, trajeto, data/horário, `notes`, vagas e `pricePerSeat | currencyBrl`), e exibindo o estado condicional da oferta/solicitação com `@switch` (`@case` / `@default`).
   - Arquivos previstos: `apps/web/src/app/core/services/ride-data.ts`, `apps/web/src/app/core/services/ride-data.spec.ts`, `apps/web/src/app/features/rides/ride-detail/` e `apps/web/src/app/app.routes.ts`.
 
-- [ ] **Tarefa 5 — Implementar solicitação de vaga com `@defer` e validações de negócio (RN04/RN05)**
+- [x] **Tarefa 5 — Implementar solicitação de vaga com `@defer` e validações de negócio (RN04/RN05)**
   - Cobre: CA5, CA6, CA7 e CA11.
   - Teste primeiro: verificar carregamento sob demanda do painel de confirmação com `@defer (on interaction)` e `@placeholder`, e que desistir/sair sem confirmar não cria solicitação (CA11); verificar revalidação da oferta na fonte de dados e criação de solicitação `pending` atualizando a tela (CA5); verificar bloqueio para oferta lotada (`availableSeats <= 0` ou `full`, inclusive em esgotamento concorrente), cancelada, concluída ou passada (CA6); verificar bloqueio de duplicidade com `pending`/`accepted`, bloqueio de auto-solicitação pelo motorista e permissão de nova solicitação após `cancelled`/`rejected` (CA7). Remover o `// TODO #6` em `RideRequestData`.
   - Arquivos previstos: `apps/web/src/app/core/services/ride-request-data.ts`, `apps/web/src/app/core/services/ride-request-data.spec.ts` e `apps/web/src/app/features/rides/ride-detail/`.

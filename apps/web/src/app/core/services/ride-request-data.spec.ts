@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
 import { vi } from 'vitest';
 import { environment } from '../../../environments/environment';
 import { Notification } from '../models/notification.model';
@@ -76,6 +77,7 @@ describe('RideRequestData', () => {
       latest,
       { ...latest, id: 'other-ride', rideId: '7', createdAt: '2026-01-06T08:00:00.000Z' },
       { ...latest, id: 'own-older', status: 'cancelled', createdAt: '2026-01-02T08:00:00.000Z' },
+      { ...latest, id: 'own-newer', status: 'rejected', createdAt: '2026-01-04T08:00:00.000Z' },
     ]);
     expect(result()).toEqual({ status: 'loaded', request: latest });
     expect(requestData.requests()).toEqual([]);
@@ -93,6 +95,29 @@ describe('RideRequestData', () => {
     });
     newRead.flush([latest]);
     expect(result()).toEqual({ status: 'loaded', request: null });
+    http.verify();
+  });
+
+  it('exibe a solicitação mais recente quando só há pedidos encerrados para a oferta', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const requestData = TestBed.inject(RideRequestData);
+    authenticateStudent(http, '007');
+    const result = requestData.loadPassengerRequest(signal('008'), TestBed.inject(Injector));
+    TestBed.tick();
+
+    const latest: RideRequest = {
+      id: 'request-2',
+      rideId: '008',
+      passengerId: '007',
+      status: 'cancelled',
+      createdAt: '2026-02-02T08:00:00.000Z',
+    };
+    http.expectOne((request) => request.url === `${environment.apiUrl}/ride_requests`).flush([
+      { ...latest, id: 'request-1', status: 'rejected', createdAt: '2026-02-01T08:00:00.000Z' },
+      latest,
+    ]);
+
+    expect(result()).toEqual({ status: 'loaded', request: latest });
     http.verify();
   });
 
@@ -203,9 +228,10 @@ describe('RideRequestData', () => {
     http.verify();
   });
 
-  it('impede que uma oferta esgotada aceite novos pedidos', () => {
+  it('impede que uma oferta esgotada aceite novos pedidos', async () => {
     const requestData = TestBed.inject(RideRequestData);
     const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http, 'passenger-novo');
 
     const exhaustedRide: Ride = {
       id: 'ride-full',
@@ -220,9 +246,13 @@ describe('RideRequestData', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
     };
 
-    requestData.createRequest(exhaustedRide, 'passenger-novo');
-    http.expectNone(`${environment.apiUrl}/ride_requests`);
-    expect(requestData.createResult()).toEqual({ rideFull: true });
+    const result = firstValueFrom(requestData.createRequest(exhaustedRide.id));
+    http
+      .expectOne((request) => request.method === 'GET' && request.url === `${environment.apiUrl}/ride_requests`)
+      .flush([]);
+    http.expectOne({ method: 'GET', url: `${environment.apiUrl}/rides/ride-full` }).flush(exhaustedRide);
+    http.expectNone({ method: 'POST', url: `${environment.apiUrl}/ride_requests` });
+    expect(await result).toEqual({ status: 'unavailable', reason: 'full', ride: exhaustedRide });
     http.verify();
   });
 

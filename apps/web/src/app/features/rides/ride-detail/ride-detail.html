@@ -26,6 +26,8 @@
     }
     @case ('loaded') {
       @let ride = result.ride;
+      @let rideStatus = ride.status === 'active' && ride.availableSeats <= 0 ? 'full' : ride.status;
+      @let availableSeats = rideStatus === 'full' ? 0 : ride.availableSeats;
       <section
         aria-label="Trajeto e valor"
         class="space-y-space-lg rounded-xl border border-borda bg-superficie p-space-lg shadow-sm"
@@ -43,16 +45,16 @@
           </h2>
           <div class="flex flex-col items-start gap-space-xs sm:items-end">
             <p class="rounded-full bg-fundo px-space-md py-space-xs text-label-md">
-              {{ ride.availableSeats }} de {{ ride.totalSeats }}
+              {{ availableSeats }} de {{ ride.totalSeats }}
               {{ ride.totalSeats === 1 ? 'vaga livre' : 'vagas livres' }}
             </p>
             <p
               class="rounded-full px-space-md py-space-xs text-label-pill"
-              [class.bg-sucesso-fundo]="ride.status === 'active'"
-              [class.bg-perigo-fundo]="ride.status === 'full' || ride.status === 'cancelled'"
-              [class.bg-fundo]="ride.status === 'completed'"
+              [class.bg-sucesso-fundo]="rideStatus === 'active'"
+              [class.bg-perigo-fundo]="rideStatus === 'full' || rideStatus === 'cancelled'"
+              [class.bg-fundo]="rideStatus === 'completed'"
             >
-              @switch (ride.status) {
+              @switch (rideStatus) {
                 @case ('active') {
                   Carona ativa
                 }
@@ -180,6 +182,61 @@
             }
           }
         </p>
+        @if (requestBlockReason(); as reason) {
+          <p role="status" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">
+            @switch (reason) {
+              @case ('full') {
+                Todas as vagas desta carona foram preenchidas.
+              }
+              @case ('cancelled') {
+                A carona foi cancelada.
+              }
+              @case ('completed') {
+                A carona já foi concluída.
+              }
+              @case ('departed') {
+                O horário desta carona já passou.
+              }
+              @case ('own-ride') {
+                Você é o autor desta oferta.
+              }
+            }
+          </p>
+        }
+        @if (canRequest()) {
+          <button
+            #requestTrigger
+            type="button"
+            class="w-full rounded-xl bg-primaria px-space-lg py-space-md text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:bg-desabilitado disabled:text-texto-suave"
+            aria-controls="ride-request-confirmation"
+            [attr.aria-expanded]="confirmationOpen()"
+            [disabled]="submitting()"
+            (click)="toggleConfirmation()"
+          >
+            Solicitar vaga
+          </button>
+          <div id="ride-request-confirmation">
+            @defer (on interaction(requestTrigger)) {
+              @if (confirmationOpen()) {
+                <app-ride-request-confirm-panel
+                  [ride]="ride"
+                  [submitting]="submitting()"
+                  [errorMessage]="confirmationError()"
+                  (confirmed)="confirmRequest()"
+                  (dismissed)="dismissConfirmation(requestTrigger)"
+                />
+              }
+            } @placeholder {
+              @if (confirmationOpen()) {
+                <p role="status" class="text-body-md">Carregando confirmação…</p>
+              }
+            } @error {
+              <p role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">
+                Não foi possível abrir o painel de confirmação.
+              </p>
+            }
+          </div>
+        }
       </section>
     }
   }

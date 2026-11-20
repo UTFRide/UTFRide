@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
@@ -176,9 +177,19 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     http.expectNone(`${environment.apiUrl}/ride_requests/req-5`);
 
     // Verificar que a oferta esgotada não aceita novos pedidos
-    requestData.createRequest(updatedFullRide, 'Novo Passageiro');
-    http.expectNone(`${environment.apiUrl}/ride_requests`);
-    expect(requestData.createResult()).toEqual({ rideFull: true });
+    const auth = TestBed.inject(AuthData);
+    const driver = auth.currentUser()!;
+    auth.login(driver.email, 'senha123');
+    http.expectOne((req) => req.url === `${environment.apiUrl}/users`).flush([
+      { ...driver, id: 'passenger-1', name: 'Novo Passageiro', password: 'senha123' },
+    ]);
+    const result = firstValueFrom(requestData.createRequest(updatedFullRide.id));
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === `${environment.apiUrl}/ride_requests`)
+      .flush([]);
+    http.expectOne({ method: 'GET', url: `${environment.apiUrl}/rides/ride-1` }).flush(updatedFullRide);
+    http.expectNone({ method: 'POST', url: `${environment.apiUrl}/ride_requests` });
+    expect(await result).toEqual({ status: 'unavailable', reason: 'full', ride: updatedFullRide });
 
     http.verify();
   });
