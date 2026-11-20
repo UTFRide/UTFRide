@@ -16,7 +16,7 @@
   - Teste primeiro: verificar que `appConfig` registra `withComponentInputBinding()`, que `/rides` renderiza `RidesLayout` com cabeçalho (sino de notificações à esquerda do avatar com iniciais), `<router-outlet />` e navegação inferior (Buscar, Oferecer, Ofertas, Viagens), que as rotas filhas `''`, `'my-trips'` e `':id'` resolvem sem colisão e sob `authGuard`, mantendo os testes de avisos internos da US02 íntegros.
   - Arquivos previstos: `apps/web/src/app/app.config.ts`, `apps/web/src/app/app.routes.ts`, `apps/web/src/app/features/rides/rides-layout/` e `apps/web/src/app/features/rides/ride-list/ride-list.spec.ts`.
 
-- [ ] **Tarefa 2 — Integrar API pública de localidades do IBGE com fallback silencioso**
+- [x] **Tarefa 2 — Integrar API pública de localidades do IBGE com fallback silencioso**
   - Cobre: CA2.
   - Teste primeiro: verificar que `LocationData` consulta `GET` na API de Localidades do IBGE (municípios do PR) e expõe os nomes via `toSignal()`; simular erro de rede (status 0) e erro HTTP (500/404) e confirmar que o retorno degrada silenciosamente para lista vazia sem preencher `ErrorNotice`.
   - Arquivos previstos: `apps/web/src/app/core/services/location-data.ts`, `apps/web/src/app/core/services/location-data.spec.ts`, `apps/web/src/app/core/interceptors/error-interceptor.ts`, `apps/web/src/app/core/interceptors/error-interceptor.spec.ts`.
