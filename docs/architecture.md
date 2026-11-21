@@ -35,10 +35,12 @@ A persistência do UTFRide evolui em duas fases bem demarcadas:
 
 ### 2.1 Fase MVP (Entrega 2) — `json-server`
 - **Arquivo de Dados:** `apps/api/db.json`
-- **Execução:** `npm run server` na raiz do repositório; o servidor disponibiliza a API na porta 3000 e inclui o endpoint de verificação de duplicidade usado pelo cadastro.
+- **Execução** — `npm run server` na raiz do repositório disponibiliza a API na porta 3000. `apps/api/start.mjs` carrega o arquivo de dados e inicia `createServer` de `apps/api/server.mjs`.
 - **Camada de Integração:** `HttpClient` do Angular consumindo `http://localhost:3000/`.
 - **Coleções Mapeadas:** `users`, `rides`, `ride_requests`, `ride_searches`, `reviews`, `reports`, `notifications`.
 - **Cadastro e autenticação simulados:** o servidor do MVP acrescenta `POST /registration-exists` para consultar duplicidade de e-mail ou matrícula. A conta usa `password`, `whatsapp` e `isEmailConfirmed` em `users`; a sessão fica em memória no frontend. Essa simulação não fornece autenticação segura e não substitui o Supabase Auth da fase completa.
+- **Consulta de caronas** — `GET /driver-summaries?id=…` retorna apenas identificador, nome e avaliação média do motorista. `GET /passenger-trip-summaries?passengerId=…` filtra pelo ID textual da sessão simulada e projeta os resumos de Minhas Viagens. O WhatsApp é incluído apenas nas solicitações aceitas de caronas ativas ou lotadas. O parâmetro `passengerId` identifica o filtro da consulta. A verificação da identidade no servidor está prevista na fase Supabase.
+- **Gravações de solicitações** — `POST /ride_requests` confere a existência de pedido pendente ou aceito para o mesmo par oferta e passageiro dentro da fila de gravação. `PATCH /ride_requests/:id?passengerId=…` verifica a titularidade e o estado pendente no momento do cancelamento voluntário. A fila é compartilhada pela instância do servidor e publica o novo estado depois que a gravação do JSON é concluída.
 
 ### 2.2 Fase Completa (Entrega 3) — Backend-as-a-Service (**Supabase**)
 - **Banco de Dados:** PostgreSQL hospedado no Supabase.
@@ -72,13 +74,25 @@ Todas as rotas de funcionalidades utilizam carregamento sob demanda (`loadCompon
 | `/` | `LandingComponent` | Público (Visitante) | Apresentação institucional do UTFRide |
 | `/login` | `LoginComponent` | Público | Autenticação de aluno/suporte |
 | `/register` | `RegisterComponent` | Público | Cadastro com e-mail institucional |
-| `/rides` | `RideListComponent` | Autenticado | Busca e listagem de ofertas de carona |
-| `/rides/:id` | `RideDetailComponent` | Autenticado | Detalhes da carona e solicitação de vaga |
+| `/rides` | `RidesLayout` → `RideList` | Autenticado | Busca reativa de ofertas de carona e sugestões de municípios do IBGE |
+| `/rides/my-trips` | `RidesLayout` → `MyTrips` | Autenticado | Solicitações do passageiro, contato nas confirmadas e cancelamento das pendentes |
+| `/rides/:id` | `RidesLayout` → `RideDetail` | Autenticado | Dados da oferta e painel de confirmação de vaga carregado sob demanda |
 | `/driver/offer` | `OfferRideComponent` | Autenticado (Motorista) | Formulário de publicação e edição de oferta de carona (`?rideId=`) |
 | `/driver/my-rides`| `MyRidesComponent` | Autenticado (Motorista) | Gestão de ofertas e solicitações de passageiros |
 | `/searches` | `RideSearchesComponent`| Autenticado (Passageiro) | Mural de pedidos ativos de carona |
 | `/reviews/history`| `ReviewHistoryComponent`| Autenticado | Histórico de viagens e formulário de avaliação |
 | `/support` | `SupportDashboardComponent`| Restrito (`support`) | Moderação de denúncias e suspensão de contas |
+
+`RidesLayout` mantém o cabeçalho e a navegação inferior. O `router-outlet` exibe a rota filha. O `authGuard` protege a entrada e a ativação das filhas. `my-trips` é declarada antes de `:id` para que o endereço fixo seja resolvido primeiro.
+
+```mermaid
+flowchart TD
+    Layout["/rides · RidesLayout"] --> Outlet["router-outlet"]
+    Outlet --> List["/rides · RideList"]
+    Outlet --> Trips["/rides/my-trips · MyTrips"]
+    Outlet --> Detail["/rides/:id · RideDetail"]
+    Detail -->|Solicitar vaga| Confirm["RideRequestConfirmPanel · @defer"]
+```
 
 ### 3.3 Functional Guards
 - `authGuard`: Impede que visitantes não autenticados acessem rotas protegidas (redireciona para `/login`).
@@ -93,6 +107,9 @@ Todas as rotas de funcionalidades utilizam carregamento sob demanda (`loadCompon
 UTFRide/
 ├── apps/
 │   ├── api/                     # API / Persistência do MVP
+│   │   ├── start.mjs            # Inicialização do servidor local
+│   │   ├── server.mjs           # Rotas do MVP e fila de gravações
+│   │   ├── server.test.mjs      # Testes HTTP da API
 │   │   └── db.json              # Mock de dados para o json-server
 │   └── web/                     # Frontend Angular 22 Standalone
 │       ├── public/              # Assets estáticos, manifest.webmanifest e ícones PWA
@@ -110,6 +127,12 @@ UTFRide/
 │           │   ├── features/    # Módulos por domínio de negócio (Rotas Lazy)
 │           │   │   ├── auth/
 │           │   │   ├── rides/
+│           │   │   │   ├── rides-layout/
+│           │   │   │   ├── ride-list/
+│           │   │   │   ├── ride-filters/
+│           │   │   │   ├── ride-detail/
+│           │   │   │   │   └── ride-request-confirm-panel/
+│           │   │   │   └── my-trips/
 │           │   │   ├── driver/
 │           │   │   ├── searches/
 │           │   │   ├── reviews/
@@ -274,6 +297,7 @@ Todos os comandos são padronizados e executados a partir da raiz do monorepo:
 | `npm run dev` / `npm start` | Inicia o servidor frontend Angular local (`http://localhost:4200`) |
 | `npm run server` | Inicia a API REST simulada com `json-server` (`http://localhost:3000`) |
 | `npm test` | Executa a suíte **Vitest** pelo Angular CLI (`ng test --watch=false` no workspace `apps/web`) |
+| `node --test apps/api/server.test.mjs` | Executa os testes HTTP do MVP com dados isolados e porta local temporária |
 | `npm run lint` | Executa a validação estática de código com **ESLint** |
 | `npm run build` | Gera o build de produção otimizado em `apps/web/dist` |
 

@@ -85,7 +85,9 @@ A confirmação de e-mail é simulada automaticamente, sem envio de e-mail; cons
 
 ---
 
-### US03 — Pesquisa e Solicitação de Vaga em Carona · `Must Have` · `M` · Status: `Ready`
+<a name="us03--pesquisa-e-solicitação-de-vaga-em-carona--must-have--m--status-ready"></a>
+
+### US03 — Pesquisa e Solicitação de Vaga em Carona · `Must Have` · `M` · Status: `Implementada` (aguardando auditoria final e PR)
 
 **Como** passageiro, **eu quero** pesquisar caronas disponíveis e solicitar uma vaga, **para que** eu possa encontrar uma carona compatível com meu trajeto e horário.
 
