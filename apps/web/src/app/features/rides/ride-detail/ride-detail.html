@@ -20,9 +20,32 @@
       </p>
     }
     @case ('error') {
-      <p role="alert" class="rounded-xl bg-perigo-fundo p-space-lg text-body-md">
-        Não foi possível carregar os detalhes da carona.
-      </p>
+      <div class="space-y-space-md rounded-xl bg-perigo-fundo p-space-lg">
+        <p role="alert" class="text-body-md">
+          Não foi possível carregar os detalhes da carona.
+          @if (result.connectionError) {
+            Falha de conexão. Verifique sua internet.
+          }
+        </p>
+        <button
+          type="button"
+          class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+          (click)="retryDetail()"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    }
+    @case ('not-found') {
+      <div class="space-y-space-md rounded-xl bg-perigo-fundo p-space-lg">
+        <p role="alert" class="text-body-md">Oferta de carona não encontrada.</p>
+        <a
+          routerLink="/rides"
+          class="inline-block rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+        >
+          Voltar para a busca
+        </a>
+      </div>
     }
     @case ('loaded') {
       @let ride = result.ride;
@@ -149,15 +172,31 @@
       >
         <h2 id="passenger-request-heading" class="text-headline-sm">Sua solicitação</h2>
         @let requestResult = passengerRequest();
-        <p role="status" class="text-body-md">
-          @switch (requestResult.status) {
-            @case ('loading') {
-              Consultando sua solicitação…
-            }
-            @case ('error') {
-              Não foi possível consultar sua solicitação.
-            }
-            @case ('loaded') {
+        @switch (requestResult.status) {
+          @case ('loading') {
+            <p role="status" class="text-body-md">Consultando sua solicitação…</p>
+          }
+          @case ('error') {
+            <p role="alert" class="text-body-md">
+              @if (requestResult.rideRefreshError) {
+                Não foi possível atualizar a disponibilidade da carona.
+              } @else {
+                Não foi possível consultar sua solicitação.
+              }
+              @if (requestResult.connectionError) {
+                Falha de conexão. Verifique sua internet.
+              }
+            </p>
+            <button
+              type="button"
+              class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+              (click)="retryRequestRead()"
+            >
+              Tentar novamente
+            </button>
+          }
+          @case ('loaded') {
+            <p role="status" class="text-body-md">
               @switch (requestResult.request?.status) {
                 @case ('pending') {
                   Aguardando aprovação do motorista
@@ -179,9 +218,9 @@
                   }
                 }
               }
-            }
+            </p>
           }
-        </p>
+        }
         @if (passengerRestriction(); as restriction) {
           <p role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">
             @switch (restriction) {

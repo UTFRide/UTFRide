@@ -11,7 +11,7 @@ import { RideFilters } from '../ride-filters/ride-filters';
   templateUrl: './ride-list.html',
 })
 export class RideList {
-  private readonly injector = inject(Injector);
+  private readonly retry = signal(0);
 
   protected readonly origin = signal('');
   protected readonly destination = signal('');
@@ -24,7 +24,15 @@ export class RideList {
     date: this.date(),
   }));
 
-  protected readonly search = inject(RideData).searchAvailableRides(this.filters, this.injector);
+  protected readonly search = inject(RideData).searchAvailableRides(
+    this.filters,
+    inject(Injector),
+    this.retry,
+  );
+
+  protected retrySearch(): void {
+    if (this.search().status === 'error') this.retry.update((attempt) => attempt + 1);
+  }
 
   protected toggleFilters(): void {
     this.filtersOpen.update((open) => !open);

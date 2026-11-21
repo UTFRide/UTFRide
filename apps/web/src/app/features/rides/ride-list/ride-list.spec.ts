@@ -806,4 +806,73 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     expect(root.textContent).toContain('Nenhuma carona');
     http.verify();
   });
+
+  it.each([
+    [0, 'Falha de conexão'],
+    [404, 'Não foi possível carregar as caronas'],
+  ] as const)('repete a busca com os mesmos filtros após a falha %s (CA10)', async (status, message) => {
+    const { harness, root, http } = await openSearch();
+    openFilters(root, harness);
+    locationRequest(http).flush([]);
+    const { origin, destination, date } = fields(root);
+    enterValue(origin, 'Batel');
+    enterValue(destination, 'UTFPR');
+    enterValue(date, '2030-05-10');
+    const first = searchRequest(http);
+    if (status === 0) first.error(new ProgressEvent('error'));
+    else first.flush(null, { status, statusText: 'Not Found' });
+    harness.detectChanges();
+
+    expect(root.querySelector('main [role="alert"]')?.textContent).toContain(message);
+    expect(root.textContent).not.toContain('Nenhuma carona');
+    const retry = [...root.querySelectorAll('button')].find(
+      (item) => item.textContent?.trim() === 'Tentar novamente',
+    );
+    expect(retry).toBeDefined();
+    retry!.click();
+    retry!.click();
+    expect(root.querySelector<HTMLInputElement>('#ride-search-date')?.value).toBe('2030-05-10');
+    const repeated = searchRequest(http);
+    expect(repeated.request.params.get('_where')).toBe(first.request.params.get('_where'));
+    harness.detectChanges();
+    expect(root.textContent).toContain('Buscando caronas');
+    expect(root.querySelector('main [role="alert"]')).toBeNull();
+    repeated.flush([]);
+    harness.detectChanges();
+    expect(root.textContent).toContain('Nenhuma carona');
+    http.expectNone((request) => request.method !== 'GET');
+    http.verify();
+  });
+
+  it('restringe a busca e o tratamento de sessão expirada à sessão que solicitou os dados', async () => {
+    const { harness, http } = await openSearch();
+    const accepted = searchRequest(http);
+    const auth = TestBed.inject(AuthData);
+    auth.logout();
+    authenticatePassenger(http, {
+      id: 'passenger-1',
+      name: 'Mariana Silva',
+      email: 'mariana@alunos.utfpr.edu.br',
+    });
+    accepted.flush([{
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(2030, 4, 10, 8).toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 7,
+      status: 'active',
+      createdAt: new Date(2030, 4, 9, 16).toISOString(),
+    } satisfies Ride]);
+    http.expectNone((request) => request.url === driverSummariesUrl);
+
+    searchRequest(http).flush(null, { status: 401, statusText: 'Unauthorized' });
+    await harness.fixture.whenStable();
+    expect(auth.currentUser()).toBeNull();
+    expect(TestBed.inject(Router).url).toBe('/login');
+    expect(TestBed.inject(ErrorNotice).message()).toContain('Faça login');
+    http.verify();
+  });
 });

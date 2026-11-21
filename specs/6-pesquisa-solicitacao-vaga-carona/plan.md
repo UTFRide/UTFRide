@@ -46,7 +46,7 @@
   - Teste primeiro: verificar exibição em `/rides/my-trips` apenas das solicitações do passageiro autenticado organizadas em Pendentes, Confirmadas e Histórico/Encerradas (sem formulário de avaliação), com badges condicionais via `@switch`; verificar exibição do WhatsApp do motorista exclusivamente nas Confirmadas (`accepted`); verificar cancelamento voluntário de solicitação `pending` atualizando status para `cancelled` via `PATCH` sem alterar pedidos de outros passageiros.
   - Arquivos previstos: `apps/web/src/app/core/services/ride-request-data.ts`, `apps/web/src/app/core/services/ride-request-data.spec.ts`, `apps/web/src/app/features/rides/my-trips/` e `apps/web/src/app/app.routes.ts`.
 
-- [ ] **Tarefa 8 — Tratar falhas de conexão e oferta inexistente (404) no fluxo do passageiro**
+- [x] **Tarefa 8 — Tratar falhas de conexão e oferta inexistente (404) no fluxo do passageiro**
   - Cobre: CA10.
   - Teste primeiro: simular falha de conexão (status 0) e erro HTTP/404 ao carregar a busca `/rides`, o detalhe `/rides/:id` (inclusive `:id` inexistente), o envio da solicitação, o carregamento de `/rides/my-trips` e o cancelamento de solicitação pendente; verificar aviso claro, ausência de duplicidade e funcionamento das ações de tentar novamente ou retornar à busca.
   - Arquivos previstos: `apps/web/src/app/features/rides/ride-list/`, `apps/web/src/app/features/rides/ride-detail/`, `apps/web/src/app/features/rides/my-trips/` e serviços em `apps/web/src/app/core/services/`.

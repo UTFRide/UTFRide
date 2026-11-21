@@ -41,6 +41,7 @@ describe('RideData', () => {
 
   it('carrega a oferta por id com o resumo público e cancela a leitura anterior ao trocar o id', () => {
     const http = TestBed.inject(HttpTestingController);
+    authenticateStudent(http);
     const id = signal('ride-old');
     const detail = TestBed.inject(RideData).loadRideDetail(id, TestBed.inject(Injector));
     expect(detail()).toEqual({ status: 'loading' });
@@ -81,7 +82,7 @@ describe('RideData', () => {
     http
       .expectOne({ url: `${environment.apiUrl}/rides/ride-offline`, method: 'GET' })
       .error(new ProgressEvent('error'));
-    expect(detail()).toEqual({ status: 'error' });
+    expect(detail()).toEqual({ status: 'error', connectionError: true });
     http.verify();
   });
 
@@ -993,7 +994,7 @@ describe('Busca de ofertas em RideData (CA1)', () => {
 
     runDebounce();
     http.expectOne((request) => request.url === ridesUrl).error(new ProgressEvent('error'));
-    expect(result()).toEqual({ status: 'error' });
+    expect(result()).toEqual({ status: 'error', connectionError: true });
 
     criteria.set({ ...filters, origin: 'Portão' });
     expect(result()).toEqual({ status: 'loading' });

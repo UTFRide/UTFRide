@@ -195,7 +195,12 @@ async function startRequestTransitionsServer(t, adapter = new Memory()) {
     headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:4200' },
     body: JSON.stringify(body),
   });
-  return { base, server, get, patch, initial, pending, other, offer };
+  const post = (body, path = 'ride_requests') => fetch(`${base}/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:4200' },
+    body: JSON.stringify(body),
+  });
+  return { base, server, get, patch, post, initial, pending, other, offer };
 }
 
 test('recusa cancelamento depois de confirmação concorrente e preserva a vaga ocupada', async (t) => {
@@ -344,4 +349,86 @@ test('decide a corrida entre cancelamento e motorista depois da primeira gravaç
       });
     }
   }
+});
+
+test('impede um segundo POST para o mesmo par após a primeira gravação em fila', async (t) => {
+  const adapter = createControlledAdapter();
+  const { server, get, post, initial } = await startRequestTransitionsServer(t, adapter);
+  const body = { passengerId: '002', rideId: '008', status: 'pending', createdAt: '2030-01-01' };
+  const { started, succeed } = adapter.pauseNextWrite();
+  const first = post(body);
+  await started;
+
+  const arrived = once(server, 'request');
+  const second = post(body, 'ride_requests/?retry=1');
+  let visible;
+  try {
+    const [request] = await arrived;
+    assert.equal(request.method, 'POST');
+    if (!request.readableEnded) await once(request, 'end');
+    visible = await get('ride_requests');
+  } finally {
+    succeed();
+  }
+  const [saved, conflict] = await Promise.all([first, second]);
+  assert.equal(saved.status, 201);
+  const created = await saved.json();
+  assert.equal(typeof created.id, 'string');
+  assert.deepEqual(created, { ...body, id: created.id });
+  assert.equal(conflict.status, 409);
+  assert.equal(conflict.headers.get('access-control-allow-origin'), '*');
+  assert.equal((await conflict.json()).code, 'active-ride-request');
+  assert.deepEqual(visible, initial.ride_requests);
+  assert.deepEqual(await get('ride_requests'), [...initial.ride_requests, created]);
+  assert.deepEqual(await adapter.read(), { ...initial, ride_requests: [...initial.ride_requests, created] });
+});
+
+test('isola os dois IDs textuais e permite reenviar após cancelamento ou rejeição', async (t) => {
+  const { get, patch, post, pending, other } = await startRequestTransitionsServer(t);
+  const body = { passengerId: '009', rideId: '008', status: 'pending', createdAt: '2030-01-01' };
+  assert.equal((await post(body)).status, 409);
+  assert.equal((await post(body, '%72ide_requests')).status, 409);
+  assert.equal((await patch(`ride_requests/${pending.id}`, { status: 'accepted' })).status, 200);
+  assert.equal((await post(body)).status, 409);
+
+  const distinctPassenger = await post({ ...body, passengerId: '09' });
+  assert.equal(distinctPassenger.status, 201);
+  const distinctRide = await post({ ...body, rideId: '8' });
+  assert.equal(distinctRide.status, 201);
+  const [differentPassenger, differentRide] = await Promise.all([distinctPassenger.json(), distinctRide.json()]);
+  for (const [previous, status] of [[differentPassenger, 'cancelled'], [differentRide, 'rejected']]) {
+    assert.equal((await patch(`ride_requests/${previous.id}`, { status })).status, 200);
+    const newRequest = await post({ ...body, passengerId: previous.passengerId, rideId: previous.rideId });
+    assert.equal(newRequest.status, 201);
+    assert.notEqual((await newRequest.json()).id, previous.id);
+  }
+  const requests = await get('ride_requests');
+  assert.deepEqual(requests.find(({ id }) => id === other.id), other);
+  assert.equal(requests.length, 6);
+});
+
+test('permite que o segundo POST grave quando o primeiro falha na persistência', async (t) => {
+  const adapter = createControlledAdapter();
+  const { server, get, post, initial } = await startRequestTransitionsServer(t, adapter);
+  const body = { passengerId: '002', rideId: '008', status: 'pending', createdAt: '2030-01-01' };
+  const { started, fail } = adapter.pauseNextWrite();
+  const first = post(body);
+  await started;
+  const arrived = once(server, 'request');
+  const second = post(body);
+  try {
+    const [request] = await arrived;
+    assert.equal(request.method, 'POST');
+    if (!request.readableEnded) await once(request, 'end');
+    assert.deepEqual(await get('ride_requests'), initial.ride_requests);
+  } finally {
+    fail();
+  }
+
+  const [failed, saved] = await Promise.all([first, second]);
+  assert.equal(failed.status, 500);
+  assert.equal(saved.status, 201);
+  const created = await saved.json();
+  assert.deepEqual(await get('ride_requests'), [...initial.ride_requests, created]);
+  assert.deepEqual(await adapter.read(), { ...initial, ride_requests: [...initial.ride_requests, created] });
 });

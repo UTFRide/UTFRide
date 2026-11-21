@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, Injector, input, linkedSignal } from '@angular/core';
+import { Component, computed, inject, Injector, input, linkedSignal, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { map, startWith, Subject, switchMap } from 'rxjs';
@@ -21,8 +21,18 @@ export class RideDetail {
   private readonly injector = inject(Injector);
   private readonly auth = inject(AuthData);
   private readonly requests = inject(RideRequestData);
-  private readonly loadedDetail = inject(RideData).loadRideDetail(this.id, this.injector);
-  private readonly loadedRequest = this.requests.loadPassengerRequest(this.id, this.injector);
+  private readonly detailRetry = signal(0);
+  private readonly requestRetry = signal(0);
+  private readonly loadedDetail = inject(RideData).loadRideDetail(
+    this.id,
+    this.injector,
+    this.detailRetry,
+  );
+  private readonly loadedRequest = this.requests.loadPassengerRequest(
+    this.id,
+    this.injector,
+    this.requestRetry,
+  );
   private readonly selection = computed(() => ({
     rideId: this.id(),
     passenger: this.auth.currentUser(),
@@ -32,10 +42,12 @@ export class RideDetail {
     this.confirmations.pipe(
       switchMap(() => {
         const selection = this.selection();
-        return this.requests.createRequest(selection.rideId).pipe(
-          startWith({ status: 'submitting' } as const),
-          map((result) => ({ selection, result })),
-        );
+        return this.requests
+          .createRequest(selection.rideId, () => selection === this.selection())
+          .pipe(
+            startWith({ status: 'submitting' } as const),
+            map((result) => ({ selection, result })),
+          );
       }),
     ),
   );
@@ -55,10 +67,14 @@ export class RideDetail {
   protected readonly detail = computed(() => {
     const detail = this.loadedDetail();
     const confirmation = this.currentConfirmation();
+    const request = this.loadedRequest();
+    if (confirmation?.status === 'ride-not-found' || request.status === 'ride-not-found') {
+      return { status: 'not-found' } as const;
+    }
     const ride =
       confirmation && 'ride' in confirmation
         ? confirmation.ride
-        : this.loadedRequest().revalidatedRide;
+        : request.revalidatedRide;
     if (detail.status !== 'loaded' || !ride) return detail;
 
     return {
@@ -93,15 +109,32 @@ export class RideDetail {
   });
 
   protected readonly confirmationError = computed(() => {
-    switch (this.currentConfirmation()?.status) {
+    const confirmation = this.currentConfirmation();
+    switch (confirmation?.status) {
       case 'connection-error':
         return 'Falha de conexão ao enviar a solicitação.';
       case 'request-error':
         return 'Não foi possível enviar a solicitação.';
+      case 'duplicate-check-error':
+        return confirmation.connectionError
+          ? 'Falha de conexão ao consultar o estado da solicitação existente.'
+          : 'Não foi possível consultar o estado da solicitação existente.';
+      case 'ride-refresh-error':
+        return confirmation.connectionError
+          ? 'Falha de conexão ao atualizar a disponibilidade da carona.'
+          : 'Não foi possível atualizar a disponibilidade da carona.';
       default:
         return '';
     }
   });
+
+  protected retryDetail(): void {
+    if (this.detail().status === 'error') this.detailRetry.update((attempt) => attempt + 1);
+  }
+
+  protected retryRequestRead(): void {
+    if (this.passengerRequest().status === 'error') this.requestRetry.update((attempt) => attempt + 1);
+  }
 
   protected toggleConfirmation(): void {
     if (this.canRequest() && !this.submitting()) this.confirmationOpen.update((open) => !open);

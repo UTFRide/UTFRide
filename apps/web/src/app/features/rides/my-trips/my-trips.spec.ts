@@ -206,7 +206,7 @@ describe('Minhas Viagens (CA9)', () => {
     expect(root.querySelector('[role="alert"]')?.textContent).toContain(
       'Falha de conexão ao cancelar a solicitação',
     );
-    expect(findButton(root, 'Cancelar solicitação de vaga').disabled).toBe(false);
+    expect(findButton(root, 'Cancelar solicitação de vaga').disabled).toBe(true);
   });
 
   it('mantém o cancelamento ao sair e atualiza a lista ao voltar antes da conclusão', async () => {
@@ -345,5 +345,73 @@ describe('Minhas Viagens (CA9)', () => {
     expect(root.querySelector('a[href="/rides"]')?.textContent).toContain(
       'Explorar caronas disponíveis',
     );
+  });
+
+  it.each([
+    [0, 'Falha de conexão'],
+    [404, 'Não foi possível carregar suas viagens'],
+  ] as const)('recupera Minhas Viagens após uma falha %s (CA10)', async (status, message) => {
+    authenticate(http);
+    const { root, read, harness } = await openTrips();
+    if (status === 0) read.error(new ProgressEvent('error'));
+    else read.flush(null, { status, statusText: 'Not Found' });
+    harness.detectChanges();
+
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain(message);
+    expect(root.textContent).not.toContain('Nenhuma viagem encontrada');
+    expect(root.querySelector('a[href="/rides"]')?.textContent)
+      .toContain('Voltar para a busca');
+    findButton(root, 'Tentar novamente').click();
+    harness.detectChanges();
+    expect(root.textContent).toContain('Carregando suas viagens');
+    expect(root.querySelector('[role="alert"]')).toBeNull();
+    const retried = http.expectOne({ method: 'GET', url: `${summariesUrl}?passengerId=007` });
+    retried.flush([pendingTrip]);
+    harness.detectChanges();
+    expect(root.querySelector('article')?.textContent).toContain('Aguardando resposta do motorista');
+    http.expectNone((request) => request.method !== 'GET');
+  });
+
+  it.each([
+    [0, 'cancelled', 'Falha de conexão'],
+    [404, 'pending', 'Não foi possível cancelar a solicitação'],
+  ] as const)('consulta o estado real após falha %s no cancelamento (CA10)', async (status, actual, message) => {
+    authenticate(http);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { root, read, harness } = await openTrips();
+    read.flush([pendingTrip]);
+    harness.detectChanges();
+    findButton(root, 'Cancelar solicitação de vaga').click();
+    http.expectOne({ method: 'GET', url: `${requestsUrl}/009` }).flush(pending);
+    const patch = expectCancellationPatch(http);
+    if (status === 0) patch.error(new ProgressEvent('error'));
+    else patch.flush(null, { status, statusText: 'Not Found' });
+    harness.detectChanges();
+
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain(message);
+    expect(findButton(root, 'Cancelar solicitação de vaga').disabled).toBe(true);
+    const refresh = findButton(root, 'Atualizar viagens');
+    refresh.click();
+    refresh.click();
+    http.expectNone((request) => request.url.startsWith(requestsUrl));
+    http.expectOne({ method: 'GET', url: `${summariesUrl}?passengerId=007` })
+      .flush([{ ...pendingTrip, status: actual }]);
+    harness.detectChanges();
+    expect(root.querySelector('[role="alert"]')).toBeNull();
+    if (actual === 'cancelled') {
+      findButton(root, 'Histórico').click();
+      harness.detectChanges();
+      expect(root.querySelector('article')?.textContent).toContain('Solicitação cancelada');
+      expect(confirm).toHaveBeenCalledOnce();
+      http.expectNone((request) => request.url.startsWith(requestsUrl));
+    } else {
+      findButton(root, 'Cancelar solicitação de vaga').click();
+      http.expectNone((request) => request.method === 'PATCH');
+      http.expectOne({ method: 'GET', url: `${requestsUrl}/009` }).flush(pending);
+      expectCancellationPatch(http).flush({ ...pending, status: 'cancelled' });
+      http.expectOne({ method: 'GET', url: `${summariesUrl}?passengerId=007` })
+        .flush([{ ...pendingTrip, status: 'cancelled' }]);
+      expect(confirm).toHaveBeenCalledTimes(2);
+    }
   });
 });

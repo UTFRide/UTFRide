@@ -26,7 +26,13 @@ import { RideRequest } from '../models/ride-request.model';
 import { AuthData, AuthenticatedUser, PassengerAccessRestriction } from './auth-data';
 import { ErrorNotice } from './error-notice';
 import { NotificationData } from './notification-data';
-import { RideData, RideErrorResult, RideUnauthorizedError } from './ride-data';
+import {
+  passengerLoadError,
+  PassengerLoadError,
+  RideData,
+  RideErrorResult,
+  RideUnauthorizedError,
+} from './ride-data';
 
 export type RideRequestDecisionResult =
   | { request: RideRequest; ride: Ride }
@@ -45,9 +51,18 @@ type PassengerOperationFailure =
   | PassengerAccessFailure
   | { status: 'connection-error' | 'request-error' };
 
+type PassengerRequestRecoveryResult =
+  | { status: 'duplicate'; request: RideRequest; ride: Ride }
+  | { status: 'recovered'; request: RideRequest | null; ride: Ride }
+  | { status: 'ride-not-found' }
+  | { status: 'ride-refresh-error'; connectionError?: true }
+  | { status: 'duplicate-check-error'; connectionError?: true }
+  | PassengerAccessFailure;
+
 export type CreateRideRequestResult =
-  | { status: 'created' | 'duplicate'; request: RideRequest; ride: Ride }
+  | { status: 'created'; request: RideRequest; ride: Ride }
   | { status: 'unavailable'; reason: RideRequestBlockReason; ride: Ride }
+  | PassengerRequestRecoveryResult
   | PassengerOperationFailure;
 
 export type CancelPassengerRequestResult =
@@ -64,8 +79,9 @@ export type LoadRideRequestsResult =
 
 export type PassengerRequestResult = (
   | { status: 'loading' }
+  | { status: 'ride-not-found' }
   | { status: 'loaded'; request: RideRequest | null }
-  | { status: 'error' }
+  | (PassengerLoadError & { rideRefreshError?: true })
 ) & { revalidatedRide?: Ride };
 
 export interface PassengerTripSummary extends Pick<RideRequest, 'id' | 'status'> {
@@ -77,7 +93,7 @@ export interface PassengerTripSummary extends Pick<RideRequest, 'id' | 'status'>
 type PassengerTripsResult =
   | { status: 'loading' }
   | { status: 'loaded'; trips: PassengerTripSummary[] }
-  | { status: 'error' };
+  | PassengerLoadError;
 
 export type CancelRideResult =
   | { ride: Ride; cancelledRequests: RideRequest[]; notifications: Notification[] }
@@ -111,6 +127,7 @@ export class RideRequestData {
     AuthenticatedUser,
     Map<string, Observable<CreateRideRequestResult>>
   >();
+  private readonly passengerRequestRecoveries = new WeakMap<AuthenticatedUser, Set<string>>();
   private readonly passengerCancellations = new WeakMap<
     AuthenticatedUser,
     Map<string, Observable<CancelPassengerRequestResult>>
@@ -313,7 +330,7 @@ export class RideRequestData {
                 })
                 .pipe(
                   map((trips): PassengerTripsResult => ({ status: 'loaded', trips })),
-                  catchError(() => of({ status: 'error' } as const)),
+                  catchError((error: unknown) => of(passengerLoadError(error))),
                   startWith({ status: 'loading' } as const),
                   map((result) => ({ passenger, result })),
                 ),
@@ -333,30 +350,53 @@ export class RideRequestData {
     });
   }
 
-  loadPassengerRequest(rideId: Signal<string>, injector: Injector): Signal<PassengerRequestResult> {
+  refreshPassengerTrips(): void {
+    const passenger = this.auth.currentUser();
+    if (passenger) this.passengerTripsRefresh.next(passenger);
+  }
+
+  loadPassengerRequest(
+    rideId: Signal<string>,
+    injector: Injector,
+    retry?: Signal<number>,
+  ): Signal<PassengerRequestResult> {
     const query = computed(() => {
       const passenger = this.auth.currentUser();
-      return passenger ? { rideId: rideId(), passenger } : null;
+      return passenger ? { rideId: rideId(), passenger, attempt: retry?.() } : null;
     });
     const emission = toSignal(
       toObservable(query, { injector }).pipe(
         switchMap((selection) => {
-          if (!selection) return EMPTY;
+          if (!selection || selection !== query()) return EMPTY;
 
-          const read = this.fetchPassengerRequest(selection.rideId, selection.passenger.id).pipe(
-            map((request): PassengerRequestResult => ({ status: 'loaded', request })),
-            catchError(() => of(passengerRequestError)),
-          );
-          const creation = this.passengerCreations.get(selection.passenger)?.get(selection.rideId);
+          const { rideId, passenger } = selection;
+          const isCurrent = () => selection === query();
+          const read = defer((): Observable<PassengerRequestResult> => {
+            if (!isCurrent()) return EMPTY;
+            if (this.passengerRequestRecoveries.get(passenger)?.has(rideId)) {
+              return this.recoverPassengerRequest(rideId, passenger, isCurrent).pipe(
+                filter(isCurrent),
+                tap((result) => this.finishPassengerRequestRecovery(rideId, passenger, result)),
+                map((result) => this.passengerRequestReadResult(result)),
+              );
+            }
+            return this.fetchPassengerRequest(rideId, passenger.id).pipe(
+              map((request): PassengerRequestResult => ({ status: 'loaded', request })),
+              catchError((error: unknown) => of(passengerLoadError(error))),
+            );
+          });
+          const creation = this.passengerCreations.get(passenger)?.get(rideId);
           const current = creation
             ? creation.pipe(
                 switchMap((result) => {
-                  if ('request' in result) {
-                    return of<PassengerRequestResult>({
-                      status: 'loaded',
-                      request: result.request,
-                      revalidatedRide: result.ride,
-                    });
+                  if (!isCurrent()) return EMPTY;
+                  if (
+                    'request' in result ||
+                    result.status === 'ride-not-found' ||
+                    result.status === 'ride-refresh-error'
+                  ) {
+                    this.finishPassengerRequestRecovery(rideId, passenger, result);
+                    return of(this.passengerRequestReadResult(result));
                   }
                   if (result.status === 'unavailable') {
                     return read.pipe(
@@ -370,6 +410,7 @@ export class RideRequestData {
             : read;
           return current.pipe(
             startWith(passengerRequestLoading),
+            filter(isCurrent),
             map((result) => ({ selection, result })),
           );
         }),
@@ -403,7 +444,10 @@ export class RideRequestData {
     return this.rideData.canAcceptNewRequests(ride) ? null : 'departed';
   }
 
-  createRequest(rideId: string): Observable<CreateRideRequestResult> {
+  createRequest(
+    rideId: string,
+    isCurrent: () => boolean = () => true,
+  ): Observable<CreateRideRequestResult> {
     const passenger = this.auth.currentUser();
     return defer(() => {
       if (!passenger) return of(unauthenticated);
@@ -413,16 +457,21 @@ export class RideRequestData {
       const creations =
         this.passengerCreations.get(passenger) ?? new Map<string, Observable<CreateRideRequestResult>>();
       this.passengerCreations.set(passenger, creations);
-      const inProgress = creations.get(rideId);
-      if (inProgress) return inProgress;
+      let creation = creations.get(rideId);
+      if (!creation) {
+        creation = this.submitPassengerRequest(rideId, passenger).pipe(
+          finalize(() => creations.delete(rideId)),
+          // Uma confirmação em andamento pode terminar enquanto o passageiro navega.
+          shareReplay({ bufferSize: 1, refCount: false }),
+        );
+        creations.set(rideId, creation);
+      }
 
-      const creation = this.submitPassengerRequest(rideId, passenger).pipe(
-        finalize(() => creations.delete(rideId)),
-        // Uma confirmação em andamento pode terminar enquanto o passageiro navega.
-        shareReplay({ bufferSize: 1, refCount: false }),
+      return creation.pipe(
+        tap((result) => {
+          if (isCurrent()) this.finishPassengerRequestRecovery(rideId, passenger, result);
+        }),
       );
-      creations.set(rideId, creation);
-      return creation;
     });
   }
 
@@ -518,45 +567,169 @@ export class RideRequestData {
     rideId: string,
     passenger: AuthenticatedUser,
   ): Observable<CreateRideRequestResult> {
-    const context = new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true);
+    if (this.passengerRequestRecoveries.get(passenger)?.has(rideId)) {
+      return this.recoverPassengerRequest(rideId, passenger);
+    }
 
-    return this.fetchPassengerRequest(rideId, passenger.id, context).pipe(
+    return this.fetchPassengerRequest(rideId, passenger.id).pipe(
       switchMap((previous) => {
         const failure = this.passengerAccessFailure(passenger);
         if (failure) return of(failure);
+        if (!isActiveRideRequest(previous)) return this.submitNewPassengerRequest(rideId, passenger);
 
-        return this.http
-          .get<Ride>(`${environment.apiUrl}/rides/${encodeURIComponent(rideId)}`, { context })
-          .pipe(
-            switchMap((ride): Observable<CreateRideRequestResult> => {
-              const failure = this.passengerAccessFailure(passenger);
-              if (failure) return of(failure);
-              if (ride.id !== rideId) return of({ status: 'request-error' });
-              if (previous && isActiveRideRequest(previous)) {
-                return of({ status: 'duplicate', ride, request: previous });
-              }
-
-              const reason = this.requestBlockReason(ride);
-              if (reason) return of({ status: 'unavailable', reason, ride });
-
-              const body = {
-                rideId,
-                passengerId: passenger.id,
-                status: 'pending' as const,
-                createdAt: new Date().toISOString(),
-              };
-              return this.http
-                .post<RideRequest>(`${environment.apiUrl}/ride_requests`, body, { context })
-                .pipe(
-                  map((request): CreateRideRequestResult =>
-                    this.passengerAccessFailure(passenger) ?? { status: 'created', ride, request },
-                  ),
-                );
-            }),
-          );
+        this.rememberPassengerRequestRecovery(rideId, passenger);
+        return this.readRideAfterRequest(rideId, passenger, previous);
       }),
       catchError((error: unknown) => of(this.passengerOperationError(error, passenger))),
     );
+  }
+
+  private submitNewPassengerRequest(
+    rideId: string,
+    passenger: AuthenticatedUser,
+  ): Observable<CreateRideRequestResult> {
+    return this.rideData.readPassengerRide(rideId).pipe(
+      switchMap((offer): Observable<CreateRideRequestResult> => {
+        const failure = this.passengerAccessFailure(passenger);
+        if (failure) return of(failure);
+        if (!offer) return of({ status: 'ride-not-found' });
+        const { ride } = offer;
+        if (ride.id !== rideId) return of({ status: 'request-error' });
+
+        const reason = this.requestBlockReason(ride);
+        if (reason) return of({ status: 'unavailable', reason, ride });
+        return this.postPassengerRequest(ride, passenger);
+      }),
+    );
+  }
+
+  private postPassengerRequest(
+    ride: Ride,
+    passenger: AuthenticatedUser,
+  ): Observable<CreateRideRequestResult> {
+    const body = {
+      rideId: ride.id,
+      passengerId: passenger.id,
+      status: 'pending' as const,
+      createdAt: new Date().toISOString(),
+    };
+    return this.http
+      .post<RideRequest>(`${environment.apiUrl}/ride_requests`, body, {
+        context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
+      })
+      .pipe(
+        map((request): CreateRideRequestResult =>
+          this.passengerAccessFailure(passenger) ?? { status: 'created', ride, request },
+        ),
+        catchError((error: unknown) => {
+          const failure = this.passengerAccessFailure(passenger);
+          if (failure) return of(failure);
+          if (
+            error instanceof HttpErrorResponse &&
+            error.status === 409 &&
+            error.error?.code === 'active-ride-request'
+          ) {
+            this.rememberPassengerRequestRecovery(ride.id, passenger);
+            return this.recoverPassengerRequest(ride.id, passenger);
+          }
+          return of(this.passengerOperationError(error, passenger));
+        }),
+      );
+  }
+
+  private rememberPassengerRequestRecovery(rideId: string, passenger: AuthenticatedUser): void {
+    const recoveries = this.passengerRequestRecoveries.get(passenger) ?? new Set<string>();
+    recoveries.add(rideId);
+    this.passengerRequestRecoveries.set(passenger, recoveries);
+  }
+
+  private finishPassengerRequestRecovery(
+    rideId: string,
+    passenger: AuthenticatedUser,
+    result: CreateRideRequestResult,
+  ): void {
+    if (
+      passenger === this.auth.currentUser() &&
+      (result.status === 'duplicate' ||
+        result.status === 'recovered' ||
+        result.status === 'ride-not-found')
+    ) {
+      // Se a tela saiu antes de receber o resultado, a próxima leitura ainda precisa reconciliar o par.
+      this.passengerRequestRecoveries.get(passenger)?.delete(rideId);
+    }
+  }
+
+  private recoverPassengerRequest(
+    rideId: string,
+    passenger: AuthenticatedUser,
+    isCurrent: () => boolean = () => true,
+  ): Observable<PassengerRequestRecoveryResult> {
+    return this.fetchPassengerRequest(rideId, passenger.id).pipe(
+      map((request) => ({ request })),
+      catchError((error: unknown) => {
+        const failure = this.passengerOperationError(error, passenger);
+        return of(
+          failure.status === 'unauthenticated'
+            ? failure
+            : {
+                status: 'duplicate-check-error' as const,
+                connectionError: passengerLoadError(error).connectionError,
+              },
+        );
+      }),
+      filter(isCurrent),
+      switchMap((result) => {
+        if (!('request' in result)) return of(result);
+        const failure = this.passengerAccessFailure(passenger);
+        return failure
+          ? of(failure)
+          : this.readRideAfterRequest(rideId, passenger, result.request);
+      }),
+    );
+  }
+
+  private readRideAfterRequest(
+    rideId: string,
+    passenger: AuthenticatedUser,
+    request: RideRequest | null,
+  ): Observable<PassengerRequestRecoveryResult> {
+    return this.rideData.readPassengerRide(rideId).pipe(
+      map((offer): PassengerRequestRecoveryResult => {
+        const failure = this.passengerAccessFailure(passenger);
+        if (failure) return failure;
+        if (offer && offer.ride?.id !== rideId) return { status: 'ride-refresh-error' };
+
+        if (!offer) return { status: 'ride-not-found' };
+        const { ride } = offer;
+        return request && isActiveRideRequest(request)
+          ? { status: 'duplicate', request, ride }
+          : { status: 'recovered', request, ride };
+      }),
+      catchError((error: unknown): Observable<PassengerRequestRecoveryResult> => {
+        const failure = this.passengerOperationError(error, passenger);
+        if (failure.status === 'unauthenticated') return of(failure);
+        return of({
+          status: 'ride-refresh-error',
+          connectionError: passengerLoadError(error).connectionError,
+        });
+      }),
+    );
+  }
+
+  private passengerRequestReadResult(
+    result: PassengerRequestRecoveryResult | { status: 'created'; request: RideRequest; ride: Ride },
+  ): PassengerRequestResult {
+    if ('request' in result) {
+      return { status: 'loaded', request: result.request, revalidatedRide: result.ride };
+    }
+    if (result.status === 'ride-not-found') return result;
+    if (result.status === 'ride-refresh-error') {
+      return { status: 'error', rideRefreshError: true, connectionError: result.connectionError };
+    }
+    if (result.status === 'duplicate-check-error') {
+      return { status: 'error', connectionError: result.connectionError };
+    }
+    return passengerRequestError;
   }
 
   private passengerAccessFailure(passenger: AuthenticatedUser): PassengerAccessFailure | null {
@@ -577,13 +750,12 @@ export class RideRequestData {
   private fetchPassengerRequest(
     rideId: string,
     passengerId: string,
-    context?: HttpContext,
   ): Observable<RideRequest | null> {
     // _where preserva IDs textuais que o json-server converteria em filtros simples (ex.: "007").
     const where = { rideId: { eq: rideId }, passengerId: { eq: passengerId } };
     return this.http
       .get<RideRequest[]>(`${environment.apiUrl}/ride_requests`, {
-        context,
+        context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
         params: { _where: JSON.stringify(where) },
       })
       .pipe(

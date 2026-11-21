@@ -4,23 +4,63 @@
     <p class="text-body-sm text-texto-suave">Acompanhe suas solicitações e caronas.</p>
   </div>
 
-  @if (cancellation()?.status === 'cancelled') {
+  @if (cancelled()) {
     <p role="status" class="rounded-xl bg-sucesso-fundo p-space-md text-body-md">
       Solicitação cancelada.
     </p>
   }
+  @let result = loadResult();
+  @let uncertainRequestId = cancellationToRefresh();
   @if (cancellationError(); as error) {
-    <p role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">{{ error }}</p>
+    @if (!uncertainRequestId || result.status === 'loaded') {
+      <div class="space-y-space-md rounded-xl bg-perigo-fundo p-space-md">
+        <p role="alert" class="text-body-md">
+          {{ error }}
+          @if (uncertainRequestId) {
+            Atualize suas viagens para conferir o estado da solicitação.
+          }
+        </p>
+        @if (uncertainRequestId) {
+          <button
+            type="button"
+            class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+            (click)="refreshTrips()"
+          >
+            Atualizar viagens
+          </button>
+        }
+      </div>
+    }
   }
 
-  @switch (loadResult().status) {
+  @switch (result.status) {
     @case ('loading') {
       <p role="status" class="text-body-md text-texto-suave">Carregando suas viagens…</p>
     }
     @case ('error') {
-      <p role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">
-        Não foi possível carregar suas viagens.
-      </p>
+      <div class="space-y-space-md rounded-xl bg-perigo-fundo p-space-md">
+        <p role="alert" class="text-body-md">
+          Não foi possível carregar suas viagens.
+          @if (result.connectionError) {
+            Falha de conexão. Verifique sua internet.
+          }
+        </p>
+        <div class="flex flex-wrap items-center gap-space-md">
+          <button
+            type="button"
+            class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+            (click)="refreshTrips()"
+          >
+            Tentar novamente
+          </button>
+          <a
+            routerLink="/rides"
+            class="rounded-xl px-space-sm py-space-sm text-label-lg text-texto hover:bg-fundo focus-visible:ring-2 focus-visible:ring-texto"
+          >
+            Voltar para a busca
+          </a>
+        </div>
+      </div>
     }
     @case ('loaded') {
       <div
@@ -181,7 +221,7 @@
               <div class="flex flex-col gap-space-sm">
                 <button
                   type="button"
-                  [disabled]="cancelling() || passengerRestriction() !== null"
+                  [disabled]="cancelling() || uncertainRequestId === trip.id || passengerRestriction() !== null"
                   (click)="cancelTrip(trip)"
                   class="w-full cursor-pointer rounded-lg bg-fundo p-space-md text-label-lg text-perigo hover:bg-perigo-fundo focus-visible:ring-2 focus-visible:ring-secundaria disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
                 >

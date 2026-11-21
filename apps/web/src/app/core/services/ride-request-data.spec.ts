@@ -221,7 +221,7 @@ describe('RideRequestData', () => {
     const failure = http.expectOne((request) => request.url === url && request.method === 'GET');
     expect(failure.request.params.get('passengerId')).toBe('7');
     failure.error(new ProgressEvent('error'));
-    expect(result()).toEqual({ status: 'error' });
+    expect(result()).toEqual({ status: 'error', connectionError: true });
     http.verify();
   });
 

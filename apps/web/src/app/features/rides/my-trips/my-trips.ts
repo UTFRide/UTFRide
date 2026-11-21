@@ -55,14 +55,45 @@ export class MyTrips {
 
   protected readonly cancellation = this.requests.passengerCancellation;
   protected readonly cancelling = computed(() => this.cancellation()?.status === 'cancelling');
+  private readonly uncertainCancellation = computed(() => {
+    const cancellation = this.cancellation();
+    return cancellation?.status === 'connection-error' || cancellation?.status === 'request-error'
+      ? cancellation
+      : undefined;
+  });
+  private readonly cancellationRefreshed = linkedSignal({
+    source: this.uncertainCancellation,
+    computation: () => false,
+  });
+  protected readonly cancellationToRefresh = computed(() => {
+    const cancellation = this.uncertainCancellation();
+    if (!cancellation) return undefined;
+    const result = this.loadResult();
+    if (
+      result.status === 'loaded' &&
+      (this.cancellationRefreshed() ||
+        !result.trips.some((trip) => trip.id === cancellation.id && tripStatus(trip) === 'pending'))
+    ) {
+      return undefined;
+    }
+    return cancellation.id;
+  });
+  protected readonly cancelled = computed(() => {
+    const uncertainId = this.uncertainCancellation()?.id;
+    return (
+      this.cancellation()?.status === 'cancelled' ||
+      this.trips().some((trip) => trip.id === uncertainId && trip.status === 'cancelled')
+    );
+  });
   protected readonly cancellationError = computed(() => {
     switch (this.cancellation()?.status) {
       case 'connection-error':
-        return 'Falha de conexão ao cancelar a solicitação.';
+        return this.cancellationToRefresh() ? 'Falha de conexão ao cancelar a solicitação.' : '';
+      case 'request-error':
+        return this.cancellationToRefresh() ? 'Não foi possível cancelar a solicitação.' : '';
       case 'invalid-state':
         return 'Somente solicitações pendentes podem ser canceladas.';
       case 'not-owned':
-      case 'request-error':
         return 'Não foi possível cancelar a solicitação.';
       default:
         return '';
@@ -97,11 +128,18 @@ export class MyTrips {
     return groups;
   });
 
+  protected refreshTrips(): void {
+    if (this.loadResult().status === 'loading') return;
+    if (this.cancellationToRefresh()) this.cancellationRefreshed.set(true);
+    this.requests.refreshPassengerTrips();
+  }
+
   protected cancelTrip(trip: PassengerTripSummary): void {
     if (
       !this.auth.currentUser() ||
       this.passengerRestriction() ||
       this.cancelling() ||
+      this.cancellationToRefresh() === trip.id ||
       !this.trips().includes(trip) ||
       tripStatus(trip) !== 'pending' ||
       !window.confirm('Deseja cancelar sua solicitação de vaga?')

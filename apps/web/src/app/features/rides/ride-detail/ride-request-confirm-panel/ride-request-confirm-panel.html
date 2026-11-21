@@ -51,7 +51,13 @@
         [disabled]="submitting()"
         (click)="confirmed.emit()"
       >
-        {{ submitting() ? 'Enviando solicitação…' : 'Confirmar solicitação de vaga' }}
+        @if (submitting()) {
+          Enviando solicitação…
+        } @else if (errorMessage()) {
+          Tentar novamente
+        } @else {
+          Confirmar solicitação de vaga
+        }
       </button>
       <button
         type="button"

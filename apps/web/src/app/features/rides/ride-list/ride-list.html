@@ -36,9 +36,21 @@
       </p>
     }
     @case ('error') {
-      <p role="alert" class="rounded-xl border border-borda bg-fundo p-space-lg text-body-md">
-        Não foi possível carregar as caronas.
-      </p>
+      <div class="space-y-space-md rounded-xl bg-perigo-fundo p-space-lg">
+        <p role="alert" class="text-body-md">
+          Não foi possível carregar as caronas.
+          @if (result.connectionError) {
+            Falha de conexão. Verifique sua internet.
+          }
+        </p>
+        <button
+          type="button"
+          class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+          (click)="retrySearch()"
+        >
+          Tentar novamente
+        </button>
+      </div>
     }
     @case ('loaded') {
       @for (ride of result.rides; track ride.id) {
