@@ -7,6 +7,7 @@ import { ErrorNotice } from './error-notice';
 import { Registration, User } from '../models/user.model';
 
 export type AuthenticatedUser = Omit<User, 'password'>;
+export type PassengerAccessRestriction = 'blocked-account' | 'support-profile';
 
 @Injectable({ providedIn: 'root' })
 export class AuthData {
@@ -35,6 +36,11 @@ export class AuthData {
   });
   readonly isAuthenticated = computed(() => this.authenticatedUser() !== null);
   readonly isBlocked = computed(() => this.currentUser()?.isBlocked === true);
+  readonly passengerRestriction = computed<PassengerAccessRestriction | null>(() => {
+    const user = this.currentUser();
+    if (user?.isBlocked) return 'blocked-account';
+    return user?.role === 'support' ? 'support-profile' : null;
+  });
   readonly canOffer = computed(() => {
     const user = this.currentUser();
     return user !== null && !user.isBlocked && user.role !== 'support';

@@ -1,29 +1,41 @@
-import { provideHttpClient } from '@angular/common/http';
+import { HttpRequest, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
 import { vi } from 'vitest';
 import { environment } from '../../../environments/environment';
 import { Notification } from '../models/notification.model';
 import { Ride } from '../models/ride.model';
 import { RideRequest } from '../models/ride-request.model';
+import { User } from '../models/user.model';
 import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
 import { NotificationData } from './notification-data';
 import { RideData } from './ride-data';
 import { RideRequestData } from './ride-request-data';
 
-function authenticateDriver(http: HttpTestingController): void {
+const requestsUrl = `${environment.apiUrl}/ride_requests`;
+const pendingPassengerRequest: RideRequest = {
+  id: '007',
+  rideId: '008',
+  passengerId: '009',
+  status: 'pending',
+  createdAt: '2026-01-01T08:00:00.000Z',
+};
+
+function authenticate(http: HttpTestingController, id = 'driver-1', role: User['role'] = 'student'): void {
   const auth = TestBed.inject(AuthData);
   auth.login('motorista@alunos.utfpr.edu.br', 'senha123');
   http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
     {
-      id: 'driver-1',
+      id,
       name: 'Carlos Motorista',
       email: 'motorista@alunos.utfpr.edu.br',
       password: 'senha123',
       registrationNumber: '2020123',
       whatsapp: '41999998888',
-      role: 'student',
+      role,
       isBlocked: false,
       isEmailConfirmed: true,
       ratingAverage: 5,
@@ -39,11 +51,265 @@ describe('RideRequestData', () => {
     });
   });
 
+  describe('operações de passageiro', () => {
+    let data: RideRequestData;
+    const requestId = pendingPassengerRequest.id;
+    const requestUrl = `${requestsUrl}/${requestId}`;
+    const isCancellationPatch = (request: HttpRequest<unknown>) =>
+      request.method === 'PATCH' && request.url === requestUrl;
+    const restrictedAccounts = [
+      { account: 'conta bloqueada', reason: 'blocked-account', role: 'student', isBlocked: true },
+      { account: 'perfil de suporte', reason: 'support-profile', role: 'support', isBlocked: false },
+    ] as const;
+
+    beforeEach(() => {
+      data = TestBed.inject(RideRequestData);
+    });
+
+    function authenticateRestricted({ role, isBlocked }: (typeof restrictedAccounts)[number]) {
+      const http = TestBed.inject(HttpTestingController);
+      authenticate(http, pendingPassengerRequest.passengerId, role);
+      if (isBlocked) {
+        const auth = TestBed.inject(AuthData);
+        // Login recusa contas bloqueadas. Simula uma sessão corrente já bloqueada.
+        vi.spyOn(auth, 'currentUser').mockReturnValue({ ...auth.currentUser()!, isBlocked });
+      }
+      return http;
+    }
+
+    it.each(restrictedAccounts)('impede solicitar vaga com $account', async (account) => {
+      const http = authenticateRestricted(account);
+      const result = firstValueFrom(data.createRequest(pendingPassengerRequest.rideId));
+
+      http.expectNone((request) => request.method === 'GET' && request.url === requestsUrl);
+      http.expectNone({ method: 'POST', url: requestsUrl });
+      await expect(result).resolves.toEqual({ status: 'restricted', reason: account.reason });
+      http.verify();
+    });
+
+    it.each(restrictedAccounts)('impede cancelar solicitação com $account', async (account) => {
+      const http = authenticateRestricted(account);
+      const result = firstValueFrom(data.cancelPassengerRequest(requestId));
+
+      http.expectNone({ method: 'GET', url: requestUrl });
+      http.expectNone(isCancellationPatch);
+      await expect(result).resolves.toEqual({ status: 'restricted', reason: account.reason });
+      http.verify();
+    });
+
+    it('cancela uma solicitação pendente do aluno atual preservando o ID textual', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      authenticate(http, pendingPassengerRequest.passengerId);
+      const result = firstValueFrom(data.cancelPassengerRequest(requestId));
+      http.expectOne({ method: 'GET', url: requestUrl }).flush(pendingPassengerRequest);
+
+      const patch = http.expectOne(isCancellationPatch);
+      expect(patch.request.body).toEqual({ status: 'cancelled' });
+      expect(patch.request.params.get('passengerId')).toBe(pendingPassengerRequest.passengerId);
+      const cancelled = { ...pendingPassengerRequest, status: 'cancelled' };
+      patch.flush(cancelled);
+
+      await expect(result).resolves.toEqual({ status: 'cancelled', request: cancelled });
+      http.verify();
+    });
+
+    it('impede cancelar uma solicitação de outro aluno', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      authenticate(http, '9');
+      const result = firstValueFrom(data.cancelPassengerRequest(requestId));
+      http.expectOne({ method: 'GET', url: requestUrl }).flush(pendingPassengerRequest);
+
+      http.expectNone(isCancellationPatch);
+      await expect(result).resolves.toEqual({ status: 'not-owned' });
+      http.verify();
+    });
+
+    it.each(['accepted', 'cancelled', 'rejected'] as const)(
+      'impede cancelar quando o estado atual é %s',
+      async (status) => {
+        const http = TestBed.inject(HttpTestingController);
+        authenticate(http, pendingPassengerRequest.passengerId);
+        const result = firstValueFrom(data.cancelPassengerRequest(requestId));
+        http.expectOne({ method: 'GET', url: requestUrl }).flush({
+          ...pendingPassengerRequest,
+          status,
+        });
+
+        http.expectNone(isCancellationPatch);
+        await expect(result).resolves.toEqual({ status: 'invalid-state' });
+        http.verify();
+      },
+    );
+
+    it('impede iniciar o cancelamento se a sessão mudou antes da inscrição', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      authenticate(http, pendingPassengerRequest.passengerId);
+      const operation = data.cancelPassengerRequest(requestId);
+      TestBed.inject(AuthData).logout();
+      authenticate(http, pendingPassengerRequest.passengerId);
+
+      await expect(firstValueFrom(operation)).resolves.toEqual({ status: 'unauthenticated' });
+      http.verify();
+    });
+
+    it('impede que uma nova sessão do mesmo aluno grave o cancelamento em andamento', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      authenticate(http, pendingPassengerRequest.passengerId);
+      const result = firstValueFrom(data.cancelPassengerRequest(requestId));
+      const read = http.expectOne({ method: 'GET', url: requestUrl });
+
+      TestBed.inject(AuthData).logout();
+      authenticate(http, pendingPassengerRequest.passengerId);
+      read.flush(pendingPassengerRequest);
+
+      http.expectNone(isCancellationPatch);
+      await expect(result).resolves.toEqual({ status: 'unauthenticated' });
+      http.verify();
+    });
+
+    it('mantém um único cancelamento por sessão e pedido após sair da tela', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      authenticate(http, pendingPassengerRequest.passengerId);
+      const first = data.cancelPassengerRequest(requestId).subscribe();
+      const read = http.expectOne({ method: 'GET', url: requestUrl });
+      const duplicate = firstValueFrom(data.cancelPassengerRequest(requestId));
+      http.expectNone({ method: 'GET', url: requestUrl });
+
+      first.unsubscribe();
+      read.flush(pendingPassengerRequest);
+      const patch = http.expectOne(isCancellationPatch);
+      expect(patch.request.params.get('passengerId')).toBe(pendingPassengerRequest.passengerId);
+      const cancelled = { ...pendingPassengerRequest, status: 'cancelled' };
+      patch.flush(cancelled);
+
+      await expect(duplicate).resolves.toEqual({ status: 'cancelled', request: cancelled });
+      http.verify();
+    });
+  });
+
+  it('consulta somente o resumo das viagens da sessão e descarta respostas de sessões anteriores', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const data = TestBed.inject(RideRequestData);
+    const auth = TestBed.inject(AuthData);
+    const url = `${environment.apiUrl}/passenger-trip-summaries`;
+    const result = data.loadPassengerTrips(TestBed.inject(Injector));
+    TestBed.tick();
+    http.expectNone(url);
+
+    authenticate(http, '007');
+    TestBed.tick();
+    const previous = http.expectOne((request) => request.url === url && request.method === 'GET');
+    expect(previous.request.params.keys()).toEqual(['passengerId']);
+    expect(previous.request.params.get('passengerId')).toBe('007');
+    expect(result()).toEqual({ status: 'loading' });
+
+    // A autenticação nova com o mesmo ID também invalida a resposta anterior.
+    auth.logout();
+    authenticate(http, '007');
+    expect(result()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    expect(previous.cancelled).toBe(true);
+    const trip = { id: '008', status: 'accepted', ride: null, driver: null };
+    http.expectOne((request) => request.url === url).flush([trip]);
+    expect(result()).toEqual({ status: 'loaded', trips: [trip] });
+
+    auth.logout();
+    expect(result()).toEqual({ status: 'error' });
+    authenticate(http, '7');
+    expect(result()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    const failure = http.expectOne((request) => request.url === url && request.method === 'GET');
+    expect(failure.request.params.get('passengerId')).toBe('7');
+    failure.error(new ProgressEvent('error'));
+    expect(result()).toEqual({ status: 'error', connectionError: true });
+    http.verify();
+  });
+
+  it('consulta só o par oferta e passageiro da sessão, preservando ids textuais e isolando o resultado', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const requestData = TestBed.inject(RideRequestData);
+    const auth = TestBed.inject(AuthData);
+    const url = `${environment.apiUrl}/ride_requests`;
+    const rideId = signal('008');
+    const result = requestData.loadPassengerRequest(rideId, TestBed.inject(Injector));
+    TestBed.tick();
+    http.expectNone(url);
+
+    authenticate(http, '007');
+    TestBed.tick();
+    const oldRead = http.expectOne((request) => request.url === url);
+    rideId.set('007');
+    TestBed.tick();
+    expect(oldRead.cancelled).toBe(true);
+    expect(result()).toEqual({ status: 'loading' });
+    const read = http.expectOne((request) => request.url === url);
+    expect(read.request.method).toBe('GET');
+    expect(JSON.parse(read.request.params.get('_where')!)).toEqual({
+      rideId: { eq: '007' },
+      passengerId: { eq: '007' },
+    });
+
+    const latest: RideRequest = {
+      id: 'own-latest',
+      rideId: '007',
+      passengerId: '007',
+      status: 'pending',
+      createdAt: '2026-01-03T08:00:00.000Z',
+    };
+    read.flush([
+      { ...latest, id: 'other-passenger', passengerId: '7', createdAt: '2026-01-05T08:00:00.000Z' },
+      latest,
+      { ...latest, id: 'other-ride', rideId: '7', createdAt: '2026-01-06T08:00:00.000Z' },
+      { ...latest, id: 'own-older', status: 'cancelled', createdAt: '2026-01-02T08:00:00.000Z' },
+      { ...latest, id: 'own-newer', status: 'rejected', createdAt: '2026-01-04T08:00:00.000Z' },
+    ]);
+    expect(result()).toEqual({ status: 'loaded', request: latest });
+    expect(requestData.requests()).toEqual([]);
+
+    auth.logout();
+    TestBed.tick();
+    http.expectNone(url);
+    authenticate(http, 'different-passenger');
+    expect(result()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    const newRead = http.expectOne((request) => request.url === url);
+    expect(JSON.parse(newRead.request.params.get('_where')!)).toEqual({
+      rideId: { eq: '007' },
+      passengerId: { eq: 'different-passenger' },
+    });
+    newRead.flush([latest]);
+    expect(result()).toEqual({ status: 'loaded', request: null });
+    http.verify();
+  });
+
+  it('exibe a solicitação mais recente quando só há pedidos encerrados para a oferta', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const requestData = TestBed.inject(RideRequestData);
+    authenticate(http, '007');
+    const result = requestData.loadPassengerRequest(signal('008'), TestBed.inject(Injector));
+    TestBed.tick();
+
+    const latest: RideRequest = {
+      id: 'request-2',
+      rideId: '008',
+      passengerId: '007',
+      status: 'cancelled',
+      createdAt: '2026-02-02T08:00:00.000Z',
+    };
+    http.expectOne((request) => request.url === `${environment.apiUrl}/ride_requests`).flush([
+      { ...latest, id: 'request-1', status: 'rejected', createdAt: '2026-02-01T08:00:00.000Z' },
+      latest,
+    ]);
+
+    expect(result()).toEqual({ status: 'loaded', request: latest });
+    http.verify();
+  });
+
   it('aceita e rejeita solicitações individualmente antes da viagem, ocupa vagas, esgota a oferta na última vaga mantendo pendentes e bloqueia novos aceites', () => {
     const rideData = TestBed.inject(RideData);
     const requestData = TestBed.inject(RideRequestData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateDriver(http);
+    authenticate(http);
 
     const futureDeparture = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
     const initialRide: Ride = {
@@ -146,9 +412,10 @@ describe('RideRequestData', () => {
     http.verify();
   });
 
-  it('impede que uma oferta esgotada aceite novos pedidos', () => {
+  it('impede que uma oferta esgotada aceite novos pedidos', async () => {
     const requestData = TestBed.inject(RideRequestData);
     const http = TestBed.inject(HttpTestingController);
+    authenticate(http, 'passenger-novo');
 
     const exhaustedRide: Ride = {
       id: 'ride-full',
@@ -163,9 +430,13 @@ describe('RideRequestData', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
     };
 
-    requestData.createRequest(exhaustedRide, 'passenger-novo');
-    http.expectNone(`${environment.apiUrl}/ride_requests`);
-    expect(requestData.createResult()).toEqual({ rideFull: true });
+    const result = firstValueFrom(requestData.createRequest(exhaustedRide.id));
+    http
+      .expectOne((request) => request.method === 'GET' && request.url === `${environment.apiUrl}/ride_requests`)
+      .flush([]);
+    http.expectOne({ method: 'GET', url: `${environment.apiUrl}/rides/ride-full` }).flush(exhaustedRide);
+    http.expectNone({ method: 'POST', url: `${environment.apiUrl}/ride_requests` });
+    expect(await result).toEqual({ status: 'unavailable', reason: 'full', ride: exhaustedRide });
     http.verify();
   });
 
@@ -174,7 +445,7 @@ describe('RideRequestData', () => {
     const requestData = TestBed.inject(RideRequestData);
     const notificationData = TestBed.inject(NotificationData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateDriver(http);
+    authenticate(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ride: Ride = {
@@ -309,7 +580,7 @@ describe('RideRequestData', () => {
   it('impede o cancelamento quando a viagem já ocorreu ou a oferta já está cancelada/concluída', () => {
     const requestData = TestBed.inject(RideRequestData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateDriver(http);
+    authenticate(http);
 
     const pastRide: Ride = {
       id: 'ride-past',
@@ -348,7 +619,7 @@ describe('RideRequestData', () => {
     const requestData = TestBed.inject(RideRequestData);
     const notificationData = TestBed.inject(NotificationData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateDriver(http);
+    authenticate(http);
 
     const ride: Ride = {
       id: 'ride-no-active',
@@ -537,7 +808,7 @@ describe('RideRequestData', () => {
     const requestData = TestBed.inject(RideRequestData);
     const errorNotice = TestBed.inject(ErrorNotice);
     const http = TestBed.inject(HttpTestingController);
-    authenticateDriver(http);
+    authenticate(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ride: Ride = {

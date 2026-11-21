@@ -1,24 +1,46 @@
-import { Component, computed, inject } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import { Component, computed, inject, Injector, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { AuthData } from '../../../core/services/auth-data';
-import { NotificationData } from '../../../core/services/notification-data';
-import { NotificationBell } from '../../../shared/components/notification-bell/notification-bell';
+import { RideData } from '../../../core/services/ride-data';
+import { CurrencyBrlPipe } from '../../../shared/pipes/currency-brl-pipe';
 import { InitialsPipe } from '../../../shared/pipes/initials-pipe';
+import { RideFilters } from '../ride-filters/ride-filters';
 
-// TODO #4: substituir esta tela provisória pela busca de caronas da história correspondente.
 @Component({
-  imports: [RouterLink, NotificationBell, InitialsPipe],
+  imports: [DatePipe, RouterLink, CurrencyBrlPipe, InitialsPipe, RideFilters],
   templateUrl: './ride-list.html',
 })
 export class RideList {
-  private readonly authData = inject(AuthData);
-  private readonly notificationData = inject(NotificationData);
+  private readonly retry = signal(0);
 
-  readonly notifications = this.notificationData.userNotifications;
-  readonly notificationsError = this.notificationData.loadError;
-  readonly studentName = computed(() => this.authData.currentUser()?.name ?? 'Aluno UTFPR');
+  protected readonly origin = signal('');
+  protected readonly destination = signal('');
+  protected readonly date = signal('');
+  protected readonly filtersOpen = signal(false);
 
-  loadNotifications(): void {
-    this.notificationData.loadForCurrentUser();
+  private readonly filters = computed(() => ({
+    origin: this.origin(),
+    destination: this.destination(),
+    date: this.date(),
+  }));
+
+  protected readonly search = inject(RideData).searchAvailableRides(
+    this.filters,
+    inject(Injector),
+    this.retry,
+  );
+
+  protected retrySearch(): void {
+    if (this.search().status === 'error') this.retry.update((attempt) => attempt + 1);
+  }
+
+  protected toggleFilters(): void {
+    this.filtersOpen.update((open) => !open);
+  }
+
+  protected clearFilters(): void {
+    this.origin.set('');
+    this.destination.set('');
+    this.date.set('');
   }
 }
