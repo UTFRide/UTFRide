@@ -1,6 +1,6 @@
 ---
 issue: 26
-status: rascunho
+status: aprovada
 ---
 
 # US01 — Login e Cadastro com Supabase Auth, Guard e AuthInterceptor
@@ -18,7 +18,7 @@ No MVP (Entrega 2), o cadastro e o login do UTFRide são simulados no `json-serv
 - [ ] **CA1 — Dado** um visitante na tela de cadastro (`/register`) preenchendo nome, e-mail institucional (`@alunos.utfpr.edu.br`), matrícula, WhatsApp opcional, senha válida (mínimo 6 caracteres), confirmação igual e aceite dos termos, **quando** submete o formulário, **então** o `AuthData` verifica duplicidade no `json-server`, cria a conta no Supabase Auth (`signUp`) gravando os metadados (`name`, `registrationNumber`, `whatsapp`, `role: 'student'`, `isBlocked: false`), sincroniza o perfil correspondente em `users` no `json-server` sem persistir senha em texto puro quando dispensável, encerra qualquer sessão automática criada pelo `signUp` (`signOut`) e redireciona para `/login` exibindo aviso em português de conta criada com sucesso.
 - [ ] **CA2 — Dado** um visitante em `/register` informando e-mail fora do domínio `@alunos.utfpr.edu.br`, senha com menos de 6 caracteres, senhas divergentes, ou e-mail/matrícula já cadastrados (no `json-server` ou retornando usuário já registrado pelo Supabase Auth), **quando** tenta submeter, **então** o formulário bloqueia o envio ou exibe mensagem clara em português sem criar conta nem redirecionar.
 - [ ] **CA3 — Dado** um aluno com conta ativa cadastrada no Supabase Auth na tela de login (`/login`), **quando** informa e-mail institucional e senha corretos e submete, **então** o `AuthData` autentica via `signInWithPassword`, armazena o token JWT (`access_token`) e o usuário autenticado (sincronizando/carregando o perfil correspondente no `json-server` para manter compatibilidade com caronas e solicitações, bloqueando acesso se `isBlocked: true` conforme RN07) e redireciona para `/rides`.
-- [ ] **CA4 — Dado** um visitante em `/login` informando credenciais inválidas ou enfrentando erro/indisponibilidade do Supabase Auth ou do `json-server`, **quando** submete o login, **então** o sistema encerra o estado de carregamento (`loading` volta a `false`) e exibe mensagem amigável em português (*"E-mail ou senha incorretos."* ou aviso de falha de conexão) sem expor detalhes internos de segurança nem manter sessão parcial.
+- [ ] **CA4 — Dado** um visitante em `/login` informando credenciais inválidas ou enfrentando erro/indisponibilidade do Supabase Auth ou do `json-server`, **quando** submete o login, **então** o sistema encerra o estado de carregamento (`loading` volta a `false`) e exibe mensagem amigável em português (_"E-mail ou senha incorretos."_ ou aviso de falha de conexão) sem expor detalhes internos de segurança nem manter sessão parcial.
 - [ ] **CA5 — Dado** um aluno previamente autenticado com sessão persistida no navegador pelo Supabase Auth, **quando** recarrega a página (`F5`) diretamente em uma rota protegida (`/rides`, `/rides/my-trips`, `/rides/:id`, `/driver/offer` ou `/driver/my-rides`), **então** o `AuthData` restaura a sessão ativa (`getSession`) e o token JWT antes de o `authGuard` bloquear o acesso, mantendo o aluno autenticado na rota solicitada.
 - [ ] **CA6 — Dado** um visitante não autenticado (ou após recarregar sem sessão válida no Supabase Auth), **quando** acessa `/`, `/login` ou `/register`, **então** a navegação é permitida; **quando** tenta acessar qualquer rota protegida (`/rides`, `/rides/my-trips`, `/rides/:id`, `/driver/offer` ou `/driver/my-rides`), **então** o `authGuard` funcional bloqueia a entrada e redireciona para `/login`.
 - [ ] **CA7 — Dado** um aluno autenticado com token JWT (`access_token`) ativo no `AuthData`, **quando** o `HttpClient` envia requisições para a API configurada em `environment.apiUrl` (`http://localhost:3000`), **então** o `authInterceptor` funcional registrado em `app.config.ts` acrescenta o cabeçalho `Authorization: Bearer <access_token>`; **quando** não há sessão ativa ou a requisição aponta para uma API externa pública (como a API de localidades do IBGE em `servicodados.ibge.gov.br`), **então** o cabeçalho `Authorization` **não** é enviado.
@@ -28,13 +28,13 @@ No MVP (Entrega 2), o cadastro e o login do UTFRide são simulados no `json-serv
 
 ## Telas do protótipo
 
-| Tela | Arquivo em `docs/prototipo/` |
-| --- | --- |
-| Landing Page (Visitante) | `models/1._landing_page_visitante.html` |
-| Cadastro de Aluno (Institucional) | `models/2._cadastro_de_aluno.html` |
-| Login e Estados de Erro | `models/3._login_e_estados_de_erro.html` |
-| Buscar Caronas (Home) — cabeçalho com ação Sair | `models/4._buscar_caronas_home.html` |
-| Oferecer Carona (Motorista) — cabeçalho com ação Sair | `models/6._oferecer_carona_motorista.html` |
+| Tela                                                              | Arquivo em `docs/prototipo/`                            |
+| ----------------------------------------------------------------- | ------------------------------------------------------- |
+| Landing Page (Visitante)                                          | `models/1._landing_page_visitante.html`                 |
+| Cadastro de Aluno (Institucional)                                 | `models/2._cadastro_de_aluno.html`                      |
+| Login e Estados de Erro                                           | `models/3._login_e_estados_de_erro.html`                |
+| Buscar Caronas (Home) — cabeçalho com ação Sair                   | `models/4._buscar_caronas_home.html`                    |
+| Oferecer Carona (Motorista) — cabeçalho com ação Sair             | `models/6._oferecer_carona_motorista.html`              |
 | Minhas Ofertas e Gerenciar Solicitações — cabeçalho com ação Sair | `models/7._minhas_ofertas_e_gerenciar_solicita_es.html` |
 
 **Alinhamento com o PRD e `docs/design-tokens.md`:** as telas de Landing, Cadastro e Login já existem implementadas seguindo os tokens semânticos de `docs/design-tokens.md`. Nesta história, preserva-se o layout atual, adicionando apenas o aviso de conta criada em `/login` (quando vindo de `/register`) e o botão discreto **Sair** ao lado do avatar nos cabeçalhos autenticados (`RidesLayout`, `MyRides` e `OfferRide`), estritamente com tokens semânticos do Design System.
@@ -55,8 +55,8 @@ Se o visitante preencher parcialmente `/register` ou `/login` e navegar para for
 
 Durante esta etapa transitória (Atividade 14), os dados de domínio (`rides`, `ride_requests`, `notifications` e perfis espelhados em `users` para consultas como `/driver-summaries` e `/passenger-trip-summaries`) continuam persistidos no `json-server` (`apps/api/db.json`), enquanto identidade, senha e emissão do JWT passam para o Supabase Auth. Os trechos de sincronização provisória do perfil autenticado com `users` no `json-server` devem levar `// TODO` referenciando a migração das tabelas para o Supabase na Atividade 15.
 
-| Premissa | Issue que fecha |
-| --- | --- |
+| Premissa                                                                                                                                                                   | Issue que fecha                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | Coleções de domínio (`users`, `rides`, `ride_requests`, `notifications`) continuam no `json-server` com espelhamento do perfil autenticado até a migração de tabelas e RLS | Issue da Atividade 15 (a abrir após fechamento da #26) |
 
 ## Depende de
@@ -66,5 +66,5 @@ Durante esta etapa transitória (Atividade 14), os dados de domínio (`rides`, `
 
 ## Dúvidas em aberto
 
-| # | Dúvida | Quem responde |
-| --- | --- | --- |
+| #   | Dúvida | Quem responde |
+| --- | ------ | ------------- |
