@@ -18,6 +18,8 @@ export class AuthData {
   private readonly loginSubmissions = new Subject<{ email: string; password: string }>();
   private readonly loginResets = new Subject<void>();
   private readonly authenticatedUser = signal<User | null>(null);
+  private readonly sessionAccessToken = signal<string | null>(null);
+  readonly accessToken = this.sessionAccessToken.asReadonly();
   readonly currentUser = computed<AuthenticatedUser | null>(() => {
     const user = this.authenticatedUser();
     if (!user) return null;

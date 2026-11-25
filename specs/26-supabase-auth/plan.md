@@ -19,7 +19,7 @@
   - Teste primeiro: criar `apps/web/src/app/core/services/supabase-client.spec.ts` verificando que `environment` e `environment.development` expõem `apiUrl`, `supabaseUrl` e `supabasePublishableKey` (sem `sb_secret_`), e que `SupabaseClientService` encapsula o cliente de autenticação e aceita dublê via DI sem chamadas reais ao Supabase; falha inicialmente porque os arquivos de ambiente de desenvolvimento e o serviço ainda não existem.
   - Arquivos previstos: `apps/web/package.json`, `package-lock.json`, `apps/web/angular.json`, `apps/web/src/environments/environment.ts`, `apps/web/src/environments/environment.development.ts`, `apps/web/src/app/core/services/supabase-client.ts`, `apps/web/src/app/core/services/supabase-client.spec.ts`.
 
-- [ ] **Tarefa 2 — Implementar `authInterceptor` funcional e registrar em `app.config.ts`**
+- [x] **Tarefa 2 — Implementar `authInterceptor` funcional e registrar em `app.config.ts`**
   - Cobre: CA7
   - Teste primeiro: criar `apps/web/src/app/core/interceptors/auth-interceptor.spec.ts` provando que requisições para `environment.apiUrl` recebem `Authorization: Bearer <access_token>` quando há sessão ativa, não recebem o header quando não há token e nunca enviam `Authorization` para APIs públicas externas (ex.: IBGE); falha inicialmente porque `auth-interceptor.ts` e `accessToken` ainda não existem.
   - Arquivos previstos: `apps/web/src/app/core/services/auth-data.ts`, `apps/web/src/app/core/interceptors/auth-interceptor.ts`, `apps/web/src/app/core/interceptors/auth-interceptor.spec.ts`, `apps/web/src/app/app.config.ts`.
