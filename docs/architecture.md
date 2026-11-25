@@ -1,8 +1,8 @@
 # 🏗️ Especificação de Arquitetura Técnica (Architecture / SSD)
 
 **Projeto:** UTFRide  
-**Versão:** 1.0.1<br>
-**Data:** 2026-10-23<br>
+**Versão:** 1.0.2<br>
+**Data:** 2026-11-25<br>
 **Status:** Aprovado  
 
 > 🤖 **Este documento é a régua arquitetural e técnica do UTFRide.** Ele estabelece os padrões estruturais, a organização do código, o modelo de dados e os contratos de integração que o `/utf-setup`, os implementadores e os revisores devem seguir rigorosamente durante todo o ciclo de desenvolvimento.
@@ -16,6 +16,7 @@
 - **Paradigma de Componentização:** Arquitetura 100% **Standalone** (sem nenhum `NgModule`).
 - **Framework CSS:** **Tailwind CSS** com sistema de tokens semânticos definido em [`docs/design-tokens.md`](file:///c:/Users/duduk/Documents/UTFRide/docs/design-tokens.md).
 - **Gerenciamento de Estado:** **Signals** nativos do Angular (`signal()`, `computed()`, `model()`, `effect()`).
+- **Cliente BaaS e Autenticação:** **`@supabase/supabase-js`** (Supabase Auth, sessão persistente e integração com o projeto Supabase).
 - **Testes Unitários:** **Vitest** com TDD estrito, integrado ao builder `@angular/build:unit-test` do Angular CLI.
 - **Linter:** **ESLint** (`@angular-eslint`).
 
@@ -33,20 +34,20 @@
 
 A persistência do UTFRide evolui em duas fases bem demarcadas:
 
-### 2.1 Fase MVP (Entrega 2) — `json-server`
+### 2.1 Fase MVP e Transição de Autenticação — `json-server` + Supabase Auth
 - **Arquivo de Dados:** `apps/api/db.json`
 - **Execução** — `npm run server` na raiz do repositório disponibiliza a API na porta 3000. `apps/api/start.mjs` carrega o arquivo de dados e inicia `createServer` de `apps/api/server.mjs`.
-- **Camada de Integração:** `HttpClient` do Angular consumindo `http://localhost:3000/`.
+- **Camada de Integração:** `HttpClient` do Angular consumindo `http://localhost:3000/` com `authInterceptor` anexando o token JWT da sessão quando disponível.
 - **Coleções Mapeadas:** `users`, `rides`, `ride_requests`, `ride_searches`, `reviews`, `reports`, `notifications`.
-- **Cadastro e autenticação simulados:** o servidor do MVP acrescenta `POST /registration-exists` para consultar duplicidade de e-mail ou matrícula. A conta usa `password`, `whatsapp` e `isEmailConfirmed` em `users`; a sessão fica em memória no frontend. Essa simulação não fornece autenticação segura e não substitui o Supabase Auth da fase completa.
-- **Consulta de caronas** — `GET /driver-summaries?id=…` retorna apenas identificador, nome e avaliação média do motorista. `GET /passenger-trip-summaries?passengerId=…` filtra pelo ID textual da sessão simulada e projeta os resumos de Minhas Viagens. O WhatsApp é incluído apenas nas solicitações aceitas de caronas ativas ou lotadas. O parâmetro `passengerId` identifica o filtro da consulta. A verificação da identidade no servidor está prevista na fase Supabase.
+- **Autenticação e sessão (Supabase Auth na fase transitória):** o cadastro e o login migram da simulação em memória no `json-server` para o **Supabase Auth** (`@supabase/supabase-js`, via `signUp`, `signInWithPassword`, `signOut` e restauração de sessão persistida em navegador no recarregamento da página). A sessão autenticada emite um token **JWT** (`access_token`) verificado pelo `authGuard` e enviado pelo `authInterceptor`. Os demais dados de domínio (`rides`, `ride_requests`, `notifications` e perfis vinculados) permanecem temporariamente no `json-server` até a migração das tabelas na Entrega 3.
+- **Consulta de caronas** — `GET /driver-summaries?id=…` retorna apenas identificador, nome e avaliação média do motorista. `GET /passenger-trip-summaries?passengerId=…` filtra pelo ID textual da sessão e projeta os resumos de Minhas Viagens. O WhatsApp é incluído apenas nas solicitações aceitas de caronas ativas ou lotadas. O parâmetro `passengerId` identifica o filtro da consulta. A verificação da identidade no servidor com RLS está prevista na fase completa no Supabase.
 - **Gravações de solicitações** — `POST /ride_requests` confere a existência de pedido pendente ou aceito para o mesmo par oferta e passageiro dentro da fila de gravação. `PATCH /ride_requests/:id?passengerId=…` verifica a titularidade e o estado pendente no momento do cancelamento voluntário. A fila é compartilhada pela instância do servidor e publica o novo estado depois que a gravação do JSON é concluída.
 
 ### 2.2 Fase Completa (Entrega 3) — Backend-as-a-Service (**Supabase**)
 - **Banco de Dados:** PostgreSQL hospedado no Supabase.
 - **Autenticação:** Supabase Auth com gerenciamento de sessão via tokens **JWT** e validação de domínio institucional `@alunos.utfpr.edu.br`.
 - **Segurança:** Políticas de Row Level Security (RLS) protegendo dados privados e restringindo alterações a proprietários dos registros.
-- **Cliente:** Biblioteca oficial `@supabase/supabase-js` ou REST API do Supabase.
+- **Cliente:** Biblioteca oficial `@supabase/supabase-js` encapsulada nos Services do `core/services/`.
 
 ### 2.3 Regra Fundamental da Camada de Dados
 > **Componente nunca fala com a rede ou com o banco.**  
@@ -54,9 +55,19 @@ A persistência do UTFRide evolui em duas fases bem demarcadas:
 
 ### 2.4 Interceptors e Reatividade Assíncrona
 - **Functional Interceptors:**
-  - `authInterceptor`: Injeta automaticamente o cabeçalho `Authorization: Bearer <token>` nas requisições HTTP.
-  - `errorInterceptor`: Trata globalmente erros 401 (desloga e redireciona para `/login`), 403 (acesso proibido) e 500 (notificações visuais de falha).
-- **Ponte RxJS ↔ Signals:** Conversão de chamadas assíncronas em Signals reativos nos Services através do utilitário `toSignal()`.
+  - `authInterceptor`: Lê o token JWT (`access_token`) da sessão ativa no Supabase Auth e injeta automaticamente o cabeçalho `Authorization: Bearer <token>` nas requisições HTTP do `HttpClient`.
+  - `errorInterceptor`: Trata globalmente erros 401 (encerra a sessão no `AuthData` e redireciona para `/login`), 403 (acesso proibido), 500 e falhas de servidor/rede, respeitando os tokens de contexto `SKIP_GLOBAL_ERROR_HANDLING` e `HANDLE_SESSION_EXPIRATION_ONLY`.
+- **Ponte RxJS ↔ Signals:** Conversão de chamadas assíncronas em Signals reativos nos Services através dos utilitários `toSignal()` e `toObservable()`.
+
+### 2.5 Ambientes e Segredos (Supabase)
+- **Projeto Supabase da equipe:** Projeto compartilhado pela organização da equipe na plataforma `supabase.com`, criado na região **São Paulo**, com referência `qeoenmfkfrhabznkekjp` (`https://qeoenmfkfrhabznkekjp.supabase.co`).
+- **Configuração no Painel (Desenvolvimento):** `Site URL` configurada para `http://localhost:4200` em *Authentication → URL Configuration*, e confirmação automática de e-mail (*Confirm email*) desabilitada durante o desenvolvimento no plano gratuito.
+- **Arquivos de Ambiente (`apps/web/src/environments/`):**
+  - `environment.ts` (produção) e `environment.development.ts` (desenvolvimento local), expondo `apiUrl` (enquanto os dados utilizam `json-server`), `supabaseUrl` e `supabasePublishableKey`.
+- **Política de Chaves (Pública vs. Secreta):**
+  - **Chave Publicável (`sb_publishable_...`):** **pode** ser versionada no Git dentro de `environments/` e enviada no código cliente (`createClient(supabaseUrl, supabasePublishableKey)`), pois identifica apenas o projeto na borda pública; a proteção real dos dados é garantida pelo JWT do usuário autenticado e pelas políticas de **Row Level Security (RLS)** no servidor.
+  - **Chave Secreta (`sb_secret_...` / `service_role`):** **nunca** deve ser colocada no código frontend, nos arquivos `environments/` ou em qualquer commit do repositório, pois contorna o RLS e concede acesso administrativo irrestrito ao projeto.
+- **Isolamento em Testes Automatizados:** os testes unitários (Vitest) **nunca** executam chamadas reais ao Supabase; o cliente `@supabase/supabase-js` é encapsulado em `core/services/` e substituído por dublês/mocks em memória nos testes.
 
 ---
 
@@ -142,6 +153,7 @@ UTFRide/
 │           │   ├── app.ts        # Componente raiz (nomes padrão do Angular CLI atual)
 │           │   ├── app.html      # Template do componente raiz
 │           │   └── app.css       # Estilos do componente raiz
+│           ├── environments/     # Configurações de ambiente (environment.ts / development)
 │           ├── index.html
 │           ├── main.ts
 │           └── styles.css       # Configurações do Tailwind CSS e Design Tokens
