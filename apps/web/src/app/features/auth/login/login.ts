@@ -14,6 +14,7 @@ export class Login {
   readonly loading = signal(false);
   readonly invalidCredentials = signal(false);
   readonly connectionError = signal(false);
+  readonly accountCreated = signal(this.router.currentNavigation()?.extras.state?.['accountCreated'] === true);
   readonly passwordVisible = signal(false);
   readonly form = new FormGroup({
     email: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.email] }),
@@ -43,6 +44,7 @@ export class Login {
 
   submit(): void {
     if (this.form.invalid || this.loading()) return;
+    this.accountCreated.set(false);
     this.invalidCredentials.set(false);
     this.connectionError.set(false);
     this.loading.set(true);

@@ -24,7 +24,7 @@
   - Teste primeiro: criar `apps/web/src/app/core/interceptors/auth-interceptor.spec.ts` provando que requisições para `environment.apiUrl` recebem `Authorization: Bearer <access_token>` quando há sessão ativa, não recebem o header quando não há token e nunca enviam `Authorization` para APIs públicas externas (ex.: IBGE); falha inicialmente porque `auth-interceptor.ts` e `accessToken` ainda não existem.
   - Arquivos previstos: `apps/web/src/app/core/services/auth-data.ts`, `apps/web/src/app/core/interceptors/auth-interceptor.ts`, `apps/web/src/app/core/interceptors/auth-interceptor.spec.ts`, `apps/web/src/app/app.config.ts`.
 
-- [ ] **Tarefa 3 — Migrar cadastro (`register`) para Supabase Auth e exibir aviso em `/login`**
+- [x] **Tarefa 3 — Migrar cadastro (`register`) para Supabase Auth e exibir aviso em `/login`**
   - Cobre: CA1, CA2
   - Teste primeiro: atualizar `auth-data.spec.ts`, `register.spec.ts` e `login.spec.ts` para exigir checagem de duplicidade, chamada a `signUp` com metadados do aluno, espelhamento em `POST /users` (`// TODO` Atividade 15), chamada a `signOut` para não manter sessão automática, navegação para `/login` com aviso de conta criada em português e tratamento de e-mail/matrícula duplicados ou erro do Supabase em português; falha inicialmente porque `AuthData.register` ainda usa apenas `json-server`.
   - Arquivos previstos: `apps/web/src/app/core/services/auth-data.ts`, `apps/web/src/app/core/services/auth-data.spec.ts`, `apps/web/src/app/features/auth/register/register.ts`, `apps/web/src/app/features/auth/register/register.spec.ts`, `apps/web/src/app/features/auth/login/login.ts`, `apps/web/src/app/features/auth/login/login.html`, `apps/web/src/app/features/auth/login/login.spec.ts`.

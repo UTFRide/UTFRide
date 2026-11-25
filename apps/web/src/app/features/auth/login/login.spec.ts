@@ -135,3 +135,35 @@ it.each([401, 500])('informa erro %i no login e remove o aviso ao entrar após n
   expect(notice.message()).toBe('');
   http.verify();
 });
+
+it('exibe aviso em português de conta criada com sucesso ao navegar vindo do cadastro e oculta ao submeter ou acessar direto', async () => {
+  TestBed.configureTestingModule({ providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()] });
+  const harness = await RouterTestingHarness.create('/');
+  const router = TestBed.inject(Router);
+
+  await router.navigateByUrl('/login', { state: { accountCreated: true } });
+  await harness.fixture.whenStable();
+  const root = harness.routeNativeElement as HTMLElement;
+  const statusBanner = root.querySelector<HTMLElement>('[role="status"]');
+  expect(statusBanner).not.toBeNull();
+  expect(statusBanner?.textContent).toContain('Conta criada com sucesso');
+  expect(statusBanner?.className).toContain('bg-sucesso-fundo');
+  expect(statusBanner?.className).toContain('text-sucesso');
+
+  const email = root.querySelector<HTMLInputElement>('input[formControlName="email"]')!;
+  const password = root.querySelector<HTMLInputElement>('input[formControlName="password"]')!;
+  email.value = 'ana@alunos.utfpr.edu.br';
+  email.dispatchEvent(new Event('input', { bubbles: true }));
+  password.value = 'incorreta';
+  password.dispatchEvent(new Event('input', { bubbles: true }));
+  root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  TestBed.inject(HttpTestingController).expectOne((req) => req.url === 'http://localhost:3000/users').flush([]);
+  await harness.fixture.whenStable();
+  expect(root.querySelector('[role="status"]')).toBeNull();
+
+  await router.navigateByUrl('/register');
+  await router.navigateByUrl('/login');
+  await harness.fixture.whenStable();
+  expect((harness.routeNativeElement as HTMLElement).querySelector('[role="status"]')).toBeNull();
+  TestBed.inject(HttpTestingController).verify();
+});
