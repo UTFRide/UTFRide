@@ -2,6 +2,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { DeferBlockBehavior, DeferBlockState, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { firstValueFrom } from 'rxjs';
 import { vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
@@ -12,6 +13,7 @@ import { User } from '../../../core/models/user.model';
 import { AuthData } from '../../../core/services/auth-data';
 import { ErrorNotice } from '../../../core/services/error-notice';
 import { RideRequestData } from '../../../core/services/ride-request-data';
+import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 
 const ridesUrl = `${environment.apiUrl}/rides`;
 const requestsUrl = `${environment.apiUrl}/ride_requests`;
@@ -57,8 +59,48 @@ function button(root: HTMLElement, label: string): HTMLButtonElement {
   return element;
 }
 
-function authenticate(http: HttpTestingController, id = '008', role: User['role'] = 'student'): void {
+const fakeSupabaseUser: SupabaseUser = {
+  id: '008',
+  app_metadata: {},
+  user_metadata: {},
+  aud: 'authenticated',
+  created_at: '2026-01-01T08:00:00.000Z',
+  email: 'passageiro@alunos.utfpr.edu.br',
+};
+
+const fakeSession: Session = {
+  access_token: 'jwt-token',
+  refresh_token: 'refresh-token',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: fakeSupabaseUser,
+};
+
+function createFakeAuthClient(): SupabaseAuthClient {
+  return {
+    signUp: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
+    signInWithPassword: vi.fn(async (credentials) => {
+      const email = 'email' in credentials ? credentials.email : fakeSupabaseUser.email;
+      const user = { ...fakeSupabaseUser, email };
+      return { data: { user, session: { ...fakeSession, user } }, error: null };
+    }),
+    signOut: vi.fn(async () => ({ error: null })),
+    getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+    onAuthStateChange: vi.fn(() => ({
+      data: { subscription: { id: 'sub-1', callback: vi.fn(), unsubscribe: vi.fn() } },
+    })),
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function authenticate(http: HttpTestingController, id = '008', role: User['role'] = 'student'): Promise<void> {
   TestBed.inject(AuthData).login('passageiro@alunos.utfpr.edu.br', 'senha123');
+  await flushMicrotasks();
   http
     .expectOne((request) => request.url === `${environment.apiUrl}/users`)
     .flush([
@@ -66,7 +108,6 @@ function authenticate(http: HttpTestingController, id = '008', role: User['role'
         id,
         name: 'Joana Oliveira',
         email: 'passageiro@alunos.utfpr.edu.br',
-        password: 'senha123',
         registrationNumber: '2026001',
         whatsapp: '41999998888',
         role,
@@ -76,6 +117,7 @@ function authenticate(http: HttpTestingController, id = '008', role: User['role'
         createdAt: '2026-01-01T08:00:00.000Z',
       },
     ]);
+  await flushMicrotasks();
 }
 
 function expectRequestRead(http: HttpTestingController, rideId = '007', passengerId = '008') {
@@ -99,7 +141,7 @@ function flushDetail(http: HttpTestingController, ride: Ride, requests: RideRequ
 
 async function enterDetail(ride: Ride, requests: RideRequest[] = []) {
   const http = TestBed.inject(HttpTestingController);
-  authenticate(http);
+  await authenticate(http);
   const harness = await RouterTestingHarness.create(`/rides/${ride.id}`);
   flushDetail(http, ride, requests);
   await harness.fixture.whenStable();
@@ -123,7 +165,11 @@ function flushTrips(http: HttpTestingController): void {
 describe('Carregamento sob demanda de RideDetail', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [...appConfig.providers, provideHttpClientTesting()],
+      providers: [
+        ...appConfig.providers,
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
       deferBlockBehavior: DeferBlockBehavior.Manual,
     });
   });
@@ -153,7 +199,11 @@ describe('Carregamento sob demanda de RideDetail', () => {
 describe('Solicitação de vaga em RideDetail', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [...appConfig.providers, provideHttpClientTesting()],
+      providers: [
+        ...appConfig.providers,
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
       deferBlockBehavior: DeferBlockBehavior.Playthrough,
     });
   });
@@ -173,7 +223,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     },
   ] as const)('exibe "$message" e impede abrir a solicitação', async ({ role, isBlocked, message }) => {
     const http = TestBed.inject(HttpTestingController);
-    authenticate(http, '008', role);
+    await authenticate(http, '008', role);
     if (isBlocked) {
       const auth = TestBed.inject(AuthData);
       // Login recusa contas bloqueadas. Simula uma sessão corrente já bloqueada.
@@ -199,7 +249,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     const staleConfirmation = button(root, confirmLabel);
 
     TestBed.inject(AuthData).logout();
-    authenticate(http, '009');
+    await authenticate(http, '009');
     staleConfirmation.click();
     await harness.fixture.whenStable();
     flushRide(http, makeRide());
@@ -215,13 +265,13 @@ describe('Solicitação de vaga em RideDetail', () => {
     const ride = makeRide();
     const http = TestBed.inject(HttpTestingController);
     const auth = TestBed.inject(AuthData);
-    authenticate(http);
+    await authenticate(http);
     const harness = await RouterTestingHarness.create(`/rides/${ride.id}`);
     const oldOffer = http.expectOne({ method: 'GET', url: `${ridesUrl}/${ride.id}` });
     const oldRequest = expectRequestRead(http);
 
     auth.logout();
-    authenticate(http);
+    await authenticate(http);
     const newSession = auth.currentUser();
     oldOffer.flush(ride);
     oldRequest.flush([makeRequest({ status: 'accepted' })]);
@@ -242,7 +292,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     'encerra a sessão atual se o detalhe recebe 401 na leitura de %s',
     async (resource) => {
       const http = TestBed.inject(HttpTestingController);
-      authenticate(http);
+      await authenticate(http);
       const harness = await RouterTestingHarness.create('/rides/007');
       expectRequestRead(http).flush([]);
 
@@ -657,7 +707,7 @@ describe('Solicitação de vaga em RideDetail', () => {
 
     const auth = TestBed.inject(AuthData);
     auth.logout();
-    authenticate(http);
+    await authenticate(http);
     const newSession = auth.currentUser();
     await harness.fixture.whenStable();
     flushDetail(http, ride);
@@ -682,7 +732,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     const offer = http.expectOne({ method: 'GET', url: `${ridesUrl}/007` });
 
     TestBed.inject(AuthData).logout();
-    authenticate(http, '009');
+    await authenticate(http, '009');
     offer.flush(ride);
     await harness.fixture.whenStable();
     flushRide(http, ride);
@@ -724,7 +774,7 @@ describe('Solicitação de vaga em RideDetail', () => {
   ] as const)('permite recarregar o detalhe quando falha %s (CA10)', async (resource, status, message) => {
     const http = TestBed.inject(HttpTestingController);
     const ride = makeRide();
-    authenticate(http);
+    await authenticate(http);
     const harness = await RouterTestingHarness.create(`/rides/${ride.id}`);
     const root = harness.routeNativeElement!.querySelector('main')!;
     expectRequestRead(http).flush([]);
@@ -751,7 +801,7 @@ describe('Solicitação de vaga em RideDetail', () => {
 
   it('oferece retorno à busca para um id de oferta inexistente (CA10)', async () => {
     const http = TestBed.inject(HttpTestingController);
-    authenticate(http);
+    await authenticate(http);
     const harness = await RouterTestingHarness.create('/rides/inexistente');
     const root = harness.routeNativeElement!.querySelector('main')!;
     expectRequestRead(http, 'inexistente').flush([]);
@@ -771,7 +821,7 @@ describe('Solicitação de vaga em RideDetail', () => {
   it('repete somente a leitura auxiliar da solicitação após um 404 (CA10)', async () => {
     const http = TestBed.inject(HttpTestingController);
     const ride = makeRide();
-    authenticate(http);
+    await authenticate(http);
     const harness = await RouterTestingHarness.create(`/rides/${ride.id}`);
     const root = harness.routeNativeElement!.querySelector('main')!;
     flushRide(http, ride);
@@ -1057,7 +1107,7 @@ describe('Solicitação de vaga em RideDetail', () => {
       const auth = TestBed.inject(AuthData);
       if (renewSession) {
         auth.logout();
-        authenticate(http);
+        await authenticate(http);
       }
       const currentSession = auth.currentUser();
       refreshedRide.flush(null, { status, statusText });

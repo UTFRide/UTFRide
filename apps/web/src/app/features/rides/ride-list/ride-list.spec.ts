@@ -5,6 +5,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterOutlet } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { appConfig } from '../../../app.config';
@@ -13,6 +14,7 @@ import { Notification } from '../../../core/models/notification.model';
 import { Ride } from '../../../core/models/ride.model';
 import { AuthData } from '../../../core/services/auth-data';
 import { ErrorNotice } from '../../../core/services/error-notice';
+import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 import { RidesLayout } from '../rides-layout/rides-layout';
 import { RideList } from './ride-list';
 
@@ -31,18 +33,57 @@ class RideDetailTestPage {
   readonly id = input.required<string>();
 }
 
-function authenticatePassenger(
+const fakeSupabaseUser: SupabaseUser = {
+  id: 'passenger-1',
+  app_metadata: {},
+  user_metadata: {},
+  aud: 'authenticated',
+  created_at: '2026-01-01T00:00:00.000Z',
+  email: 'mariana@alunos.utfpr.edu.br',
+};
+
+const fakeSession: Session = {
+  access_token: 'jwt-token',
+  refresh_token: 'refresh-token',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: fakeSupabaseUser,
+};
+
+function createFakeAuthClient(): SupabaseAuthClient {
+  return {
+    signUp: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
+    signInWithPassword: vi.fn(async (credentials) => {
+      const email = 'email' in credentials ? credentials.email : fakeSupabaseUser.email;
+      const user = { ...fakeSupabaseUser, email };
+      return { data: { user, session: { ...fakeSession, user } }, error: null };
+    }),
+    signOut: vi.fn(async () => ({ error: null })),
+    getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+    onAuthStateChange: vi.fn(() => ({
+      data: { subscription: { id: 'sub-1', callback: vi.fn(), unsubscribe: vi.fn() } },
+    })),
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function authenticatePassenger(
   http: HttpTestingController,
   user: { id: string; name: string; email: string },
-): void {
+): Promise<void> {
   const auth = TestBed.inject(AuthData);
   auth.login(user.email, 'senha123');
+  await flushMicrotasks();
   http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
     {
       id: user.id,
       name: user.name,
       email: user.email,
-      password: 'senha123',
       registrationNumber: '2020999',
       whatsapp: '41988887777',
       role: 'student',
@@ -52,6 +93,7 @@ function authenticatePassenger(
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   ]);
+  await flushMicrotasks();
 }
 
 function locationRequest(http: HttpTestingController) {
@@ -64,7 +106,11 @@ const municipalitiesUrl =
 describe('Navegação aninhada de caronas (CA1 e CA4)', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [...appConfig.providers, provideHttpClientTesting()],
+      providers: [
+        ...appConfig.providers,
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
   });
 
@@ -94,7 +140,7 @@ describe('Navegação aninhada de caronas (CA1 e CA4)', () => {
         };
       }),
     );
-    authenticatePassenger(http, {
+    await authenticatePassenger(http, {
       id: 'passenger-1',
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',
@@ -152,7 +198,7 @@ describe('Navegação aninhada de caronas (CA1 e CA4)', () => {
   it('volta a verificar a autenticação ao trocar de rota filha', async () => {
     const http = TestBed.inject(HttpTestingController);
     const auth = TestBed.inject(AuthData);
-    authenticatePassenger(http, {
+    await authenticatePassenger(http, {
       id: 'passenger-1',
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',
@@ -169,11 +215,16 @@ describe('Navegação aninhada de caronas (CA1 e CA4)', () => {
 describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
   it('posiciona o sino à esquerda da foto do aluno no cabeçalho e exibe apenas os avisos do passageiro autenticado (confirmado ou anteriormente pendente), sem exibir avisos de outro aluno', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
 
-    authenticatePassenger(http, {
+    await authenticatePassenger(http, {
       id: 'passenger-1',
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',
@@ -241,7 +292,7 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
     expect(panel!.textContent).not.toContain('Água Verde → UTFPR Ecoville');
 
     // Quando outro aluno com pedido anteriormente pendente entra e abre o sino, vê apenas o próprio aviso
-    authenticatePassenger(http, {
+    await authenticatePassenger(http, {
       id: 'passenger-2',
       name: 'Lucas Andrade',
       email: 'lucas@alunos.utfpr.edu.br',
@@ -287,12 +338,17 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
 
   it('permite navegar da busca de caronas para /driver/offer e /driver/my-rides e mantém o sino no cabeçalho dessas telas', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const router = TestBed.inject(Router);
 
-    authenticatePassenger(http, {
+    await authenticatePassenger(http, {
       id: 'driver-1',
       name: 'Carlos Motorista',
       email: 'motorista@alunos.utfpr.edu.br',
@@ -352,12 +408,17 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
 
   it('exibe falha de conexão (status 0) e erro inesperado ao abrir o sino em /rides sem mostrar estado vazio falso e permite tentar novamente', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const errorNotice = TestBed.inject(ErrorNotice);
 
-    authenticatePassenger(http, {
+    await authenticatePassenger(http, {
       id: 'passenger-1',
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',
@@ -431,12 +492,17 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
 
   it('reflete falhas de carregamento dos avisos no sino também nas telas /driver/offer e /driver/my-rides', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const errorNotice = TestBed.inject(ErrorNotice);
 
-    authenticatePassenger(http, {
+    await authenticatePassenger(http, {
       id: 'driver-1',
       name: 'Carlos Motorista',
       email: 'motorista@alunos.utfpr.edu.br',
@@ -499,13 +565,17 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [...appConfig.providers, provideHttpClientTesting()],
+      providers: [
+        ...appConfig.providers,
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
   });
 
   async function openSearch() {
     const http = TestBed.inject(HttpTestingController);
-    authenticatePassenger(http, {
+    await authenticatePassenger(http, {
       id: 'passenger-1',
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',
@@ -849,7 +919,7 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     const accepted = searchRequest(http);
     const auth = TestBed.inject(AuthData);
     auth.logout();
-    authenticatePassenger(http, {
+    await authenticatePassenger(http, {
       id: 'passenger-1',
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',

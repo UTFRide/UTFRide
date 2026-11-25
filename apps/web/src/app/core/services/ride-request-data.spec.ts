@@ -2,6 +2,7 @@ import { HttpRequest, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { firstValueFrom } from 'rxjs';
 import { vi } from 'vitest';
 import { environment } from '../../../environments/environment';
@@ -14,6 +15,7 @@ import { ErrorNotice } from './error-notice';
 import { NotificationData } from './notification-data';
 import { RideData } from './ride-data';
 import { RideRequestData } from './ride-request-data';
+import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
 const requestsUrl = `${environment.apiUrl}/ride_requests`;
 const pendingPassengerRequest: RideRequest = {
@@ -24,15 +26,54 @@ const pendingPassengerRequest: RideRequest = {
   createdAt: '2026-01-01T08:00:00.000Z',
 };
 
-function authenticate(http: HttpTestingController, id = 'driver-1', role: User['role'] = 'student'): void {
+const fakeSupabaseUser: SupabaseUser = {
+  id: 'driver-1',
+  app_metadata: {},
+  user_metadata: {},
+  aud: 'authenticated',
+  created_at: '2026-01-01T00:00:00.000Z',
+  email: 'motorista@alunos.utfpr.edu.br',
+};
+
+const fakeSession: Session = {
+  access_token: 'jwt-token',
+  refresh_token: 'refresh-token',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: fakeSupabaseUser,
+};
+
+function createFakeAuthClient(): SupabaseAuthClient {
+  return {
+    signUp: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
+    signInWithPassword: vi.fn(async (credentials) => {
+      const email = 'email' in credentials ? credentials.email : fakeSupabaseUser.email;
+      const user = { ...fakeSupabaseUser, email };
+      return { data: { user, session: { ...fakeSession, user } }, error: null };
+    }),
+    signOut: vi.fn(async () => ({ error: null })),
+    getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+    onAuthStateChange: vi.fn(() => ({
+      data: { subscription: { id: 'sub-1', callback: vi.fn(), unsubscribe: vi.fn() } },
+    })),
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function authenticate(http: HttpTestingController, id = 'driver-1', role: User['role'] = 'student'): Promise<void> {
   const auth = TestBed.inject(AuthData);
   auth.login('motorista@alunos.utfpr.edu.br', 'senha123');
+  await flushMicrotasks();
   http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
     {
       id,
       name: 'Carlos Motorista',
       email: 'motorista@alunos.utfpr.edu.br',
-      password: 'senha123',
       registrationNumber: '2020123',
       whatsapp: '41999998888',
       role,
@@ -42,12 +83,17 @@ function authenticate(http: HttpTestingController, id = 'driver-1', role: User['
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   ]);
+  await flushMicrotasks();
 }
 
 describe('RideRequestData', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
   });
 
@@ -66,9 +112,9 @@ describe('RideRequestData', () => {
       data = TestBed.inject(RideRequestData);
     });
 
-    function authenticateRestricted({ role, isBlocked }: (typeof restrictedAccounts)[number]) {
+    async function authenticateRestricted({ role, isBlocked }: (typeof restrictedAccounts)[number]) {
       const http = TestBed.inject(HttpTestingController);
-      authenticate(http, pendingPassengerRequest.passengerId, role);
+      await authenticate(http, pendingPassengerRequest.passengerId, role);
       if (isBlocked) {
         const auth = TestBed.inject(AuthData);
         // Login recusa contas bloqueadas. Simula uma sessão corrente já bloqueada.
@@ -78,7 +124,7 @@ describe('RideRequestData', () => {
     }
 
     it.each(restrictedAccounts)('impede solicitar vaga com $account', async (account) => {
-      const http = authenticateRestricted(account);
+      const http = await authenticateRestricted(account);
       const result = firstValueFrom(data.createRequest(pendingPassengerRequest.rideId));
 
       http.expectNone((request) => request.method === 'GET' && request.url === requestsUrl);
@@ -88,7 +134,7 @@ describe('RideRequestData', () => {
     });
 
     it.each(restrictedAccounts)('impede cancelar solicitação com $account', async (account) => {
-      const http = authenticateRestricted(account);
+      const http = await authenticateRestricted(account);
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
 
       http.expectNone({ method: 'GET', url: requestUrl });
@@ -99,7 +145,7 @@ describe('RideRequestData', () => {
 
     it('cancela uma solicitação pendente do aluno atual preservando o ID textual', async () => {
       const http = TestBed.inject(HttpTestingController);
-      authenticate(http, pendingPassengerRequest.passengerId);
+      await authenticate(http, pendingPassengerRequest.passengerId);
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
       http.expectOne({ method: 'GET', url: requestUrl }).flush(pendingPassengerRequest);
 
@@ -115,7 +161,7 @@ describe('RideRequestData', () => {
 
     it('impede cancelar uma solicitação de outro aluno', async () => {
       const http = TestBed.inject(HttpTestingController);
-      authenticate(http, '9');
+      await authenticate(http, '9');
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
       http.expectOne({ method: 'GET', url: requestUrl }).flush(pendingPassengerRequest);
 
@@ -128,7 +174,7 @@ describe('RideRequestData', () => {
       'impede cancelar quando o estado atual é %s',
       async (status) => {
         const http = TestBed.inject(HttpTestingController);
-        authenticate(http, pendingPassengerRequest.passengerId);
+        await authenticate(http, pendingPassengerRequest.passengerId);
         const result = firstValueFrom(data.cancelPassengerRequest(requestId));
         http.expectOne({ method: 'GET', url: requestUrl }).flush({
           ...pendingPassengerRequest,
@@ -143,10 +189,10 @@ describe('RideRequestData', () => {
 
     it('impede iniciar o cancelamento se a sessão mudou antes da inscrição', async () => {
       const http = TestBed.inject(HttpTestingController);
-      authenticate(http, pendingPassengerRequest.passengerId);
+      await authenticate(http, pendingPassengerRequest.passengerId);
       const operation = data.cancelPassengerRequest(requestId);
       TestBed.inject(AuthData).logout();
-      authenticate(http, pendingPassengerRequest.passengerId);
+      await authenticate(http, pendingPassengerRequest.passengerId);
 
       await expect(firstValueFrom(operation)).resolves.toEqual({ status: 'unauthenticated' });
       http.verify();
@@ -154,12 +200,12 @@ describe('RideRequestData', () => {
 
     it('impede que uma nova sessão do mesmo aluno grave o cancelamento em andamento', async () => {
       const http = TestBed.inject(HttpTestingController);
-      authenticate(http, pendingPassengerRequest.passengerId);
+      await authenticate(http, pendingPassengerRequest.passengerId);
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
       const read = http.expectOne({ method: 'GET', url: requestUrl });
 
       TestBed.inject(AuthData).logout();
-      authenticate(http, pendingPassengerRequest.passengerId);
+      await authenticate(http, pendingPassengerRequest.passengerId);
       read.flush(pendingPassengerRequest);
 
       http.expectNone(isCancellationPatch);
@@ -169,7 +215,7 @@ describe('RideRequestData', () => {
 
     it('mantém um único cancelamento por sessão e pedido após sair da tela', async () => {
       const http = TestBed.inject(HttpTestingController);
-      authenticate(http, pendingPassengerRequest.passengerId);
+      await authenticate(http, pendingPassengerRequest.passengerId);
       const first = data.cancelPassengerRequest(requestId).subscribe();
       const read = http.expectOne({ method: 'GET', url: requestUrl });
       const duplicate = firstValueFrom(data.cancelPassengerRequest(requestId));
@@ -187,7 +233,7 @@ describe('RideRequestData', () => {
     });
   });
 
-  it('consulta somente o resumo das viagens da sessão e descarta respostas de sessões anteriores', () => {
+  it('consulta somente o resumo das viagens da sessão e descarta respostas de sessões anteriores', async () => {
     const http = TestBed.inject(HttpTestingController);
     const data = TestBed.inject(RideRequestData);
     const auth = TestBed.inject(AuthData);
@@ -196,7 +242,7 @@ describe('RideRequestData', () => {
     TestBed.tick();
     http.expectNone(url);
 
-    authenticate(http, '007');
+    await authenticate(http, '007');
     TestBed.tick();
     const previous = http.expectOne((request) => request.url === url && request.method === 'GET');
     expect(previous.request.params.keys()).toEqual(['passengerId']);
@@ -205,7 +251,7 @@ describe('RideRequestData', () => {
 
     // A autenticação nova com o mesmo ID também invalida a resposta anterior.
     auth.logout();
-    authenticate(http, '007');
+    await authenticate(http, '007');
     expect(result()).toEqual({ status: 'loading' });
     TestBed.tick();
     expect(previous.cancelled).toBe(true);
@@ -215,7 +261,7 @@ describe('RideRequestData', () => {
 
     auth.logout();
     expect(result()).toEqual({ status: 'error' });
-    authenticate(http, '7');
+    await authenticate(http, '7');
     expect(result()).toEqual({ status: 'loading' });
     TestBed.tick();
     const failure = http.expectOne((request) => request.url === url && request.method === 'GET');
@@ -225,7 +271,7 @@ describe('RideRequestData', () => {
     http.verify();
   });
 
-  it('consulta só o par oferta e passageiro da sessão, preservando ids textuais e isolando o resultado', () => {
+  it('consulta só o par oferta e passageiro da sessão, preservando ids textuais e isolando o resultado', async () => {
     const http = TestBed.inject(HttpTestingController);
     const requestData = TestBed.inject(RideRequestData);
     const auth = TestBed.inject(AuthData);
@@ -235,7 +281,7 @@ describe('RideRequestData', () => {
     TestBed.tick();
     http.expectNone(url);
 
-    authenticate(http, '007');
+    await authenticate(http, '007');
     TestBed.tick();
     const oldRead = http.expectOne((request) => request.url === url);
     rideId.set('007');
@@ -269,7 +315,7 @@ describe('RideRequestData', () => {
     auth.logout();
     TestBed.tick();
     http.expectNone(url);
-    authenticate(http, 'different-passenger');
+    await authenticate(http, 'different-passenger');
     expect(result()).toEqual({ status: 'loading' });
     TestBed.tick();
     const newRead = http.expectOne((request) => request.url === url);
@@ -282,10 +328,10 @@ describe('RideRequestData', () => {
     http.verify();
   });
 
-  it('exibe a solicitação mais recente quando só há pedidos encerrados para a oferta', () => {
+  it('exibe a solicitação mais recente quando só há pedidos encerrados para a oferta', async () => {
     const http = TestBed.inject(HttpTestingController);
     const requestData = TestBed.inject(RideRequestData);
-    authenticate(http, '007');
+    await authenticate(http, '007');
     const result = requestData.loadPassengerRequest(signal('008'), TestBed.inject(Injector));
     TestBed.tick();
 
@@ -305,11 +351,11 @@ describe('RideRequestData', () => {
     http.verify();
   });
 
-  it('aceita e rejeita solicitações individualmente antes da viagem, ocupa vagas, esgota a oferta na última vaga mantendo pendentes e bloqueia novos aceites', () => {
+  it('aceita e rejeita solicitações individualmente antes da viagem, ocupa vagas, esgota a oferta na última vaga mantendo pendentes e bloqueia novos aceites', async () => {
     const rideData = TestBed.inject(RideData);
     const requestData = TestBed.inject(RideRequestData);
     const http = TestBed.inject(HttpTestingController);
-    authenticate(http);
+    await authenticate(http);
 
     const futureDeparture = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
     const initialRide: Ride = {
@@ -415,7 +461,7 @@ describe('RideRequestData', () => {
   it('impede que uma oferta esgotada aceite novos pedidos', async () => {
     const requestData = TestBed.inject(RideRequestData);
     const http = TestBed.inject(HttpTestingController);
-    authenticate(http, 'passenger-novo');
+    await authenticate(http, 'passenger-novo');
 
     const exhaustedRide: Ride = {
       id: 'ride-full',
@@ -440,12 +486,12 @@ describe('RideRequestData', () => {
     http.verify();
   });
 
-  it('cancela a oferta antes da viagem, altera apenas pedidos pendentes para cancelados e registra um aviso interno para cada passageiro confirmado ou anteriormente pendente', () => {
+  it('cancela a oferta antes da viagem, altera apenas pedidos pendentes para cancelados e registra um aviso interno para cada passageiro confirmado ou anteriormente pendente', async () => {
     const rideData = TestBed.inject(RideData);
     const requestData = TestBed.inject(RideRequestData);
     const notificationData = TestBed.inject(NotificationData);
     const http = TestBed.inject(HttpTestingController);
-    authenticate(http);
+    await authenticate(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ride: Ride = {
@@ -577,10 +623,10 @@ describe('RideRequestData', () => {
     http.verify();
   });
 
-  it('impede o cancelamento quando a viagem já ocorreu ou a oferta já está cancelada/concluída', () => {
+  it('impede o cancelamento quando a viagem já ocorreu ou a oferta já está cancelada/concluída', async () => {
     const requestData = TestBed.inject(RideRequestData);
     const http = TestBed.inject(HttpTestingController);
-    authenticate(http);
+    await authenticate(http);
 
     const pastRide: Ride = {
       id: 'ride-past',
@@ -615,11 +661,11 @@ describe('RideRequestData', () => {
     http.verify();
   });
 
-  it('cancela oferta sem pendentes nem confirmados sem alterar rejeitados e sem criar avisos', () => {
+  it('cancela oferta sem pendentes nem confirmados sem alterar rejeitados e sem criar avisos', async () => {
     const requestData = TestBed.inject(RideRequestData);
     const notificationData = TestBed.inject(NotificationData);
     const http = TestBed.inject(HttpTestingController);
-    authenticate(http);
+    await authenticate(http);
 
     const ride: Ride = {
       id: 'ride-no-active',
@@ -671,19 +717,19 @@ describe('RideRequestData', () => {
     http.verify();
   });
 
-  it('impede que outro aluno carregue, aceite, rejeite ou cancele solicitações de uma oferta', () => {
+  it('impede que outro aluno carregue, aceite, rejeite ou cancele solicitações de uma oferta', async () => {
     const requestData = TestBed.inject(RideRequestData);
     const authData = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
     // Autentica outro aluno (driver-2)
     authData.login('outro@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
     http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
       {
         id: 'driver-2',
         name: 'Outro Motorista',
         email: 'outro@alunos.utfpr.edu.br',
-        password: 'senha123',
         registrationNumber: '2020999',
         whatsapp: '41988887777',
         role: 'student',
@@ -693,6 +739,7 @@ describe('RideRequestData', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
       },
     ]);
+    await flushMicrotasks();
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const rideFromDriver1: Ride = {
@@ -803,12 +850,12 @@ describe('RideRequestData', () => {
     http.verify();
   });
 
-  it('informa falha de conexão (status 0) ao carregar solicitações, decidir solicitação e cancelar oferta, preservando o estado e permitindo nova tentativa', () => {
+  it('informa falha de conexão (status 0) ao carregar solicitações, decidir solicitação e cancelar oferta, preservando o estado e permitindo nova tentativa', async () => {
     const rideData = TestBed.inject(RideData);
     const requestData = TestBed.inject(RideRequestData);
     const errorNotice = TestBed.inject(ErrorNotice);
     const http = TestBed.inject(HttpTestingController);
-    authenticate(http);
+    await authenticate(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ride: Ride = {

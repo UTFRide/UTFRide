@@ -2,38 +2,115 @@ import { HttpClient, HttpContext, provideHttpClient, withInterceptors } from '@a
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { firstValueFrom } from 'rxjs';
 import { vi } from 'vitest';
 import { routes } from '../../app.routes';
 import { AuthData } from '../services/auth-data';
 import { ErrorNotice } from '../services/error-notice';
+import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../services/supabase-client';
 import { errorInterceptor, SKIP_GLOBAL_ERROR_HANDLING } from './error-interceptor';
 
-function authenticateStudent(auth: AuthData, http: HttpTestingController): void {
+const fakeSupabaseUser: SupabaseUser = {
+  id: '1',
+  app_metadata: {},
+  user_metadata: {},
+  aud: 'authenticated',
+  created_at: '2026-01-01T00:00:00.000Z',
+  email: 'ana@alunos.utfpr.edu.br',
+};
+
+const fakeSession: Session = {
+  access_token: 'jwt-token',
+  refresh_token: 'refresh-token',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: fakeSupabaseUser,
+};
+
+function createFakeAuthClient(): SupabaseAuthClient {
+  return {
+    signUp: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
+    signInWithPassword: vi.fn(async (credentials) => {
+      const email = 'email' in credentials ? credentials.email : fakeSupabaseUser.email;
+      const user = { ...fakeSupabaseUser, email };
+      return { data: { user, session: { ...fakeSession, user } }, error: null };
+    }),
+    signOut: vi.fn(async () => ({ error: null })),
+    getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+    onAuthStateChange: vi.fn(() => ({
+      data: { subscription: { id: 'sub-1', callback: vi.fn(), unsubscribe: vi.fn() } },
+    })),
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function authenticateStudent(auth: AuthData, http: HttpTestingController): Promise<void> {
   auth.login('ana@alunos.utfpr.edu.br', 'senha');
+  await flushMicrotasks();
   http.expectOne((request) => request.url.endsWith('/users')).flush([
     {
       id: '1',
       email: 'ana@alunos.utfpr.edu.br',
-      password: 'senha',
       isEmailConfirmed: true,
       isBlocked: false,
     },
   ]);
+  await flushMicrotasks();
 }
 
 describe('errorInterceptor', () => {
-  beforeEach(() => TestBed.configureTestingModule({ providers: [provideRouter(routes), provideHttpClient(withInterceptors([errorInterceptor])), provideHttpClientTesting()] }));
+  let fakeAuth: SupabaseAuthClient;
+
+  beforeEach(() => {
+    fakeAuth = createFakeAuthClient();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(withInterceptors([errorInterceptor])),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+  });
 
   it('encerra a sessão e encaminha ao login ao receber 401', async () => {
     const auth = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(auth, http);
+    await authenticateStudent(auth, http);
     expect(auth.isAuthenticated()).toBe(true);
+    expect(auth.accessToken()).toBe('jwt-token');
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     TestBed.inject(HttpClient).get('/protegido').subscribe({ error: () => undefined });
     http.expectOne('/protegido').flush('', { status: 401, statusText: 'Unauthorized' });
+    await flushMicrotasks();
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
     expect(auth.isAuthenticated()).toBe(false);
+    expect(auth.currentUser()).toBeNull();
+    expect(auth.accessToken()).toBeNull();
+    expect(navigate).toHaveBeenCalledWith('/login');
+  });
+
+  it('encerra a sessão local e navega para /login ao receber 401 mesmo se signOut falhar por rede', async () => {
+    const auth = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateStudent(auth, http);
+    vi.mocked(fakeAuth.signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    TestBed.inject(HttpClient).get('/protegido').subscribe({ error: () => undefined });
+    http.expectOne('/protegido').flush('', { status: 401, statusText: 'Unauthorized' });
+    await flushMicrotasks();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(auth.currentUser()).toBeNull();
+    expect(auth.accessToken()).toBeNull();
     expect(navigate).toHaveBeenCalledWith('/login');
   });
 
@@ -49,7 +126,7 @@ describe('errorInterceptor', () => {
     const notice = TestBed.inject(ErrorNotice);
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
 
-    authenticateStudent(auth, http);
+    await authenticateStudent(auth, http);
     expect(auth.isAuthenticated()).toBe(true);
     notice.message.set('Aviso anterior');
 

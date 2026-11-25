@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
@@ -13,17 +14,57 @@ import { RideRequest } from '../../../core/models/ride-request.model';
 import { AuthData } from '../../../core/services/auth-data';
 import { RideData } from '../../../core/services/ride-data';
 import { RideRequestData } from '../../../core/services/ride-request-data';
+import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 import { MyRides } from './my-rides';
 
-function authenticateDriver(http: HttpTestingController): void {
+const fakeSupabaseUser: SupabaseUser = {
+  id: 'driver-1',
+  app_metadata: {},
+  user_metadata: {},
+  aud: 'authenticated',
+  created_at: '2026-01-01T00:00:00.000Z',
+  email: 'motorista@alunos.utfpr.edu.br',
+};
+
+const fakeSession: Session = {
+  access_token: 'jwt-token',
+  refresh_token: 'refresh-token',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: fakeSupabaseUser,
+};
+
+function createFakeAuthClient(): SupabaseAuthClient {
+  return {
+    signUp: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
+    signInWithPassword: vi.fn(async (credentials) => {
+      const email = 'email' in credentials ? credentials.email : fakeSupabaseUser.email;
+      const user = { ...fakeSupabaseUser, email };
+      return { data: { user, session: { ...fakeSession, user } }, error: null };
+    }),
+    signOut: vi.fn(async () => ({ error: null })),
+    getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+    onAuthStateChange: vi.fn(() => ({
+      data: { subscription: { id: 'sub-1', callback: vi.fn(), unsubscribe: vi.fn() } },
+    })),
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function authenticateDriver(http: HttpTestingController): Promise<void> {
   const auth = TestBed.inject(AuthData);
   auth.login('motorista@alunos.utfpr.edu.br', 'senha123');
+  await flushMicrotasks();
   http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
     {
       id: 'driver-1',
       name: 'Carlos Motorista',
       email: 'motorista@alunos.utfpr.edu.br',
-      password: 'senha123',
       registrationNumber: '2020123',
       whatsapp: '41999998888',
       role: 'student',
@@ -33,12 +74,18 @@ function authenticateDriver(http: HttpTestingController): void {
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   ]);
+  await flushMicrotasks();
 }
 
 describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
   it('redireciona visitante não autenticado para /login', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     await RouterTestingHarness.create('/driver/my-rides');
     expect(TestBed.inject(Router).url).toBe('/login');
@@ -46,11 +93,16 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
   it('permite aceitar e rejeitar solicitações individualmente antes da viagem, atualiza vagas e status para esgotada, mantém pendentes e impede novos aceites e novos pedidos sem vaga', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const requestData = TestBed.inject(RideRequestData);
-    authenticateDriver(http);
+    await authenticateDriver(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ride: Ride = {
@@ -180,9 +232,11 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     const auth = TestBed.inject(AuthData);
     const driver = auth.currentUser()!;
     auth.login(driver.email, 'senha123');
+    await flushMicrotasks();
     http.expectOne((req) => req.url === `${environment.apiUrl}/users`).flush([
-      { ...driver, id: 'passenger-1', name: 'Novo Passageiro', password: 'senha123' },
+      { ...driver, id: 'passenger-1', name: 'Novo Passageiro' },
     ]);
+    await flushMicrotasks();
     const result = firstValueFrom(requestData.createRequest(updatedFullRide.id));
     http
       .expectOne((req) => req.method === 'GET' && req.url === `${environment.apiUrl}/ride_requests`)
@@ -196,10 +250,15 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
   it('permite iniciar a edição de uma oferta sem passageiros confirmados antes da viagem a partir de Minhas Ofertas', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateDriver(http);
+    await authenticateDriver(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ride: Ride = {
@@ -240,10 +299,15 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
   it('permite iniciar a edição de uma oferta com passageiros confirmados (inclusive esgotada) antes da viagem a partir de Minhas Ofertas', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateDriver(http);
+    await authenticateDriver(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const fullRide: Ride = {
@@ -300,11 +364,16 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
   it('exige confirmação antes de cancelar a oferta, altera pedidos pendentes para cancelados e registra avisos internos para confirmados e anteriormente pendentes', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const requestData = TestBed.inject(RideRequestData);
-    authenticateDriver(http);
+    await authenticateDriver(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ride: Ride = {
@@ -439,10 +508,15 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
   it('desabilita o cancelamento para oferta passada ou já cancelada', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateDriver(http);
+    await authenticateDriver(http);
 
     const pastRide: Ride = {
       id: 'ride-past',
@@ -478,12 +552,17 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
   it('impede que outro aluno edite, cancele ou decida solicitações mesmo em chamadas diretas e exibe alerta acessível', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const authData = TestBed.inject(AuthData);
     const requestData = TestBed.inject(RideRequestData);
-    authenticateDriver(http);
+    await authenticateDriver(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ride: Ride = {
@@ -522,12 +601,12 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
     // Outro aluno assume a sessão após o carregamento da tela
     authData.login('outro@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
     http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
       {
         id: 'driver-2',
         name: 'Outro Aluno',
         email: 'outro@alunos.utfpr.edu.br',
-        password: 'senha123',
         registrationNumber: '2020999',
         whatsapp: '41988887777',
         role: 'student',
@@ -537,6 +616,7 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
       },
     ]);
+    await flushMicrotasks();
     await harness.fixture.whenStable();
 
     expect(root.querySelector<HTMLButtonElement>('[data-testid="edit-ride-button"]')!.disabled).toBe(true);
@@ -577,12 +657,17 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
   it('impede gerenciamento em Minhas Ofertas quando o aluno está bloqueado e exibe alerta acessível', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const authData = TestBed.inject(AuthData);
     const rideData = TestBed.inject(RideData);
-    authenticateDriver(http);
+    await authenticateDriver(http);
 
     vi.spyOn(authData, 'currentUser').mockReturnValue({
       id: 'driver-1',
@@ -609,11 +694,16 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
   it('informa falha de conexão dentro do modal ao cancelar oferta, mantém confirmação aberta sem inert no alerta e permite nova tentativa', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const requestData = TestBed.inject(RideRequestData);
-    authenticateDriver(http);
+    await authenticateDriver(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ride: Ride = {
@@ -707,10 +797,15 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
   it('informa falha de conexão ao carregar ofertas ou decidir solicitação e permite nova tentativa', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateDriver(http);
+    await authenticateDriver(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ride: Ride = {
@@ -792,6 +887,90 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     expect(root.querySelector('[data-testid="request-decision-error"]')).toBeNull();
     expect(root.textContent).toContain('1 confirmado');
     expect(root.textContent).toContain('0 aguardando');
+    http.verify();
+  });
+
+  it('exibe o botão Sair ao lado do avatar, executa signOut, limpa sessão e bloqueia /driver/my-rides após sair', async () => {
+    const fakeAuth = createFakeAuthClient();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const auth = TestBed.inject(AuthData);
+    const router = TestBed.inject(Router);
+    await authenticateDriver(http);
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    const header = root.querySelector('header');
+    expect(header).not.toBeNull();
+    const avatar = header!.querySelector('[data-testid="student-avatar"]');
+    const logoutButton = header!.querySelector<HTMLButtonElement>('[data-testid="logout-button"]');
+    expect(avatar).not.toBeNull();
+    expect(logoutButton).not.toBeNull();
+    expect(logoutButton!.textContent).toContain('Sair');
+    expect(avatar!.parentElement?.contains(logoutButton!)).toBe(true);
+
+    logoutButton!.click();
+    await flushMicrotasks();
+    await harness.fixture.whenStable();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.currentUser()).toBeNull();
+    expect(auth.accessToken()).toBeNull();
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(router.url).toBe('/login');
+
+    await harness.navigateByUrl('/driver/my-rides');
+    expect(router.url).toBe('/login');
+    http.verify();
+  });
+
+  it('limpa sessão local e redireciona para /login em MyRides mesmo se signOut falhar por rede', async () => {
+    const fakeAuth = createFakeAuthClient();
+    vi.mocked(fakeAuth.signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const auth = TestBed.inject(AuthData);
+    const router = TestBed.inject(Router);
+    await authenticateDriver(http);
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    const logoutButton = root.querySelector<HTMLButtonElement>('header [data-testid="logout-button"]');
+    expect(logoutButton).not.toBeNull();
+
+    logoutButton!.click();
+    await flushMicrotasks();
+    await harness.fixture.whenStable();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.currentUser()).toBeNull();
+    expect(auth.accessToken()).toBeNull();
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(router.url).toBe('/login');
     http.verify();
   });
 });

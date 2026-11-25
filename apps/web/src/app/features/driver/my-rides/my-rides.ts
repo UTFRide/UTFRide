@@ -50,6 +50,7 @@ export class MyRides {
   readonly selectedRideId = signal<string | null>(null);
   readonly cancelConfirming = signal(false);
   readonly isCancelling = signal(false);
+  readonly loggingOut = signal(false);
   readonly rides = this.rideData.driverRides;
 
   readonly selectedRide = computed<Ride | null>(() => {
@@ -260,6 +261,17 @@ export class MyRides {
 
   loadNotifications(): void {
     this.notificationData.loadForCurrentUser();
+  }
+
+  async logout(): Promise<void> {
+    if (this.loggingOut()) return;
+    this.loggingOut.set(true);
+    try {
+      await this.authData.logout();
+      await this.router.navigateByUrl('/login');
+    } finally {
+      this.loggingOut.set(false);
+    }
   }
 
   editSelectedRide(): void {

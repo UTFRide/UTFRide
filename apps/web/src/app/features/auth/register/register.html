@@ -24,6 +24,9 @@
     @if (connectionError()) {
       <div role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-perigo">Falha de conexão. Verifique sua conexão e tente novamente.</div>
     }
+    @if (authError()) {
+      <div role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-perigo">{{ authError() }}</div>
+    }
     <form [formGroup]="form" (ngSubmit)="submit()" class="flex flex-col gap-space-md">
       <div class="flex flex-col gap-space-xs">
         <label for="name" class="flex justify-between text-label-lg">Nome completo <span class="text-label-pill text-texto-suave">Como no crachá</span></label>

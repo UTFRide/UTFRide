@@ -3,22 +3,63 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
 import { Ride } from '../../../core/models/ride.model';
 import { AuthData } from '../../../core/services/auth-data';
 import { RideData } from '../../../core/services/ride-data';
+import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 
-function authenticateStudent(http: HttpTestingController): void {
+const fakeSupabaseUser: SupabaseUser = {
+  id: 'driver-1',
+  app_metadata: {},
+  user_metadata: {},
+  aud: 'authenticated',
+  created_at: '2026-01-01T00:00:00.000Z',
+  email: 'motorista@alunos.utfpr.edu.br',
+};
+
+const fakeSession: Session = {
+  access_token: 'jwt-token',
+  refresh_token: 'refresh-token',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: fakeSupabaseUser,
+};
+
+function createFakeAuthClient(): SupabaseAuthClient {
+  return {
+    signUp: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
+    signInWithPassword: vi.fn(async (credentials) => {
+      const email = 'email' in credentials ? credentials.email : fakeSupabaseUser.email;
+      const user = { ...fakeSupabaseUser, email };
+      return { data: { user, session: { ...fakeSession, user } }, error: null };
+    }),
+    signOut: vi.fn(async () => ({ error: null })),
+    getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+    onAuthStateChange: vi.fn(() => ({
+      data: { subscription: { id: 'sub-1', callback: vi.fn(), unsubscribe: vi.fn() } },
+    })),
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function authenticateStudent(http: HttpTestingController): Promise<void> {
   const auth = TestBed.inject(AuthData);
   auth.login('motorista@alunos.utfpr.edu.br', 'senha123');
+  await flushMicrotasks();
   http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
     {
       id: 'driver-1',
       name: 'Carlos Motorista',
       email: 'motorista@alunos.utfpr.edu.br',
-      password: 'senha123',
       registrationNumber: '2020123',
       whatsapp: '41999998888',
       role: 'student',
@@ -28,6 +69,7 @@ function authenticateStudent(http: HttpTestingController): void {
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   ]);
+  await flushMicrotasks();
 }
 
 function setField(root: HTMLElement, controlName: string, value: string): void {
@@ -58,7 +100,12 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
   it('redireciona visitante não autenticado para /login', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     await RouterTestingHarness.create('/driver/offer');
     expect(TestBed.inject(Router).url).toBe('/login');
@@ -69,10 +116,15 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const harness = await RouterTestingHarness.create('/driver/offer');
     const root = harness.routeNativeElement as HTMLElement;
@@ -124,10 +176,15 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
   it('bloqueia o envio e aponta erros para campos obrigatórios vazios, vagas fora de 1 a 4 e valor negativo', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const harness = await RouterTestingHarness.create('/driver/offer');
     const root = harness.routeNativeElement as HTMLElement;
@@ -164,10 +221,15 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const harness = await RouterTestingHarness.create('/driver/offer');
     const root = harness.routeNativeElement as HTMLElement;
@@ -201,11 +263,16 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const rideData = TestBed.inject(RideData);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const initialDeparture = new Date(2026, 10, 17, 7, 30, 0);
     const existingRide: Ride = {
@@ -302,11 +369,16 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const rideData = TestBed.inject(RideData);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const initialDeparture = new Date(2026, 10, 17, 7, 30, 0);
     const fullRideWithPassengers: Ride = {
@@ -406,12 +478,17 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const authData = TestBed.inject(AuthData);
     const rideData = TestBed.inject(RideData);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     vi.spyOn(authData, 'currentUser').mockReturnValue({
       id: 'driver-1',
@@ -460,11 +537,16 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
   it('impede edição ao navegar para /driver/offer?rideId=... de oferta de outro aluno e exibe alerta acessível', async () => {
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const rideData = TestBed.inject(RideData);
-    authenticateStudent(http); // driver-1
+    await authenticateStudent(http); // driver-1
 
     const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-other');
     const root = harness.routeNativeElement as HTMLElement;
@@ -513,12 +595,17 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const authData = TestBed.inject(AuthData);
     const rideData = TestBed.inject(RideData);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const existingRide: Ride = {
       id: 'ride-1',
@@ -538,12 +625,12 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     const root = harness.routeNativeElement as HTMLElement;
 
     authData.login('outro@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
     http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
       {
         id: 'driver-2',
         name: 'Outro Aluno',
         email: 'outro@alunos.utfpr.edu.br',
-        password: 'senha123',
         registrationNumber: '2020999',
         whatsapp: '41988887777',
         role: 'student',
@@ -553,6 +640,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
       },
     ]);
+    await flushMicrotasks();
     await harness.fixture.whenStable();
 
     setField(root, 'origin', 'Água Verde');
@@ -576,10 +664,15 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const harness = await RouterTestingHarness.create('/driver/offer');
     const root = harness.routeNativeElement as HTMLElement;
@@ -658,11 +751,16 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const rideData = TestBed.inject(RideData);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const existingRide: Ride = {
       id: 'ride-1',
@@ -750,10 +848,15 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-1');
     const root = harness.routeNativeElement as HTMLElement;
@@ -801,10 +904,15 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const harness = await RouterTestingHarness.create('/driver/offer');
     const root = harness.routeNativeElement as HTMLElement;
@@ -846,10 +954,15 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const originalDeparture = new Date(2026, 10, 17, 7, 30, 0);
     const savedRide: Ride = {
@@ -917,11 +1030,16 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
     const rideData = TestBed.inject(RideData);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const savedRideWithPassengers: Ride = {
       id: 'ride-1',
@@ -990,10 +1108,15 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
 
     TestBed.configureTestingModule({
-      providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const foreignRide: Ride = {
       id: 'ride-other',
@@ -1075,6 +1198,84 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     );
     expect(root.querySelector<HTMLInputElement>('[formControlName="totalSeats"]')!.value).toBe('4');
     expect(root.querySelector<HTMLInputElement>('[formControlName="pricePerSeat"]')!.value).toBe('11');
+    http.verify();
+  });
+
+  it('exibe o botão Sair ao lado do avatar, executa signOut, limpa sessão e bloqueia /driver/offer após sair', async () => {
+    const fakeAuth = createFakeAuthClient();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const auth = TestBed.inject(AuthData);
+    const router = TestBed.inject(Router);
+    await authenticateStudent(http);
+
+    const harness = await RouterTestingHarness.create('/driver/offer');
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    const header = root.querySelector('header');
+    expect(header).not.toBeNull();
+    const avatar = header!.querySelector('[data-testid="student-avatar"]');
+    const logoutButton = header!.querySelector<HTMLButtonElement>('[data-testid="logout-button"]');
+    expect(avatar).not.toBeNull();
+    expect(logoutButton).not.toBeNull();
+    expect(logoutButton!.textContent).toContain('Sair');
+    expect(avatar!.parentElement?.contains(logoutButton!)).toBe(true);
+
+    logoutButton!.click();
+    await flushMicrotasks();
+    await harness.fixture.whenStable();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.currentUser()).toBeNull();
+    expect(auth.accessToken()).toBeNull();
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(router.url).toBe('/login');
+
+    await harness.navigateByUrl('/driver/offer');
+    expect(router.url).toBe('/login');
+    http.verify();
+  });
+
+  it('limpa sessão local e redireciona para /login em OfferRide mesmo se signOut falhar por rede', async () => {
+    const fakeAuth = createFakeAuthClient();
+    vi.mocked(fakeAuth.signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const auth = TestBed.inject(AuthData);
+    const router = TestBed.inject(Router);
+    await authenticateStudent(http);
+
+    const harness = await RouterTestingHarness.create('/driver/offer');
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    const logoutButton = root.querySelector<HTMLButtonElement>('header [data-testid="logout-button"]');
+    expect(logoutButton).not.toBeNull();
+
+    logoutButton!.click();
+    await flushMicrotasks();
+    await harness.fixture.whenStable();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.currentUser()).toBeNull();
+    expect(auth.accessToken()).toBeNull();
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(router.url).toBe('/login');
     http.verify();
   });
 });
