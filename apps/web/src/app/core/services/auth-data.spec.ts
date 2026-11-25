@@ -1002,3 +1002,81 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
     http.verify();
   });
 });
+
+describe('logout()', () => {
+  let fakeAuth: SupabaseAuthClient;
+
+  beforeEach(() => {
+    fakeAuth = createFakeAuthClient();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+  });
+
+  async function authenticate(service: AuthData, http: HttpTestingController): Promise<void> {
+    service.login('ana@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
+    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+      {
+        id: 'supabase-user-1',
+        name: 'Ana',
+        email: 'ana@alunos.utfpr.edu.br',
+        registrationNumber: '123',
+        whatsapp: '41987654321',
+        role: 'student',
+        isBlocked: false,
+        isEmailConfirmed: true,
+        ratingAverage: 4.5,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    await flushMicrotasks();
+  }
+
+  it('invoca signOut no Supabase Auth e limpa currentUser e accessToken', async () => {
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticate(service, http);
+
+    expect(service.isAuthenticated()).toBe(true);
+    expect(service.accessToken()).toBe('jwt-token');
+
+    await service.logout();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(service.isAuthenticated()).toBe(false);
+    expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
+    http.verify();
+  });
+
+  it('limpa currentUser e accessToken mesmo quando signOut retorna erro ou falha por rede', async () => {
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticate(service, http);
+
+    vi.mocked(fakeAuth.signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(service.logout()).resolves.toBeUndefined();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(service.isAuthenticated()).toBe(false);
+    expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
+
+    await authenticate(service, http);
+    vi.mocked(fakeAuth.signOut).mockResolvedValueOnce({
+      error: { name: 'AuthApiError', message: 'Network error', status: 500 } as never,
+    });
+    await expect(service.logout()).resolves.toBeUndefined();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(2);
+    expect(service.isAuthenticated()).toBe(false);
+    expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
+    http.verify();
+  });
+});

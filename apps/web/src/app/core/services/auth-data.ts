@@ -348,8 +348,14 @@ export class AuthData {
     }
   }
 
-  logout(): void {
-    this.authenticatedUser.set(null);
+  async logout(): Promise<void> {
+    this.clearLocalSession();
+    this.sessionRestorePromise = null;
+    try {
+      await this.supabase.signOut();
+    } catch {
+      // A sessão local já foi encerrada; falha de rede no signOut não deve travar a saída.
+    }
   }
 
   register(registration: Registration): void {

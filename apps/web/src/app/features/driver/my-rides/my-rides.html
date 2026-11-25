@@ -22,6 +22,16 @@
         >
           {{ studentName() | initials }}
         </div>
+        <button
+          type="button"
+          data-testid="logout-button"
+          [disabled]="loggingOut()"
+          (click)="logout()"
+          class="inline-flex h-8 items-center gap-space-xs rounded-full border border-borda bg-superficie px-space-sm text-label-md text-texto-suave transition-colors hover:bg-fundo hover:text-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          <span class="material-symbols-outlined text-body-md" aria-hidden="true">logout</span>
+          <span>Sair</span>
+        </button>
       </div>
     </div>
   </header>

@@ -1,7 +1,7 @@
 import { Component, computed, DestroyRef, effect, inject, signal, untracked } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 import { Ride } from '../../../core/models/ride.model';
 import { AuthData } from '../../../core/services/auth-data';
@@ -78,6 +78,7 @@ export class OfferRide {
   private readonly notificationData = inject(NotificationData);
   private readonly rideData = inject(RideData);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly routeRideId = toSignal(
     this.route.queryParamMap.pipe(map((params) => params.get('rideId'))),
@@ -98,6 +99,7 @@ export class OfferRide {
   ] as const;
 
   readonly loading = signal(false);
+  readonly loggingOut = signal(false);
   readonly submitAttempted = signal(false);
   readonly publishedRide = signal<Ride | null>(null);
   readonly authorizationError = signal<string | null>(null);
@@ -344,6 +346,17 @@ export class OfferRide {
 
   loadNotifications(): void {
     this.notificationData.loadForCurrentUser();
+  }
+
+  async logout(): Promise<void> {
+    if (this.loggingOut()) return;
+    this.loggingOut.set(true);
+    try {
+      await this.authData.logout();
+      await this.router.navigateByUrl('/login');
+    } finally {
+      this.loggingOut.set(false);
+    }
   }
 
   isSeatOptionDisabled(seats: number): boolean {

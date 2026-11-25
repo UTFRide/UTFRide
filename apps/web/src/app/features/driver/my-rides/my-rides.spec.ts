@@ -889,4 +889,88 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     expect(root.textContent).toContain('0 aguardando');
     http.verify();
   });
+
+  it('exibe o botão Sair ao lado do avatar, executa signOut, limpa sessão e bloqueia /driver/my-rides após sair', async () => {
+    const fakeAuth = createFakeAuthClient();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const auth = TestBed.inject(AuthData);
+    const router = TestBed.inject(Router);
+    await authenticateDriver(http);
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    const header = root.querySelector('header');
+    expect(header).not.toBeNull();
+    const avatar = header!.querySelector('[data-testid="student-avatar"]');
+    const logoutButton = header!.querySelector<HTMLButtonElement>('[data-testid="logout-button"]');
+    expect(avatar).not.toBeNull();
+    expect(logoutButton).not.toBeNull();
+    expect(logoutButton!.textContent).toContain('Sair');
+    expect(avatar!.parentElement?.contains(logoutButton!)).toBe(true);
+
+    logoutButton!.click();
+    await flushMicrotasks();
+    await harness.fixture.whenStable();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.currentUser()).toBeNull();
+    expect(auth.accessToken()).toBeNull();
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(router.url).toBe('/login');
+
+    await harness.navigateByUrl('/driver/my-rides');
+    expect(router.url).toBe('/login');
+    http.verify();
+  });
+
+  it('limpa sessão local e redireciona para /login em MyRides mesmo se signOut falhar por rede', async () => {
+    const fakeAuth = createFakeAuthClient();
+    vi.mocked(fakeAuth.signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const auth = TestBed.inject(AuthData);
+    const router = TestBed.inject(Router);
+    await authenticateDriver(http);
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    http
+      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    const logoutButton = root.querySelector<HTMLButtonElement>('header [data-testid="logout-button"]');
+    expect(logoutButton).not.toBeNull();
+
+    logoutButton!.click();
+    await flushMicrotasks();
+    await harness.fixture.whenStable();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.currentUser()).toBeNull();
+    expect(auth.accessToken()).toBeNull();
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(router.url).toBe('/login');
+    http.verify();
+  });
 });

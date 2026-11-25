@@ -65,24 +65,52 @@ async function authenticateStudent(auth: AuthData, http: HttpTestingController):
 }
 
 describe('errorInterceptor', () => {
-  beforeEach(() => TestBed.configureTestingModule({
-    providers: [
-      provideRouter(routes),
-      provideHttpClient(withInterceptors([errorInterceptor])),
-      provideHttpClientTesting(),
-      { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
-    ],
-  }));
+  let fakeAuth: SupabaseAuthClient;
+
+  beforeEach(() => {
+    fakeAuth = createFakeAuthClient();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(withInterceptors([errorInterceptor])),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+  });
 
   it('encerra a sessão e encaminha ao login ao receber 401', async () => {
     const auth = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
     await authenticateStudent(auth, http);
     expect(auth.isAuthenticated()).toBe(true);
+    expect(auth.accessToken()).toBe('jwt-token');
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
     TestBed.inject(HttpClient).get('/protegido').subscribe({ error: () => undefined });
     http.expectOne('/protegido').flush('', { status: 401, statusText: 'Unauthorized' });
+    await flushMicrotasks();
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
     expect(auth.isAuthenticated()).toBe(false);
+    expect(auth.currentUser()).toBeNull();
+    expect(auth.accessToken()).toBeNull();
+    expect(navigate).toHaveBeenCalledWith('/login');
+  });
+
+  it('encerra a sessão local e navega para /login ao receber 401 mesmo se signOut falhar por rede', async () => {
+    const auth = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateStudent(auth, http);
+    vi.mocked(fakeAuth.signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    TestBed.inject(HttpClient).get('/protegido').subscribe({ error: () => undefined });
+    http.expectOne('/protegido').flush('', { status: 401, statusText: 'Unauthorized' });
+    await flushMicrotasks();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(auth.currentUser()).toBeNull();
+    expect(auth.accessToken()).toBeNull();
     expect(navigate).toHaveBeenCalledWith('/login');
   });
 
