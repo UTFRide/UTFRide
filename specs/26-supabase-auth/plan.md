@@ -14,7 +14,7 @@
 
 ## Tarefas
 
-- [ ] **Tarefa 1 — Configurar `@supabase/supabase-js`, ambientes e `SupabaseClientService`**
+- [x] **Tarefa 1 — Configurar `@supabase/supabase-js`, ambientes e `SupabaseClientService`**
   - Cobre: CA10
   - Teste primeiro: criar `apps/web/src/app/core/services/supabase-client.spec.ts` verificando que `environment` e `environment.development` expõem `apiUrl`, `supabaseUrl` e `supabasePublishableKey` (sem `sb_secret_`), e que `SupabaseClientService` encapsula o cliente de autenticação e aceita dublê via DI sem chamadas reais ao Supabase; falha inicialmente porque os arquivos de ambiente de desenvolvimento e o serviço ainda não existem.
   - Arquivos previstos: `apps/web/package.json`, `package-lock.json`, `apps/web/angular.json`, `apps/web/src/environments/environment.ts`, `apps/web/src/environments/environment.development.ts`, `apps/web/src/app/core/services/supabase-client.ts`, `apps/web/src/app/core/services/supabase-client.spec.ts`.
