@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AuthError, isAuthRetryableFetchError, User as SupabaseUser } from '@supabase/supabase-js';
-import { catchError, exhaustMap, from, map, Observable, of, startWith, Subject, switchMap, throwError } from 'rxjs';
+import { catchError, exhaustMap, firstValueFrom, from, map, Observable, of, startWith, Subject, switchMap, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { ErrorNotice } from './error-notice';
 import { Registration, User } from '../models/user.model';
@@ -81,6 +81,7 @@ export class AuthData {
   private readonly loginResets = new Subject<void>();
   private readonly authenticatedUser = signal<User | null>(null);
   private readonly sessionAccessToken = signal<string | null>(null);
+  private sessionRestorePromise: Promise<boolean> | null = null;
   readonly accessToken = this.sessionAccessToken.asReadonly();
   readonly currentUser = computed<AuthenticatedUser | null>(() => {
     const user = this.authenticatedUser();
@@ -163,17 +164,20 @@ export class AuthData {
           this.notice.message.set('Falha inesperada. Tente novamente.');
           return of({ requestError: true as const });
         }
-        return this.loadOrMirrorProfile(email, data.user, data.session.access_token);
+        return this.loadOrMirrorProfile(data.user, data.session.access_token, email);
       }),
     );
   }
 
   private loadOrMirrorProfile(
-    email: string,
     supabaseUser: SupabaseUser,
     accessToken: string,
+    fallbackEmail = '',
   ): Observable<LoginResult> {
-    const lookupEmail = supabaseUser.email ?? email;
+    const lookupEmail = supabaseUser.email ?? fallbackEmail;
+    if (!lookupEmail) {
+      return from(this.clearAutoSession()).pipe(map(() => ({ user: null })));
+    }
     // TODO: Atividade 15 — migrar coleção users para tabela no Supabase com RLS
     return this.http.get<User[]>(`${environment.apiUrl}/users`, { params: { email: lookupEmail } }).pipe(
       switchMap((users) => {
@@ -310,6 +314,37 @@ export class AuthData {
     const { error } = await this.supabase.signOut();
     if (error) {
       throw error;
+    }
+  }
+
+  ensureSessionRestored(): Promise<boolean> {
+    if (this.isAuthenticated()) {
+      return Promise.resolve(true);
+    }
+    this.sessionRestorePromise ??= this.restoreSession();
+    return this.sessionRestorePromise;
+  }
+
+  private async restoreSession(): Promise<boolean> {
+    try {
+      const { data, error } = await this.supabase.getSession();
+      if (error || !data.session?.user || !data.session.access_token) {
+        this.clearLocalSession();
+        return false;
+      }
+      const result = await firstValueFrom(
+        this.loadOrMirrorProfile(data.session.user, data.session.access_token),
+      );
+      if ('user' in result && result.user !== null) {
+        return true;
+      }
+      this.clearLocalSession();
+      return false;
+    } catch {
+      this.clearLocalSession();
+      return false;
+    } finally {
+      this.sessionRestorePromise = null;
     }
   }
 
