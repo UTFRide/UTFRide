@@ -1,12 +1,14 @@
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { appConfig } from '../../../app.config';
 import { RideRequest } from '../../../core/models/ride-request.model';
 import { User } from '../../../core/models/user.model';
 import { AuthData } from '../../../core/services/auth-data';
+import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 
 const summariesUrl = `${environment.apiUrl}/passenger-trip-summaries`;
 const requestsUrl = `${environment.apiUrl}/ride_requests`;
@@ -44,9 +46,49 @@ function expectCancellationPatch(http: HttpTestingController) {
   return patch;
 }
 
-function authenticate(http: HttpTestingController, role: User['role'] = 'student', id = '007') {
+const fakeSupabaseUser: SupabaseUser = {
+  id: '007',
+  app_metadata: {},
+  user_metadata: {},
+  aud: 'authenticated',
+  created_at: date,
+  email: 'passageiro@alunos.utfpr.edu.br',
+};
+
+const fakeSession: Session = {
+  access_token: 'jwt-token',
+  refresh_token: 'refresh-token',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: fakeSupabaseUser,
+};
+
+function createFakeAuthClient(): SupabaseAuthClient {
+  return {
+    signUp: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
+    signInWithPassword: vi.fn(async (credentials) => {
+      const email = 'email' in credentials ? credentials.email : fakeSupabaseUser.email;
+      const user = { ...fakeSupabaseUser, email };
+      return { data: { user, session: { ...fakeSession, user } }, error: null };
+    }),
+    signOut: vi.fn(async () => ({ error: null })),
+    getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+    onAuthStateChange: vi.fn(() => ({
+      data: { subscription: { id: 'sub-1', callback: vi.fn(), unsubscribe: vi.fn() } },
+    })),
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function authenticate(http: HttpTestingController, role: User['role'] = 'student', id = '007') {
   const auth = TestBed.inject(AuthData);
   auth.login('passageiro@alunos.utfpr.edu.br', 'senha123');
+  await flushMicrotasks();
   http
     .expectOne((request) => request.url === `${environment.apiUrl}/users`)
     .flush([
@@ -54,7 +96,6 @@ function authenticate(http: HttpTestingController, role: User['role'] = 'student
         id,
         name: 'Ana Passageira',
         email: 'passageiro@alunos.utfpr.edu.br',
-        password: 'senha123',
         registrationNumber: '123',
         whatsapp: '',
         role,
@@ -64,6 +105,7 @@ function authenticate(http: HttpTestingController, role: User['role'] = 'student
         createdAt: date,
       },
     ]);
+  await flushMicrotasks();
   return auth;
 }
 
@@ -72,7 +114,11 @@ describe('Minhas Viagens (CA9)', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [...appConfig.providers, provideHttpClientTesting()],
+      providers: [
+        ...appConfig.providers,
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -92,7 +138,7 @@ describe('Minhas Viagens (CA9)', () => {
   }
 
   it('agrupa solicitações sob o layout e mostra o WhatsApp somente em Confirmadas', async () => {
-    authenticate(http);
+    await authenticate(http);
     const { root, read, harness } = await openTrips();
     expect(root.textContent).toContain('Carregando suas viagens');
     expect(root.textContent).not.toContain('Nenhuma viagem encontrada');
@@ -150,7 +196,7 @@ describe('Minhas Viagens (CA9)', () => {
   });
 
   it('mantém o pedido em Pendentes até a API confirmar o cancelamento de apenas um pedido', async () => {
-    authenticate(http);
+    await authenticate(http);
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const { root, read, harness } = await openTrips();
     read.flush([pendingTrip, { ...pendingTrip, id: '010', ride: { ...ride, origin: 'Portão' } }]);
@@ -190,7 +236,7 @@ describe('Minhas Viagens (CA9)', () => {
   });
 
   it('preserva Pendentes se o PATCH falhar e informa a falha', async () => {
-    authenticate(http);
+    await authenticate(http);
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { root, read, harness } = await openTrips();
     read.flush([pendingTrip]);
@@ -210,7 +256,7 @@ describe('Minhas Viagens (CA9)', () => {
   });
 
   it('mantém o cancelamento ao sair e atualiza a lista ao voltar antes da conclusão', async () => {
-    authenticate(http);
+    await authenticate(http);
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { root, read, harness } = await openTrips();
     read.flush([pendingTrip]);
@@ -246,7 +292,7 @@ describe('Minhas Viagens (CA9)', () => {
   });
 
   it('atualiza para Confirmadas quando o motorista confirma antes da gravação do cancelamento', async () => {
-    authenticate(http);
+    await authenticate(http);
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { root, read, harness } = await openTrips();
     read.flush([pendingTrip]);
@@ -271,7 +317,7 @@ describe('Minhas Viagens (CA9)', () => {
   });
 
   it('ignora a resposta de cancelamento após uma nova sessão com o mesmo ID', async () => {
-    const auth = authenticate(http);
+    const auth = await authenticate(http);
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { root, read, harness } = await openTrips();
     read.flush([pendingTrip]);
@@ -281,7 +327,7 @@ describe('Minhas Viagens (CA9)', () => {
     const patch = expectCancellationPatch(http);
 
     auth.logout();
-    authenticate(http);
+    await authenticate(http);
     harness.detectChanges();
     http.expectOne((request) => request.url === summariesUrl).flush([pendingTrip]);
     patch.flush({ ...pending, status: 'cancelled' });
@@ -304,7 +350,7 @@ describe('Minhas Viagens (CA9)', () => {
   ] as const)(
     'restringe cancelar com perfil $role e bloqueio $blocked',
     async ({ role, blocked, message }) => {
-      const auth = authenticate(http, role);
+      const auth = await authenticate(http, role);
       if (blocked) {
         vi.spyOn(auth, 'currentUser').mockReturnValue({ ...auth.currentUser()!, isBlocked: true });
       }
@@ -323,7 +369,7 @@ describe('Minhas Viagens (CA9)', () => {
   );
 
   it('distingue a falha de consulta de uma lista vazia', async () => {
-    const auth = authenticate(http);
+    const auth = await authenticate(http);
     const { root, read, harness } = await openTrips();
     read.flush(null, { status: 500, statusText: 'Internal Server Error' });
     harness.detectChanges();
@@ -333,7 +379,7 @@ describe('Minhas Viagens (CA9)', () => {
     expect(root.textContent).not.toContain('Nenhuma viagem encontrada');
 
     auth.logout();
-    authenticate(http, 'student', '7');
+    await authenticate(http, 'student', '7');
     harness.detectChanges();
     http
       .expectOne(
@@ -351,7 +397,7 @@ describe('Minhas Viagens (CA9)', () => {
     [0, 'Falha de conexão'],
     [404, 'Não foi possível carregar suas viagens'],
   ] as const)('recupera Minhas Viagens após uma falha %s (CA10)', async (status, message) => {
-    authenticate(http);
+    await authenticate(http);
     const { root, read, harness } = await openTrips();
     if (status === 0) read.error(new ProgressEvent('error'));
     else read.flush(null, { status, statusText: 'Not Found' });
@@ -376,7 +422,7 @@ describe('Minhas Viagens (CA9)', () => {
     [0, 'cancelled', 'Falha de conexão'],
     [404, 'pending', 'Não foi possível cancelar a solicitação'],
   ] as const)('consulta o estado real após falha %s no cancelamento (CA10)', async (status, actual, message) => {
-    authenticate(http);
+    await authenticate(http);
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { root, read, harness } = await openTrips();
     read.flush([pendingTrip]);

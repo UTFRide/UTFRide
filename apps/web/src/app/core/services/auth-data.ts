@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AuthError, isAuthRetryableFetchError, User as SupabaseUser } from '@supabase/supabase-js';
-import { catchError, exhaustMap, from, map, Observable, of, startWith, Subject, switchMap, tap, throwError } from 'rxjs';
+import { catchError, exhaustMap, from, map, Observable, of, startWith, Subject, switchMap, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { ErrorNotice } from './error-notice';
 import { Registration, User } from '../models/user.model';
@@ -16,12 +16,24 @@ export type RegisterResult =
   | { connectionError: true }
   | { requestError: true }
   | { authError: string };
+export type LoginResult =
+  | { user: User }
+  | { user: null; blocked?: true }
+  | { connectionError: true }
+  | { requestError: true };
 
 function isSupabaseDuplicateError(error: AuthError | null, user: SupabaseUser | null): boolean {
   if (error) {
     return error.code === 'user_already_exists' || /already registered|already exists/i.test(error.message ?? '');
   }
   return user !== null && Array.isArray(user.identities) && user.identities.length === 0;
+}
+
+function isInvalidCredentialsError(error: AuthError): boolean {
+  return (
+    error.code === 'invalid_credentials' ||
+    /invalid login credentials|invalid credentials/i.test(error.message ?? '')
+  );
 }
 
 function isConnectionFailure(error: unknown): boolean {
@@ -100,27 +112,10 @@ export class AuthData {
   readonly loginResult = toSignal(this.loginResets.pipe(
     startWith(undefined),
     switchMap(() => this.loginSubmissions.pipe(
-      exhaustMap(({ email, password }) => this.http.get<User[]>(`${environment.apiUrl}/users`, { params: { email } }).pipe(
-        map((users) => {
-          const matched = users.find(
-            (user) => user.email === email && user.password === password && user.isEmailConfirmed,
-          );
-          if (!matched) {
-            return { user: null };
-          }
-          if (matched.isBlocked) {
-            return { user: null, blocked: true as const };
-          }
-          return { user: matched };
-        }),
-        tap((result) => this.authenticatedUser.set(result.user)),
+      exhaustMap(({ email, password }) => this.loginWithSupabase(email, password).pipe(
         catchError((error: unknown) => {
-          if (!(error instanceof HttpErrorResponse)) {
-            this.notice.message.set('Falha inesperada. Tente novamente.');
-          }
-          return of(error instanceof HttpErrorResponse && error.status === 0
-            ? { connectionError: true as const }
-            : { requestError: true as const });
+          this.clearLocalSession();
+          return of(this.classifyUnexpectedFailure(error));
         }),
       )),
       startWith(undefined),
@@ -133,19 +128,108 @@ export class AuthData {
         switchMap(({ exists }) => exists
           ? of({ duplicate: true as const })
           : this.registerWithSupabase(registration)),
-        catchError((error: unknown) => {
-          if (isConnectionFailure(error)) {
-            return of({ connectionError: true as const });
-          }
-          if (!(error instanceof HttpErrorResponse)) {
-            this.notice.message.set('Falha inesperada. Tente novamente.');
-          }
-          return of({ requestError: true as const });
-        }),
+        catchError((error: unknown) => of(this.classifyUnexpectedFailure(error))),
       )),
       startWith(undefined),
     )),
   ));
+
+  private classifyUnexpectedFailure(error: unknown): { connectionError: true } | { requestError: true } {
+    if (isConnectionFailure(error)) {
+      return { connectionError: true as const };
+    }
+    if (!(error instanceof HttpErrorResponse)) {
+      this.notice.message.set('Falha inesperada. Tente novamente.');
+    }
+    return { requestError: true as const };
+  }
+
+  private loginWithSupabase(email: string, password: string): Observable<LoginResult> {
+    return from(this.supabase.signInWithPassword({ email, password })).pipe(
+      switchMap(({ data, error }) => {
+        if (error) {
+          this.clearLocalSession();
+          if (isConnectionFailure(error)) {
+            return of({ connectionError: true as const });
+          }
+          if (isInvalidCredentialsError(error)) {
+            return of({ user: null });
+          }
+          this.notice.message.set('Falha inesperada. Tente novamente.');
+          return of({ requestError: true as const });
+        }
+        if (!data.user || !data.session?.access_token) {
+          this.clearLocalSession();
+          this.notice.message.set('Falha inesperada. Tente novamente.');
+          return of({ requestError: true as const });
+        }
+        return this.loadOrMirrorProfile(email, data.user, data.session.access_token);
+      }),
+    );
+  }
+
+  private loadOrMirrorProfile(
+    email: string,
+    supabaseUser: SupabaseUser,
+    accessToken: string,
+  ): Observable<LoginResult> {
+    const lookupEmail = supabaseUser.email ?? email;
+    // TODO: Atividade 15 — migrar coleção users para tabela no Supabase com RLS
+    return this.http.get<User[]>(`${environment.apiUrl}/users`, { params: { email: lookupEmail } }).pipe(
+      switchMap((users) => {
+        if (!Array.isArray(users)) {
+          return throwError(() => new Error('Resposta inválida ao carregar perfil.'));
+        }
+        const existing = users.find((user) => user.email.toLowerCase() === lookupEmail.toLowerCase());
+        if (existing) {
+          return of(existing);
+        }
+        return this.http.post<User>(
+          `${environment.apiUrl}/users`,
+          this.buildMirrorProfile(supabaseUser, lookupEmail),
+        );
+      }),
+      this.rollbackSessionOnError(),
+      switchMap((user) => {
+        if (user.isBlocked) {
+          return from(this.clearAutoSession()).pipe(
+            map(() => ({ user: null, blocked: true as const })),
+          );
+        }
+        this.authenticatedUser.set(user);
+        this.sessionAccessToken.set(accessToken);
+        return of({ user });
+      }),
+    );
+  }
+
+  private buildMirrorProfile(supabaseUser: SupabaseUser, email: string) {
+    const metadata = supabaseUser.user_metadata ?? {};
+    const name = typeof metadata['name'] === 'string' && metadata['name'].trim()
+      ? metadata['name']
+      : email.split('@')[0];
+    const registrationNumber = typeof metadata['registrationNumber'] === 'string'
+      ? metadata['registrationNumber']
+      : '';
+    const whatsapp = typeof metadata['whatsapp'] === 'string'
+      ? metadata['whatsapp']
+      : '';
+    const role = metadata['role'] === 'support' ? ('support' as const) : ('student' as const);
+    const isBlocked = metadata['isBlocked'] === true;
+
+    return {
+      ...(supabaseUser.id ? { id: supabaseUser.id } : {}),
+      name,
+      email,
+      registrationNumber,
+      whatsapp,
+      role,
+      isBlocked,
+      isEmailConfirmed: true,
+      ratingAverage: 0,
+      createdAt: supabaseUser.created_at || new Date().toISOString(),
+    };
+  }
 
   private registerWithSupabase(registration: Registration): Observable<RegisterResult> {
     return from(
@@ -190,11 +274,7 @@ export class AuthData {
           createdAt: new Date().toISOString(),
         };
         return this.http.post<User>(`${environment.apiUrl}/users`, profile).pipe(
-          catchError((httpError: unknown) =>
-            from(this.clearAutoSession().catch(() => undefined)).pipe(
-              switchMap(() => throwError(() => httpError)),
-            ),
-          ),
+          this.rollbackSessionOnError(),
           switchMap((user) =>
             from(this.clearAutoSession()).pipe(
               map(() => ({ duplicate: false as const, user })),
@@ -212,9 +292,21 @@ export class AuthData {
     );
   }
 
-  private async clearAutoSession(): Promise<void> {
+  private rollbackSessionOnError<T>() {
+    return catchError<T, Observable<never>>((error: unknown) =>
+      from(this.clearAutoSession().catch(() => undefined)).pipe(
+        switchMap(() => throwError(() => error)),
+      ),
+    );
+  }
+
+  private clearLocalSession(): void {
     this.authenticatedUser.set(null);
     this.sessionAccessToken.set(null);
+  }
+
+  private async clearAutoSession(): Promise<void> {
+    this.clearLocalSession();
     const { error } = await this.supabase.signOut();
     if (error) {
       throw error;

@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Notification } from '../models/notification.model';
@@ -8,19 +9,59 @@ import { Ride } from '../models/ride.model';
 import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
 import { NotificationData } from './notification-data';
+import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
-function authenticateStudent(
+const fakeSupabaseUser: SupabaseUser = {
+  id: 'passenger-1',
+  app_metadata: {},
+  user_metadata: {},
+  aud: 'authenticated',
+  created_at: '2026-01-01T00:00:00.000Z',
+  email: 'mariana@alunos.utfpr.edu.br',
+};
+
+const fakeSession: Session = {
+  access_token: 'jwt-token',
+  refresh_token: 'refresh-token',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: fakeSupabaseUser,
+};
+
+function createFakeAuthClient(): SupabaseAuthClient {
+  return {
+    signUp: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
+    signInWithPassword: vi.fn(async (credentials) => {
+      const email = 'email' in credentials ? credentials.email : fakeSupabaseUser.email;
+      const user = { ...fakeSupabaseUser, email };
+      return { data: { user, session: { ...fakeSession, user } }, error: null };
+    }),
+    signOut: vi.fn(async () => ({ error: null })),
+    getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+    onAuthStateChange: vi.fn(() => ({
+      data: { subscription: { id: 'sub-1', callback: vi.fn(), unsubscribe: vi.fn() } },
+    })),
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function authenticateStudent(
   http: HttpTestingController,
   user: { id: string; name: string; email: string },
-): void {
+): Promise<void> {
   const auth = TestBed.inject(AuthData);
   auth.login(user.email, 'senha123');
+  await flushMicrotasks();
   http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
     {
       id: user.id,
       name: user.name,
       email: user.email,
-      password: 'senha123',
       registrationNumber: '2020123',
       whatsapp: '41999998888',
       role: 'student',
@@ -30,12 +71,17 @@ function authenticateStudent(
       createdAt: '2026-01-01T00:00:00.000Z',
     },
   ]);
+  await flushMicrotasks();
 }
 
 describe('NotificationData', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
   });
 
@@ -115,12 +161,12 @@ describe('NotificationData', () => {
     http.verify();
   });
 
-  it('carrega apenas os avisos do aluno autenticado (por id ou nome) e nunca exibe avisos de outros alunos', () => {
+  it('carrega apenas os avisos do aluno autenticado (por id ou nome) e nunca exibe avisos de outros alunos', async () => {
     const notificationData = TestBed.inject(NotificationData);
     const auth = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
-    authenticateStudent(http, {
+    await authenticateStudent(http, {
       id: 'passenger-1',
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',
@@ -178,12 +224,12 @@ describe('NotificationData', () => {
     http.verify();
   });
 
-  it('informa falha de conexão (status 0) via ErrorNotice, loadResult e loadError, limpa avisos antigos e recupera em nova tentativa', () => {
+  it('informa falha de conexão (status 0) via ErrorNotice, loadResult e loadError, limpa avisos antigos e recupera em nova tentativa', async () => {
     const notificationData = TestBed.inject(NotificationData);
     const errorNotice = TestBed.inject(ErrorNotice);
     const http = TestBed.inject(HttpTestingController);
 
-    authenticateStudent(http, {
+    await authenticateStudent(http, {
       id: 'passenger-1',
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',
@@ -237,13 +283,13 @@ describe('NotificationData', () => {
     http.verify();
   });
 
-  it('propaga erro inesperado não-HTTP via ErrorNotice, sinaliza erro HTTP 500 e não vaza erro entre sessões', () => {
+  it('propaga erro inesperado não-HTTP via ErrorNotice, sinaliza erro HTTP 500 e não vaza erro entre sessões', async () => {
     const notificationData = TestBed.inject(NotificationData);
     const errorNotice = TestBed.inject(ErrorNotice);
     const auth = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
-    authenticateStudent(http, {
+    await authenticateStudent(http, {
       id: 'passenger-1',
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',
@@ -271,7 +317,7 @@ describe('NotificationData', () => {
     expect(errorNotice.message()).toBe('');
 
     // Ao trocar de aluno ou encerrar sessão, o erro anterior não permanece exposto
-    authenticateStudent(http, {
+    await authenticateStudent(http, {
       id: 'passenger-2',
       name: 'Lucas Andrade',
       email: 'lucas@alunos.utfpr.edu.br',

@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment';
 import { AuthData } from './auth-data';
+import { ErrorNotice } from './error-notice';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
 const fakeSupabaseUser: SupabaseUser = {
@@ -27,7 +28,11 @@ const fakeSession: Session = {
 function createFakeAuthClient(): SupabaseAuthClient {
   return {
     signUp: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
-    signInWithPassword: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
+    signInWithPassword: vi.fn(async (credentials) => {
+      const email = 'email' in credentials ? credentials.email : fakeSupabaseUser.email;
+      const user = { ...fakeSupabaseUser, email };
+      return { data: { user, session: { ...fakeSession, user } }, error: null };
+    }),
     signOut: vi.fn(async () => ({ error: null })),
     getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
     onAuthStateChange: vi.fn(() => ({
@@ -186,20 +191,39 @@ describe('AuthData', () => {
     http.verify();
   });
 
-  it('disponibiliza o perfil do aluno autenticado sem expor a senha', () => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+  it('autentica via Supabase Auth, armazena accessToken e perfil sem comparar ou expor senha', async () => {
+    const fakeAuth = createFakeAuthClient();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
     expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
 
     service.login('ana@alunos.utfpr.edu.br', 'senha123');
-    http.expectOne((request) => request.url === 'http://localhost:3000/users').flush([
+    await flushMicrotasks();
+
+    expect(fakeAuth.signInWithPassword).toHaveBeenCalledWith({
+      email: 'ana@alunos.utfpr.edu.br',
+      password: 'senha123',
+    });
+
+    const profileRequest = http.expectOne(
+      (request) => request.url === 'http://localhost:3000/users' && request.params.get('email') === 'ana@alunos.utfpr.edu.br',
+    );
+    expect(profileRequest.request.method).toBe('GET');
+    profileRequest.flush([
       {
         id: '1',
         name: 'Ana',
         email: 'ana@alunos.utfpr.edu.br',
-        password: 'senha123',
+        password: 'outra-senha-legada-no-db',
         registrationNumber: '123',
         whatsapp: '41987654321',
         role: 'student',
@@ -209,7 +233,9 @@ describe('AuthData', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
       },
     ]);
+    await flushMicrotasks();
 
+    expect(service.accessToken()).toBe('jwt-token');
     expect(service.currentUser()).toEqual({
       id: '1',
       name: 'Ana',
@@ -229,18 +255,89 @@ describe('AuthData', () => {
     http.verify();
   });
 
-  it('impede login de conta bloqueada (isBlocked: true) mantendo usuário não autenticado e inapto a ofertar', () => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+  it('sincroniza o perfil espelho em /users a partir dos metadados do Supabase quando não existe em db.json', async () => {
+    const fakeAuth = createFakeAuthClient();
+    const userWithMetadata: SupabaseUser = {
+      ...fakeSupabaseUser,
+      id: 'supabase-mirror-1',
+      email: 'novo@alunos.utfpr.edu.br',
+      user_metadata: {
+        name: 'Novo Aluno',
+        registrationNumber: '2026123',
+        whatsapp: '41999991111',
+        role: 'student',
+        isBlocked: false,
+      },
+    };
+    vi.mocked(fakeAuth.signInWithPassword).mockResolvedValueOnce({
+      data: { user: userWithMetadata, session: { ...fakeSession, access_token: 'jwt-mirror', user: userWithMetadata } },
+      error: null,
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    service.login('novo@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
+
+    http
+      .expectOne(
+        (request) => request.url === `${environment.apiUrl}/users` && request.method === 'GET' && request.params.get('email') === 'novo@alunos.utfpr.edu.br',
+      )
+      .flush([]);
+
+    const postRequest = http.expectOne(
+      (request) => request.url === `${environment.apiUrl}/users` && request.method === 'POST',
+    );
+    expect(postRequest.request.body).toEqual({
+      id: 'supabase-mirror-1',
+      name: 'Novo Aluno',
+      email: 'novo@alunos.utfpr.edu.br',
+      registrationNumber: '2026123',
+      whatsapp: '41999991111',
+      role: 'student',
+      isBlocked: false,
+      isEmailConfirmed: true,
+      ratingAverage: 0,
+      createdAt: expect.any(String),
+    });
+    expect(postRequest.request.body).not.toHaveProperty('password');
+    const mirroredUser = { ...postRequest.request.body };
+    postRequest.flush(mirroredUser);
+    await flushMicrotasks();
+
+    expect(service.accessToken()).toBe('jwt-mirror');
+    expect(service.currentUser()).toEqual(mirroredUser);
+    expect(service.loginResult()).toEqual({ user: mirroredUser });
+    http.verify();
+  });
+
+  it('impede login de conta bloqueada (isBlocked: true), encerra sessão no Supabase e zera token', async () => {
+    const fakeAuth = createFakeAuthClient();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
     service.login('bloqueado@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
+
     http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
       {
         id: 'blocked-1',
         name: 'Aluno Bloqueado',
         email: 'bloqueado@alunos.utfpr.edu.br',
-        password: 'senha123',
         registrationNumber: '999',
         whatsapp: '41999990000',
         role: 'student',
@@ -250,16 +347,26 @@ describe('AuthData', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
       },
     ]);
+    await flushMicrotasks();
 
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
     expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
     expect(service.isAuthenticated()).toBe(false);
     expect(service.canOffer()).toBe(false);
     expect(service.loginResult()).toEqual({ user: null, blocked: true });
     http.verify();
   });
 
-  it('expõe canOffer e isBlocked coerentes com o perfil autenticado', () => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+  it('expõe canOffer e isBlocked coerentes com o perfil autenticado', async () => {
+    const fakeAuth = createFakeAuthClient();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
@@ -267,12 +374,12 @@ describe('AuthData', () => {
     expect(service.isBlocked()).toBe(false);
 
     service.login('ana@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
     http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
       {
         id: '1',
         name: 'Ana',
         email: 'ana@alunos.utfpr.edu.br',
-        password: 'senha123',
         registrationNumber: '123',
         whatsapp: '41987654321',
         role: 'student',
@@ -282,17 +389,18 @@ describe('AuthData', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
       },
     ]);
+    await flushMicrotasks();
 
     expect(service.canOffer()).toBe(true);
     expect(service.isBlocked()).toBe(false);
 
     service.login('suporte@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
     http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
       {
         id: 'support-1',
         name: 'Suporte',
         email: 'suporte@alunos.utfpr.edu.br',
-        password: 'senha123',
         registrationNumber: '000',
         whatsapp: '41900000000',
         role: 'support',
@@ -302,6 +410,7 @@ describe('AuthData', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
       },
     ]);
+    await flushMicrotasks();
 
     expect(service.canOffer()).toBe(false);
 
@@ -326,15 +435,131 @@ describe('classificação de falhas de autenticação', () => {
     });
   });
 
-  it.each([401, 403, 500])('permite nova tentativa após erro HTTP %i no login', (status) => {
+  it.each([401, 403, 500])('permite nova tentativa após erro HTTP %i no login e limpa sessão do Supabase', async (status) => {
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
+
     service.login(registration.email, registration.password);
+    await flushMicrotasks();
     http.expectOne((request) => request.url.endsWith('/users')).flush('erro', { status, statusText: 'Erro' });
+    await flushMicrotasks();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
     expect(service.loginResult()).toEqual({ requestError: true });
+    expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
+
+    vi.mocked(fakeAuth.signInWithPassword).mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { name: 'AuthApiError', message: 'Invalid login credentials', status: 400, code: 'invalid_credentials' } as never,
+    });
     service.login(registration.email, registration.password);
-    http.expectOne((request) => request.url.endsWith('/users')).flush([]);
+    await flushMicrotasks();
+
     expect(service.loginResult()).toEqual({ user: null });
+    http.expectNone((request) => request.url.endsWith('/users'));
+    http.verify();
+  });
+
+  it('retorna user null sem consultar /users nem vazar erro em inglês quando credenciais são inválidas no Supabase', async () => {
+    vi.mocked(fakeAuth.signInWithPassword).mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { name: 'AuthApiError', message: 'Invalid login credentials', status: 400, code: 'invalid_credentials' } as never,
+    });
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    const notice = TestBed.inject(ErrorNotice);
+
+    service.login(registration.email, 'errada');
+    await flushMicrotasks();
+
+    expect(service.loginResult()).toEqual({ user: null });
+    expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
+    expect(notice.message()).toBe('');
+    http.expectNone((request) => request.url.endsWith('/users'));
+    http.verify();
+  });
+
+  it('informa falha de conexão quando signInWithPassword falha por rede sem consultar /users', async () => {
+    vi.mocked(fakeAuth.signInWithPassword).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    service.login(registration.email, registration.password);
+    await flushMicrotasks();
+
+    expect(service.loginResult()).toEqual({ connectionError: true });
+    expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
+    http.expectNone((request) => request.url.endsWith('/users'));
+    http.verify();
+  });
+
+  it('notifica erro amigável em português quando signInWithPassword falha com erro inesperado', async () => {
+    vi.mocked(fakeAuth.signInWithPassword).mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { name: 'AuthApiError', message: 'Internal server error', status: 500, code: 'unexpected_failure' } as never,
+    });
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    const notice = TestBed.inject(ErrorNotice);
+
+    service.login(registration.email, registration.password);
+    await flushMicrotasks();
+
+    expect(service.loginResult()).toEqual({ requestError: true });
+    expect(notice.message()).toBe('Falha inesperada. Tente novamente.');
+    expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
+    http.expectNone((request) => request.url.endsWith('/users'));
+    http.verify();
+  });
+
+  it('informa falha de conexão e encerra sessão do Supabase quando GET ou POST /users falha no login', async () => {
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    service.login(registration.email, registration.password);
+    await flushMicrotasks();
+    http.expectOne((request) => request.url.endsWith('/users') && request.method === 'GET').flush([]);
+    http.expectOne((request) => request.url.endsWith('/users') && request.method === 'POST').error(new ProgressEvent('error'));
+    await flushMicrotasks();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(service.loginResult()).toEqual({ connectionError: true });
+    expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
+    http.verify();
+  });
+
+  it('não engole erro nem mantém sessão ativa se signOut falhar ao bloquear conta com isBlocked: true', async () => {
+    vi.mocked(fakeAuth.signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    service.login('bloqueado@alunos.utfpr.edu.br', registration.password);
+    await flushMicrotasks();
+    http.expectOne((request) => request.url.endsWith('/users')).flush([
+      {
+        id: 'blocked-1',
+        name: 'Aluno Bloqueado',
+        email: 'bloqueado@alunos.utfpr.edu.br',
+        registrationNumber: '999',
+        whatsapp: '',
+        role: 'student',
+        isBlocked: true,
+        isEmailConfirmed: true,
+        ratingAverage: 0,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    await flushMicrotasks();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(service.loginResult()).toEqual({ connectionError: true });
+    expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
     http.verify();
   });
 
@@ -352,14 +577,27 @@ describe('classificação de falhas de autenticação', () => {
     http.verify();
   });
 
-  it('permite nova tentativa após erro de processamento no login', () => {
+  it('permite nova tentativa após erro de processamento no login', async () => {
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
+
     service.login(registration.email, registration.password);
+    await flushMicrotasks();
     http.expectOne((request) => request.url.endsWith('/users')).flush({});
+    await flushMicrotasks();
+
+    expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
     expect(service.loginResult()).toEqual({ requestError: true });
+    expect(service.currentUser()).toBeNull();
+    expect(service.accessToken()).toBeNull();
+
+    vi.mocked(fakeAuth.signInWithPassword).mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { name: 'AuthApiError', message: 'Invalid login credentials', status: 400, code: 'invalid_credentials' } as never,
+    });
     service.login(registration.email, registration.password);
-    http.expectOne((request) => request.url.endsWith('/users')).flush([]);
+    await flushMicrotasks();
+
     expect(service.loginResult()).toEqual({ user: null });
     http.verify();
   });
@@ -485,7 +723,22 @@ it('usa a URL configurada para cadastro e login', async () => {
     http.expectOne('http://api.test/users').flush({});
     await flushMicrotasks();
     service.login('ana@alunos.utfpr.edu.br', 'senha123');
-    http.expectOne((request) => request.url === 'http://api.test/users' && request.params.get('email') === 'ana@alunos.utfpr.edu.br').flush([]);
+    await flushMicrotasks();
+    http.expectOne((request) => request.url === 'http://api.test/users' && request.params.get('email') === 'ana@alunos.utfpr.edu.br').flush([
+      {
+        id: 'supabase-user-1',
+        name: 'Ana',
+        email: 'ana@alunos.utfpr.edu.br',
+        registrationNumber: '123',
+        whatsapp: '41987654321',
+        role: 'student',
+        isBlocked: false,
+        isEmailConfirmed: true,
+        ratingAverage: 0,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    await flushMicrotasks();
     http.verify();
   } finally {
     environment.apiUrl = originalApiUrl;

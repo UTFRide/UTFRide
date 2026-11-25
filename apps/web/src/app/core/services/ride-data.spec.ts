@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { firstValueFrom } from 'rxjs';
 import { vi } from 'vitest';
 import { environment } from '../../../environments/environment';
@@ -9,17 +10,57 @@ import { Ride } from '../models/ride.model';
 import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
 import { RideData } from './ride-data';
+import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
-function authenticateStudent(http: HttpTestingController, overrides: Record<string, unknown> = {}): void {
+const fakeSupabaseUser: SupabaseUser = {
+  id: 'driver-1',
+  app_metadata: {},
+  user_metadata: {},
+  aud: 'authenticated',
+  created_at: '2026-01-01T00:00:00.000Z',
+  email: 'motorista@alunos.utfpr.edu.br',
+};
+
+const fakeSession: Session = {
+  access_token: 'jwt-token',
+  refresh_token: 'refresh-token',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: fakeSupabaseUser,
+};
+
+function createFakeAuthClient(): SupabaseAuthClient {
+  return {
+    signUp: vi.fn(async () => ({ data: { user: fakeSupabaseUser, session: fakeSession }, error: null })),
+    signInWithPassword: vi.fn(async (credentials) => {
+      const email = 'email' in credentials ? credentials.email : fakeSupabaseUser.email;
+      const user = { ...fakeSupabaseUser, email };
+      return { data: { user, session: { ...fakeSession, user } }, error: null };
+    }),
+    signOut: vi.fn(async () => ({ error: null })),
+    getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+    onAuthStateChange: vi.fn(() => ({
+      data: { subscription: { id: 'sub-1', callback: vi.fn(), unsubscribe: vi.fn() } },
+    })),
+  };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function authenticateStudent(http: HttpTestingController, overrides: Record<string, unknown> = {}): Promise<void> {
   const auth = TestBed.inject(AuthData);
   const email = (overrides['email'] as string | undefined) ?? 'motorista@alunos.utfpr.edu.br';
   auth.login(email, 'senha123');
+  await flushMicrotasks();
   http.expectOne((request) => request.url.endsWith('/users')).flush([
     {
       id: 'driver-1',
       name: 'Carlos Motorista',
       email,
-      password: 'senha123',
       registrationNumber: '2020123',
       whatsapp: '41999998888',
       role: 'student',
@@ -30,18 +71,23 @@ function authenticateStudent(http: HttpTestingController, overrides: Record<stri
       ...overrides,
     },
   ]);
+  await flushMicrotasks();
 }
 
 describe('RideData', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
   });
 
-  it('carrega a oferta por id com o resumo público e cancela a leitura anterior ao trocar o id', () => {
+  it('carrega a oferta por id com o resumo público e cancela a leitura anterior ao trocar o id', async () => {
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
     const id = signal('ride-old');
     const detail = TestBed.inject(RideData).loadRideDetail(id, TestBed.inject(Injector));
     expect(detail()).toEqual({ status: 'loading' });
@@ -86,10 +132,10 @@ describe('RideData', () => {
     http.verify();
   });
 
-  it('publica uma oferta ativa vinculada ao aluno autenticado', () => {
+  it('publica uma oferta ativa vinculada ao aluno autenticado', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     expect(rideData.publishResult()).toBeUndefined();
 
@@ -141,10 +187,10 @@ describe('RideData', () => {
     http.verify();
   });
 
-  it('carrega as ofertas do motorista autenticado e verifica se a oferta aceita novos pedidos', () => {
+  it('carrega as ofertas do motorista autenticado e verifica se a oferta aceita novos pedidos', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const activeRide: Ride = {
@@ -182,10 +228,10 @@ describe('RideData', () => {
     http.verify();
   });
 
-  it('atualiza uma oferta sem passageiros confirmados antes da viagem e valida novamente campos obrigatórios, vagas e data futura', () => {
+  it('atualiza uma oferta sem passageiros confirmados antes da viagem e valida novamente campos obrigatórios, vagas e data futura', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const initialDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const existingRide: Ride = {
@@ -278,10 +324,10 @@ describe('RideData', () => {
     http.verify();
   });
 
-  it('restringe edição de oferta com passageiros confirmados antes da viagem: bloqueia alterações de trajeto, data, horário, valor e redução de vagas; permite aumento dentro dos limites e retorna oferta esgotada para ativa', () => {
+  it('restringe edição de oferta com passageiros confirmados antes da viagem: bloqueia alterações de trajeto, data, horário, valor e redução de vagas; permite aumento dentro dos limites e retorna oferta esgotada para ativa', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const initialDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const fullRideWithPassengers: Ride = {
@@ -414,7 +460,7 @@ describe('RideData', () => {
   it('permite cancelar oferta ativa ou esgotada apenas antes da viagem e atualiza seu status para cancelled', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const pastDeparture = new Date(Date.now() - 60 * 1000).toISOString();
@@ -462,11 +508,11 @@ describe('RideData', () => {
     http.verify();
   });
 
-  it('impede que aluno bloqueado publique oferta (canOffer false e não dispara POST /rides)', () => {
+  it('impede que aluno bloqueado publique oferta (canOffer false e não dispara POST /rides)', async () => {
     const rideData = TestBed.inject(RideData);
     const authData = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     vi.spyOn(authData, 'currentUser').mockReturnValue({
       id: 'driver-1',
@@ -495,10 +541,10 @@ describe('RideData', () => {
     http.verify();
   });
 
-  it('impede que perfil de suporte publique oferta (canOffer false e não dispara POST /rides)', () => {
+  it('impede que perfil de suporte publique oferta (canOffer false e não dispara POST /rides)', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http, {
+    await authenticateStudent(http, {
       id: 'support-1',
       email: 'suporte@alunos.utfpr.edu.br',
       role: 'support',
@@ -521,7 +567,7 @@ describe('RideData', () => {
   it('impede que outro aluno inicie edição, carregue edição, atualize, ocupe vaga ou cancele oferta', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http, { id: 'driver-2', email: 'outro@alunos.utfpr.edu.br' });
+    await authenticateStudent(http, { id: 'driver-2', email: 'outro@alunos.utfpr.edu.br' });
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const rideFromDriver1: Ride = {
@@ -571,7 +617,7 @@ describe('RideData', () => {
     const rideData = TestBed.inject(RideData);
     const authData = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const rideFromDriver1: Ride = {
@@ -628,10 +674,10 @@ describe('RideData', () => {
     http.verify();
   });
 
-  it('filtra em loadDriverRides ofertas que não pertencem ao motorista autenticado', () => {
+  it('filtra em loadDriverRides ofertas que não pertencem ao motorista autenticado', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ownRide: Ride = {
@@ -667,7 +713,7 @@ describe('RideData', () => {
     const canOfferSpy = vi.spyOn(authData, 'canOffer');
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const ownRide: Ride = {
@@ -731,11 +777,11 @@ describe('RideData', () => {
     http.verify();
   });
 
-  it('informa falha de conexão (status 0) ao publicar, editar, carregar para edição e listar ofertas e permite nova tentativa preservando o estado', () => {
+  it('informa falha de conexão (status 0) ao publicar, editar, carregar para edição e listar ofertas e permite nova tentativa preservando o estado', async () => {
     const rideData = TestBed.inject(RideData);
     const errorNotice = TestBed.inject(ErrorNotice);
     const http = TestBed.inject(HttpTestingController);
-    authenticateStudent(http);
+    await authenticateStudent(http);
 
     const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     const draft = {
@@ -864,14 +910,18 @@ describe('Busca de ofertas em RideData (CA1)', () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     vi.setSystemTime(new Date(2030, 4, 9, 18));
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
     });
   });
 
   afterEach(() => vi.useRealTimers());
 
-  function startSearch(http: HttpTestingController) {
-    authenticateStudent(http);
+  async function startSearch(http: HttpTestingController) {
+    await authenticateStudent(http);
     const criteria = signal(filters);
     const rideData = TestBed.inject(RideData);
     const result = rideData.searchAvailableRides(criteria, TestBed.inject(Injector));
@@ -883,9 +933,9 @@ describe('Busca de ofertas em RideData (CA1)', () => {
     vi.advanceTimersByTime(debounceMs);
   }
 
-  it('aplica os três filtros e enriquece apenas as ofertas elegíveis com dados públicos do motorista', () => {
+  it('aplica os três filtros e enriquece apenas as ofertas elegíveis com dados públicos do motorista', async () => {
     const http = TestBed.inject(HttpTestingController);
-    const { criteria, result } = startSearch(http);
+    const { criteria, result } = await startSearch(http);
     const eligible: Ride = {
       id: 'ride-available',
       driverId: '007',
@@ -948,9 +998,9 @@ describe('Busca de ofertas em RideData (CA1)', () => {
     http.verify();
   });
 
-  it('agrupa mudanças rápidas, ignora filtros equivalentes e cancela a consulta anterior', () => {
+  it('agrupa mudanças rápidas, ignora filtros equivalentes e cancela a consulta anterior', async () => {
     const http = TestBed.inject(HttpTestingController);
-    const { criteria, result } = startSearch(http);
+    const { criteria, result } = await startSearch(http);
 
     TestBed.tick();
     vi.advanceTimersByTime(debounceMs - 1);
@@ -982,9 +1032,9 @@ describe('Busca de ofertas em RideData (CA1)', () => {
     http.verify();
   });
 
-  it('oculta a resposta anterior durante a espera e aceita novas buscas após falha', () => {
+  it('oculta a resposta anterior durante a espera e aceita novas buscas após falha', async () => {
     const http = TestBed.inject(HttpTestingController);
-    const { criteria, result } = startSearch(http);
+    const { criteria, result } = await startSearch(http);
 
     runDebounce();
     const first = http.expectOne((request) => request.url === ridesUrl);
