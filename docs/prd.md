@@ -51,7 +51,7 @@
 
 ## 📝 4. Escopo Funcional (User Stories)
 
-### US01 — Cadastro e Autenticação Institucional · `Must Have` · `M` · Status: `Implementada` (aguardando auditoria final e PR)
+### US01 — Cadastro e Autenticação Institucional · `Must Have` · `M` · Status: `Live`
 
 **Como** aluno visitante da UTFPR, **eu quero** realizar meu cadastro e autenticar meu acesso usando uma matrícula ativa e um e-mail institucional, **para que** eu possa acessar as funcionalidades do sistema em um ambiente seguro e restrito à comunidade acadêmica.
 
@@ -70,7 +70,7 @@ A confirmação de e-mail é simulada automaticamente, sem envio de e-mail; cons
 
 ---
 
-### US02 — Publicação e Gestão de Oferta de Carona · `Must Have` · `M` · Status: `Implementada` (aguardando auditoria final e PR)
+### US02 — Publicação e Gestão de Oferta de Carona · `Must Have` · `M` · Status: `Live`
 
 **Como** motorista, **eu quero** publicar uma oferta de carona informando origem, destino, data, horário, número de vagas e o valor a ser cobrado, **para que** outros alunos possam encontrar e solicitar uma carona.
 
@@ -87,7 +87,7 @@ A confirmação de e-mail é simulada automaticamente, sem envio de e-mail; cons
 
 <a name="us03--pesquisa-e-solicitação-de-vaga-em-carona--must-have--m--status-ready"></a>
 
-### US03 — Pesquisa e Solicitação de Vaga em Carona · `Must Have` · `M` · Status: `Implementada` (aguardando auditoria final e PR)
+### US03 — Pesquisa e Solicitação de Vaga em Carona · `Must Have` · `M` · Status: `Live`
 
 **Como** passageiro, **eu quero** pesquisar caronas disponíveis e solicitar uma vaga, **para que** eu possa encontrar uma carona compatível com meu trajeto e horário.
 
