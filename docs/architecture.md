@@ -1,8 +1,8 @@
 # 🏗️ Especificação de Arquitetura Técnica (Architecture / SSD)
 
 **Projeto:** UTFRide  
-**Versão:** 1.0.2<br>
-**Data:** 2026-11-25<br>
+**Versão:** 1.0.3<br>
+**Data:** 2026-11-26<br>
 **Status:** Aprovado  
 
 > 🤖 **Este documento é a régua arquitetural e técnica do UTFRide.** Ele estabelece os padrões estruturais, a organização do código, o modelo de dados e os contratos de integração que o `/utf-setup`, os implementadores e os revisores devem seguir rigorosamente durante todo o ciclo de desenvolvimento.
@@ -62,7 +62,7 @@ A persistência do UTFRide evolui em duas fases bem demarcadas:
 - **Projeto Supabase da equipe:** Projeto compartilhado pela organização da equipe na plataforma `supabase.com`, criado na região **São Paulo**, com referência `qeoenmfkfrhabznkekjp` (`https://qeoenmfkfrhabznkekjp.supabase.co`).
 - **Configuração no Painel (Desenvolvimento):** `Site URL` configurada para `http://localhost:4200` em *Authentication → URL Configuration*, e confirmação automática de e-mail (*Confirm email*) desabilitada durante o desenvolvimento no plano gratuito.
 - **Arquivos de Ambiente (`apps/web/src/environments/`):**
-  - `environment.ts` (produção) e `environment.development.ts` (desenvolvimento local), expondo `apiUrl` (enquanto os dados utilizam `json-server`), `supabaseUrl` e `supabasePublishableKey`.
+  - `environment.ts` (produção) e `environment.development.ts` (desenvolvimento local), expondo apenas `supabaseUrl` e `supabasePublishableKey` (`apiUrl` e o servidor local `json-server` foram removidos na Entrega 3).
 - **Política de Chaves (Pública vs. Secreta):**
   - **Chave Publicável (`sb_publishable_...`):** **pode** ser versionada no Git dentro de `environments/` e enviada no código cliente (`createClient(supabaseUrl, supabasePublishableKey)`), pois identifica apenas o projeto na borda pública; a proteção real dos dados é garantida pelo JWT do usuário autenticado e pelas políticas de **Row Level Security (RLS)** no servidor.
   - **Chave Secreta (`sb_secret_...` / `service_role`):** **nunca** deve ser colocada no código frontend, nos arquivos `environments/` ou em qualquer commit do repositório, pois contorna o RLS e concede acesso administrativo irrestrito ao projeto.
@@ -86,27 +86,30 @@ Todas as rotas de funcionalidades utilizam carregamento sob demanda (`loadCompon
 | `/register` | `RegisterComponent` | Público | Cadastro com e-mail institucional |
 | `/rides` | `RidesLayout` → `RideList` | Autenticado | Busca reativa de ofertas de carona e sugestões de municípios do IBGE |
 | `/rides/my-trips` | `RidesLayout` → `MyTrips` | Autenticado | Solicitações do passageiro, contato nas confirmadas e cancelamento das pendentes |
-| `/rides/:id` | `RidesLayout` → `RideDetail` | Autenticado | Dados da oferta e painel de confirmação de vaga carregado sob demanda |
+| `/rides/:id` | `RidesLayout` → `RideDetail` | Autenticado (`rideDetailResolver`) | Dados da oferta pré-carregados pelo `rideDetailResolver` (`initialDetail` via `withComponentInputBinding()`) e painel de confirmação de vaga carregado sob demanda |
 | `/driver/offer` | `OfferRideComponent` | Autenticado (Motorista) | Formulário de publicação e edição de oferta de carona (`?rideId=`) |
-| `/driver/my-rides`| `MyRidesComponent` | Autenticado (Motorista) | Gestão de ofertas e solicitações de passageiros |
-| `/searches` | `RideSearchesComponent`| Autenticado (Passageiro) | Mural de pedidos ativos de carona |
-| `/reviews/history`| `ReviewHistoryComponent`| Autenticado | Histórico de viagens e formulário de avaliação |
-| `/support` | `SupportDashboardComponent`| Restrito (`support`) | Moderação de denúncias e suspensão de contas |
+| `/driver/my-rides`| `MyRidesComponent` | Autenticado (Motorista) | Gestão de ofertas (edição, cancelamento e exclusão `DELETE` de ofertas canceladas) e solicitações de passageiros |
+| `/searches` | `RideSearchesComponent`| Autenticado (Passageiro) | Mural de pedidos ativos de carona *(US04)* |
+| `/reviews/history`| `ReviewHistoryComponent`| Autenticado | Histórico de viagens e formulário de avaliação *(US05)* |
+| `/support` | `SupportDashboardComponent`| Restrito (`support`) | Moderação de denúncias e suspensão de contas *(US06)* |
+| `**` | `NotFound` | Público (sem `authGuard`) | Rota curinga de erro `404` carregada sob demanda para endereços desconhecidos, com retorno seguro para `/rides` (autenticado) ou `/` (visitante) |
 
-`RidesLayout` mantém o cabeçalho e a navegação inferior. O `router-outlet` exibe a rota filha. O `authGuard` protege a entrada e a ativação das filhas. `my-trips` é declarada antes de `:id` para que o endereço fixo seja resolvido primeiro.
+`RidesLayout` mantém o cabeçalho e a navegação inferior. O `router-outlet` exibe a rota filha. O `authGuard` protege a entrada e a ativação das filhas. `my-trips` é declarada antes de `:id` para que o endereço fixo seja resolvido primeiro, e `**` é declarada por último para capturar apenas rotas desconhecidas.
 
 ```mermaid
 flowchart TD
     Layout["/rides · RidesLayout"] --> Outlet["router-outlet"]
     Outlet --> List["/rides · RideList"]
     Outlet --> Trips["/rides/my-trips · MyTrips"]
-    Outlet --> Detail["/rides/:id · RideDetail"]
+    Outlet -->|"rideDetailResolver (initialDetail)"| Detail["/rides/:id · RideDetail"]
     Detail -->|Solicitar vaga| Confirm["RideRequestConfirmPanel · @defer"]
+    Wildcard["** · Rota inexistente"] --> NotFound["NotFound (404)"]
 ```
 
-### 3.3 Functional Guards
+### 3.3 Functional Guards e Resolvers
 - `authGuard`: Impede que visitantes não autenticados acessem rotas protegidas (redireciona para `/login`).
 - `supportGuard`: Restringe o acesso ao painel `/support` exclusivamente para usuários com `role === 'support'`.
+- `rideDetailResolver` (`apps/web/src/app/core/resolvers/ride-detail-resolver.ts`): `ResolveFn<RideDetailResult>` funcional que injeta `RideData` e pré-carrega a oferta e o resumo do motorista em `/rides/:id` antes da ativação de `RideDetail`, entregando `initialDetail` via `withComponentInputBinding()` e preservando os estados `not-found` e `error`.
 
 ---
 
@@ -116,19 +119,15 @@ flowchart TD
 ```text
 UTFRide/
 ├── apps/
-│   ├── api/                     # API / Persistência do MVP
-│   │   ├── start.mjs            # Inicialização do servidor local
-│   │   ├── server.mjs           # Rotas do MVP e fila de gravações
-│   │   ├── server.test.mjs      # Testes HTTP da API
-│   │   └── db.json              # Mock de dados para o json-server
 │   └── web/                     # Frontend Angular 22 Standalone
 │       ├── public/              # Assets estáticos, manifest.webmanifest e ícones PWA
 │       └── src/
 │           ├── app/
-│           │   ├── core/        # Singleton: Services de dados, Guards, Interceptors, Models
+│           │   ├── core/        # Singleton: Services de dados, Guards, Resolvers, Interceptors, Models
 │           │   │   ├── guards/
 │           │   │   ├── interceptors/
 │           │   │   ├── models/
+│           │   │   ├── resolvers/
 │           │   │   └── services/
 │           │   ├── shared/      # UI Reutilizável: Componentes burros, Pipes, Diretivas
 │           │   │   ├── components/
@@ -144,11 +143,12 @@ UTFRide/
 │           │   │   │   │   └── ride-request-confirm-panel/
 │           │   │   │   └── my-trips/
 │           │   │   ├── driver/
+│           │   │   ├── not-found/
 │           │   │   ├── searches/
 │           │   │   ├── reviews/
 │           │   │   └── support/
 │           │   ├── app.config.ts # Provedores funcionais (provideRouter, provideHttpClient)
-│           │   ├── app.routes.ts # Definição central de rotas com lazy loading
+│           │   ├── app.routes.ts # Definição central de rotas com lazy loading e rota curinga **
 │           │   ├── app.ts        # Componente raiz (nomes padrão do Angular CLI atual)
 │           │   ├── app.html      # Template do componente raiz
 │           │   └── app.css       # Estilos do componente raiz
@@ -161,6 +161,8 @@ UTFRide/
 │   ├── design-tokens.md
 │   ├── architecture.md
 │   └── checklist.md
+├── supabase/
+│   └── schema.sql               # DDL, índices, RLS e RPCs aplicadas no Supabase
 └── package.json                 # Scripts raiz unificados
 ```
 
@@ -325,9 +327,7 @@ Todos os comandos são padronizados e executados a partir da raiz do monorepo:
 | Comando | Descrição da Ação |
 | :--- | :--- |
 | `npm run dev` / `npm start` | Inicia o servidor frontend Angular local (`http://localhost:4200`) |
-| `npm run server` | Inicia a API REST simulada com `json-server` (`http://localhost:3000`) |
-| `npm test` | Executa a suíte **Vitest** pelo Angular CLI (`ng test --watch=false` no workspace `apps/web`) |
-| `node --test apps/api/server.test.mjs` | Executa os testes HTTP do MVP com dados isolados e porta local temporária |
+| `npm test` | Executa os testes de layout (`layout.spec.mjs`) e a suíte **Vitest** pelo Angular CLI (`ng test --watch=false` no workspace `apps/web`) |
 | `npm run lint` | Executa a validação estática de código com **ESLint** |
 | `npm run build` | Gera o build de produção otimizado em `apps/web/dist` |
 
@@ -347,6 +347,6 @@ Todos os comandos são padronizados e executados a partir da raiz do monorepo:
 ## 🔍 10. Garantia do Setup (Quatro Declarações Obrigatórias do Passo 0)
 
 1. **Framework do Frontend:** Angular 22 Standalone, Signals, Tailwind CSS, sintaxe de templates moderna.
-2. **Fonte de Dados:** MVP via `json-server` (`apps/api/db.json`); Fase E3 via **Supabase** (PostgreSQL + JWT Auth).
-3. **Estrutura de Pastas:** Monorepo com `apps/web` (Angular), `apps/api` (mock/reservada) e separação `core/`, `shared/` e `features/`.
+2. **Fonte de Dados:** **Supabase** (PostgreSQL + RLS + PostgREST + JWT Auth em `supabase/schema.sql`, consumido via `HttpClient` e `@supabase/supabase-js`).
+3. **Estrutura de Pastas:** Monorepo com `apps/web` (Angular), `supabase/` (`schema.sql`) e separação `core/`, `shared/` e `features/`.
 4. **Comandos de Teste e Lint:** `npm test` (Vitest) e `npm run lint` (ESLint) a partir da raiz.
