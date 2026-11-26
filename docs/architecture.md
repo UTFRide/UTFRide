@@ -39,8 +39,8 @@ A persistência do UTFRide evolui em duas fases bem demarcadas:
 - **Decisão arquitetural da Entrega 3 (Atividade 15):** os Services de dados (`AuthData`, `RideData`, `RideRequestData`, `NotificationData`) falam com o PostgreSQL do Supabase pelo **`HttpClient` do Angular direto na API REST (`/rest/v1/…`)**. A biblioteca `@supabase/supabase-js` continua cuidando **exclusivamente do login, cadastro e sessão** (`signUp`, `signInWithPassword`, `signOut`, `getSession`). Fazendo assim, **toda requisição de dados passa obrigatoriamente pelos interceptors funcionais** (`authInterceptor` na ida, injetando `apikey` e `Authorization: Bearer <token>`, e `errorInterceptor` na volta, tratando `401` e falhas de servidor).
 - **Consultas com projeção e validação de privacidade:**
   - Verificação de duplicidade de e-mail ou matrícula antes do login: função RPC no PostgreSQL (`check_registration_exists`) retornando apenas booleano, sem expor a tabela `users` a visitantes anônimos.
-  - Resumo público de motorista (`driver_summaries`): projeção apenas de `id`, `name` e `rating_average` para usuários autenticados.
-  - Resumo de viagens do passageiro (`passenger_trip_summaries`): inclui o `whatsapp` do motorista **somente** quando a solicitação está `accepted` e a carona está `active` ou `full`.
+  - Resumo público de motorista (`get_driver_summaries`): função RPC retornando apenas `id`, `name` e `rating_average` para usuários autenticados.
+  - Resumo de viagens do passageiro (`get_passenger_trip_summaries`): função RPC filtrada por `auth.uid()` que inclui o `whatsapp` do motorista **somente** quando a solicitação está `accepted` e a carona está `active` ou `full`.
 
 ### 2.2 Fase Completa (Entrega 3) — Backend-as-a-Service (**Supabase**)
 - **Banco de Dados:** PostgreSQL hospedado no Supabase (`supabase/schema.sql`).
@@ -301,8 +301,8 @@ Todas as tabelas nascem com **Row Level Security (RLS) ativado** (`ENABLE ROW LE
 
 > **Consultas auxiliares seguras (substituindo rotas customizadas do antigo `json-server`):**
 > - `check_registration_exists(p_email, p_registration_number)` (função RPC `SECURITY DEFINER`): permite validar antes do `signUp` se o e-mail ou matrícula já existem em `users`, retornando apenas `boolean` sem expor dados pessoais a visitantes anônimos.
-> - `driver_summaries` (*view* `SECURITY DEFINER` com verificação `auth.uid() IS NOT NULL`): expõe apenas `id`, `name` e `rating_average` de motoristas para usuários autenticados.
-> - `passenger_trip_summaries` (*view* com `security_invoker = true` ou filtro por `auth.uid()`): retorna as viagens do passageiro autenticado e só inclui o `whatsapp` do motorista quando `ride_requests.status = 'accepted'` e `rides.status IN ('active', 'full')`.
+> - `get_driver_summaries(p_driver_ids)` (função RPC `SECURITY DEFINER` com exigência de `auth.uid() IS NOT NULL`): expõe apenas `id`, `name` e `rating_average` de motoristas para usuários autenticados.
+> - `get_passenger_trip_summaries()` (função RPC `SECURITY DEFINER` filtrada por `auth.uid()`): retorna as viagens do passageiro autenticado e só inclui o `whatsapp` do motorista quando `ride_requests.status = 'accepted'` e `rides.status IN ('active', 'full')`.
 
 ---
 
