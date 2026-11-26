@@ -1,5 +1,14 @@
 import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
-import { computed, DestroyRef, inject, Injectable, Injector, Signal, signal } from '@angular/core';
+import {
+  computed,
+  DestroyRef,
+  inject,
+  Injectable,
+  Injector,
+  linkedSignal,
+  Signal,
+  signal,
+} from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
   catchError,
@@ -399,32 +408,98 @@ export class RideData {
     });
   }
 
+  resolveRideDetail(rideId: string | null): Observable<RideDetailResult> {
+    if (!rideId?.trim()) {
+      return of({ status: 'not-found' });
+    }
+
+    const passenger = this.auth.currentUser();
+    if (!passenger) {
+      return EMPTY;
+    }
+
+    return this.readRideDetailResult(rideId, () => passenger === this.auth.currentUser());
+  }
+
+  private readRideDetailResult(
+    rideId: string,
+    isCurrentSession: () => boolean,
+  ): Observable<RideDetailResult> {
+    return this.readPassengerRide(rideId).pipe(
+      switchMap((offer): Observable<RideDetailResult> => {
+        // A sessão ou seleção pode mudar antes de cancelar a leitura anterior.
+        if (!isCurrentSession()) return EMPTY;
+        if (!offer) return of({ status: 'not-found' });
+
+        return this.enrichWithDrivers([offer.ride]).pipe(
+          map(([ride]) => ({ status: 'loaded' as const, ride })),
+        );
+      }),
+      catchError((error: unknown) => of(passengerLoadError(error))),
+      filter(isCurrentSession),
+    );
+  }
+
   loadRideDetail(
     rideId: Signal<string>,
     injector: Injector,
     retry?: Signal<number>,
+    initialDetail?: Signal<RideDetailResult | undefined>,
   ): Signal<RideDetailResult> {
+    const resolved = initialDetail
+      ? linkedSignal<
+          { id: string; initial: RideDetailResult | undefined; passenger: AuthenticatedUser | null },
+          {
+            id: string | null;
+            initial: RideDetailResult | undefined;
+            passenger: AuthenticatedUser | null;
+          }
+        >({
+          source: () => ({
+            id: rideId(),
+            initial: initialDetail(),
+            passenger: this.auth.currentUser(),
+          }),
+          computation: (source, previous) => {
+            const prev = previous?.value;
+            if (!source.initial || !source.passenger) {
+              // Mantém o valor anterior de `initial` para evitar reuso após logout e novo login.
+              return { id: null, initial: source.initial, passenger: null };
+            }
+            if (prev && prev.initial === source.initial) {
+              return prev.id === source.id && prev.passenger === source.passenger
+                ? prev
+                : { id: null, initial: source.initial, passenger: null };
+            }
+            return {
+              id: source.id,
+              initial: source.initial,
+              passenger: source.passenger,
+            };
+          },
+        })
+      : undefined;
+
+    const getPreloaded = (passenger: AuthenticatedUser | null): RideDetailResult | null => {
+      if (!passenger || (retry?.() ?? 0) > 0) return null;
+      const preloaded = resolved?.();
+      return preloaded?.id === rideId() && preloaded.passenger === passenger && preloaded.initial
+        ? preloaded.initial
+        : null;
+    };
+
     const selection = computed(() => {
       const passenger = this.auth.currentUser();
-      return passenger ? { id: rideId(), passenger, attempt: retry?.() } : null;
+      if (!passenger || getPreloaded(passenger)) return null;
+      return { id: rideId(), passenger, attempt: retry?.() };
     });
+
     const emission = toSignal(
       toObservable(selection, { injector }).pipe(
         switchMap((current) => {
           if (!current || current !== selection()) return EMPTY;
 
-          return this.readPassengerRide(current.id).pipe(
-            switchMap((offer): Observable<RideDetailResult> => {
-              // A sessão pode mudar antes que toObservable cancele a leitura anterior.
-              if (current !== selection()) return EMPTY;
-              if (!offer) return of({ status: 'not-found' });
-
-              return this.enrichWithDrivers([offer.ride]).pipe(
-                map(([ride]) => ({ status: 'loaded', ride })),
-              );
-            }),
-            catchError((error: unknown) => of(passengerLoadError(error))),
-            filter(() => current === selection()),
+          return this.readRideDetailResult(current.id, () => current === selection()).pipe(
             startWith(detailLoading),
             map((result) => ({ selection: current, result })),
           );
@@ -434,6 +509,8 @@ export class RideData {
     );
 
     return computed(() => {
+      const preloaded = getPreloaded(this.auth.currentUser());
+      if (preloaded) return preloaded;
       const latest = emission();
       return latest?.selection === selection() ? latest.result : detailLoading;
     });

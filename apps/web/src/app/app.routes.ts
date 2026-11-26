@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth-guard';
+import { rideDetailResolver } from './core/resolvers/ride-detail-resolver';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', loadComponent: () => import('./features/auth/landing/landing').then((m) => m.Landing) },
@@ -25,6 +26,7 @@ export const routes: Routes = [
       },
       {
         path: ':id',
+        resolve: { initialDetail: rideDetailResolver },
         loadComponent: () =>
           import('./features/rides/ride-detail/ride-detail').then((m) => m.RideDetail),
       },

@@ -1,10 +1,10 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, Injector, input, linkedSignal, signal } from '@angular/core';
+import { Component, computed, inject, Injector, input, linkedSignal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { map, startWith, Subject, switchMap } from 'rxjs';
 import { AuthData } from '../../../core/services/auth-data';
-import { RideData } from '../../../core/services/ride-data';
+import { RideData, RideDetailResult } from '../../../core/services/ride-data';
 import { isActiveRideRequest, RideRequestData } from '../../../core/services/ride-request-data';
 import { CurrencyBrlPipe } from '../../../shared/pipes/currency-brl-pipe';
 import { InitialsPipe } from '../../../shared/pipes/initials-pipe';
@@ -17,26 +17,34 @@ import { RideRequestConfirmPanel } from './ride-request-confirm-panel/ride-reque
 })
 export class RideDetail {
   readonly id = input.required<string>();
+  readonly initialDetail = input<RideDetailResult>();
 
   private readonly injector = inject(Injector);
   private readonly auth = inject(AuthData);
   private readonly requests = inject(RideRequestData);
-  private readonly detailRetry = signal(0);
-  private readonly requestRetry = signal(0);
+  private readonly selection = computed(() => ({
+    rideId: this.id(),
+    passenger: this.auth.currentUser(),
+  }));
+  private readonly detailRetry = linkedSignal({
+    source: this.selection,
+    computation: () => 0,
+  });
+  private readonly requestRetry = linkedSignal({
+    source: this.selection,
+    computation: () => 0,
+  });
   private readonly loadedDetail = inject(RideData).loadRideDetail(
     this.id,
     this.injector,
     this.detailRetry,
+    this.initialDetail,
   );
   private readonly loadedRequest = this.requests.loadPassengerRequest(
     this.id,
     this.injector,
     this.requestRetry,
   );
-  private readonly selection = computed(() => ({
-    rideId: this.id(),
-    passenger: this.auth.currentUser(),
-  }));
   private readonly confirmations = new Subject<void>();
   private readonly confirmationResult = toSignal(
     this.confirmations.pipe(

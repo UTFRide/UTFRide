@@ -72,24 +72,32 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
-async function waitForUsersRequest(http: HttpTestingController) {
-  const isUsersGet = (request: {
+async function waitForRequest(
+  http: HttpTestingController,
+  matcher: (request: {
     url: string;
     method: string;
     params: { get(name: string): string | null };
-  }) =>
-    request.url === `${environment.supabaseUrl}/rest/v1/users` &&
-    request.method === 'GET' &&
-    request.params.get('id') === 'eq.supabase-user-1';
-
+  }) => boolean,
+) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    const [match] = http.match(isUsersGet);
+    const [match] = http.match(matcher);
     if (match) {
       return match;
     }
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
-  return http.expectOne(isUsersGet);
+  return http.expectOne(matcher);
+}
+
+async function waitForUsersRequest(http: HttpTestingController) {
+  return waitForRequest(
+    http,
+    (request) =>
+      request.url === `${environment.supabaseUrl}/rest/v1/users` &&
+      request.method === 'GET' &&
+      request.params.get('id') === 'eq.supabase-user-1',
+  );
 }
 
 describe('authGuard', () => {
@@ -185,6 +193,17 @@ describe('authGuard', () => {
       const navigation = RouterTestingHarness.create(protectedRoute);
       const usersRequest = await waitForUsersRequest(http);
       usersRequest.flush([activeUserRow]);
+
+      if (protectedRoute === '/rides/ride-1') {
+        const resolverRideRequest = await waitForRequest(
+          http,
+          (request) =>
+            request.url === `${environment.supabaseUrl}/rest/v1/rides` &&
+            request.method === 'GET' &&
+            request.params.get('id') === 'eq.ride-1',
+        );
+        resolverRideRequest.flush([]);
+      }
 
       await navigation;
 

@@ -9,7 +9,7 @@ import { environment } from '../../../environments/environment';
 import { Ride } from '../models/ride.model';
 import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
-import { RideData } from './ride-data';
+import { RideData, RideDetailResult } from './ride-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
 const ridesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
@@ -160,6 +160,162 @@ describe('RideData', () => {
       .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-offline')
       .error(new ProgressEvent('error'));
     expect(detail()).toEqual({ status: 'error', connectionError: true });
+    http.verify();
+  });
+
+  it('resolveRideDetail pré-carrega oferta e resumo do motorista e trata ausência, 22P02, erro e troca de sessão', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const rideData = TestBed.inject(RideData);
+    const errorNotice = TestBed.inject(ErrorNotice);
+    const auth = TestBed.inject(AuthData);
+
+    await expect(firstValueFrom(rideData.resolveRideDetail(null))).resolves.toEqual({ status: 'not-found' });
+    await expect(firstValueFrom(rideData.resolveRideDetail('   '))).resolves.toEqual({ status: 'not-found' });
+    http.expectNone(ridesUrl);
+
+    await authenticateStudent(http);
+
+    const ride: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: '2026-01-01T08:00:00.000Z',
+      totalSeats: 2,
+      availableSeats: 1,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2025-12-30T10:00:00.000Z',
+    };
+
+    const loadedPromise = firstValueFrom(rideData.resolveRideDetail('ride-1'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(ride)]);
+    http
+      .expectOne((req) => req.url === driverSummariesRpcUrl && req.method === 'POST')
+      .flush([{ id: 'driver-1', name: 'Carlos Motorista', rating_average: 5 }]);
+    await expect(loadedPromise).resolves.toEqual({
+      status: 'loaded',
+      ride: { ...ride, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+
+    const emptyPromise = firstValueFrom(rideData.resolveRideDetail('missing'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.missing')
+      .flush([]);
+    await expect(emptyPromise).resolves.toEqual({ status: 'not-found' });
+
+    const invalidUuidPromise = firstValueFrom(rideData.resolveRideDetail('not-a-uuid'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.not-a-uuid')
+      .flush({ code: '22P02', message: 'invalid input syntax for type uuid' }, { status: 400, statusText: 'Bad Request' });
+    await expect(invalidUuidPromise).resolves.toEqual({ status: 'not-found' });
+
+    const offlinePromise = firstValueFrom(rideData.resolveRideDetail('ride-offline'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-offline')
+      .error(new ProgressEvent('error'));
+    await expect(offlinePromise).resolves.toEqual({ status: 'error', connectionError: true });
+
+    const serverErrorPromise = firstValueFrom(rideData.resolveRideDetail('ride-1'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(ride)]);
+    http
+      .expectOne((req) => req.url === driverSummariesRpcUrl && req.method === 'POST')
+      .flush(null, { status: 500, statusText: 'Server Error' });
+    await expect(serverErrorPromise).resolves.toEqual({ status: 'error' });
+    expect(errorNotice.message()).toBe('');
+
+    const emissions: RideDetailResult[] = [];
+    const sub = rideData.resolveRideDetail('ride-1').subscribe((value) => emissions.push(value));
+    const pendingOffer = http.expectOne(
+      (req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1',
+    );
+    auth.logout();
+    pendingOffer.flush([toRideRow(ride)]);
+    http.expectNone(driverSummariesRpcUrl);
+    expect(emissions).toEqual([]);
+    sub.unsubscribe();
+
+    http.verify();
+  });
+
+  it('loadRideDetail reutiliza initialDetail sem duplicar leitura e recarrega em retry, troca de id sem initialDetail ou mudança de sessão', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const auth = TestBed.inject(AuthData);
+    await authenticateStudent(http);
+
+    const ride: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: '2026-01-01T08:00:00.000Z',
+      totalSeats: 2,
+      availableSeats: 1,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2025-12-30T10:00:00.000Z',
+    };
+
+    const id = signal('ride-1');
+    const retry = signal(0);
+    const initialDetail = signal<RideDetailResult | undefined>({
+      status: 'loaded',
+      ride: { ...ride, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+
+    const detail = TestBed.inject(RideData).loadRideDetail(id, TestBed.inject(Injector), retry, initialDetail);
+    TestBed.tick();
+    http.expectNone(ridesUrl);
+    http.expectNone(driverSummariesRpcUrl);
+    expect(detail()).toEqual(initialDetail());
+
+    // Novo initialDetail ao trocar para outra oferta também não duplica leitura.
+    const otherRide: Ride = { ...ride, id: 'ride-2', origin: 'Centro' };
+    id.set('ride-2');
+    initialDetail.set({
+      status: 'loaded',
+      ride: { ...otherRide, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+    TestBed.tick();
+    http.expectNone(ridesUrl);
+    expect(detail()).toEqual(initialDetail());
+
+    // Retry força nova leitura HTTP.
+    retry.set(1);
+    expect(detail()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-2')
+      .flush([toRideRow(otherRide)]);
+    http
+      .expectOne((req) => req.url === driverSummariesRpcUrl && req.method === 'POST')
+      .flush([{ id: 'driver-1', name: 'Carlos Motorista', rating_average: 5 }]);
+    expect(detail()).toEqual({
+      status: 'loaded',
+      ride: { ...otherRide, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+
+    // Logout seguido de nova sessão não reutiliza initialDetail antigo.
+    retry.set(0);
+    auth.logout();
+    await authenticateStudent(http, { id: 'passenger-2', email: 'outro@alunos.utfpr.edu.br' });
+    expect(detail()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-2')
+      .flush([toRideRow({ ...otherRide, origin: 'Água Verde' })]);
+    http
+      .expectOne((req) => req.url === driverSummariesRpcUrl && req.method === 'POST')
+      .flush([{ id: 'driver-1', name: 'Carlos Motorista', rating_average: 5 }]);
+    expect(detail()).toEqual({
+      status: 'loaded',
+      ride: { ...otherRide, origin: 'Água Verde', driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+
     http.verify();
   });
 
