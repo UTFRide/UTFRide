@@ -8,7 +8,7 @@ import { AuthData } from '../services/auth-data';
 import { authInterceptor } from './auth-interceptor';
 
 describe('authInterceptor', () => {
-  it('acrescenta Authorization Bearer para requisições à API configurada quando há accessToken ativo', () => {
+  it('acrescenta apikey e Authorization Bearer para requisições ao Supabase quando há accessToken ativo', () => {
     const accessToken = signal<string | null>('jwt-token-123');
     TestBed.configureTestingModule({
       providers: [
@@ -21,20 +21,22 @@ describe('authInterceptor', () => {
     const http = TestBed.inject(HttpClient);
     const controller = TestBed.inject(HttpTestingController);
 
-    http.get(`${environment.apiUrl}/rides`).subscribe();
-    const ridesRequest = controller.expectOne(`${environment.apiUrl}/rides`);
+    http.get(`${environment.supabaseUrl}/rest/v1/rides`).subscribe();
+    const ridesRequest = controller.expectOne(`${environment.supabaseUrl}/rest/v1/rides`);
+    expect(ridesRequest.request.headers.get('apikey')).toBe(environment.supabasePublishableKey);
     expect(ridesRequest.request.headers.get('Authorization')).toBe('Bearer jwt-token-123');
     ridesRequest.flush([]);
 
-    http.get(environment.apiUrl).subscribe();
-    const rootRequest = controller.expectOne(environment.apiUrl);
+    http.get(environment.supabaseUrl).subscribe();
+    const rootRequest = controller.expectOne(environment.supabaseUrl);
+    expect(rootRequest.request.headers.get('apikey')).toBe(environment.supabasePublishableKey);
     expect(rootRequest.request.headers.get('Authorization')).toBe('Bearer jwt-token-123');
     rootRequest.flush({});
 
     controller.verify();
   });
 
-  it('não envia Authorization quando não há accessToken ativo no AuthData', () => {
+  it('envia apikey sem Authorization quando não há accessToken ativo no AuthData', () => {
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(withInterceptors([authInterceptor])),
@@ -48,15 +50,38 @@ describe('authInterceptor', () => {
 
     expect(auth.accessToken()).toBeNull();
 
-    http.get(`${environment.apiUrl}/rides`).subscribe();
-    const request = controller.expectOne(`${environment.apiUrl}/rides`);
+    http.post(`${environment.supabaseUrl}/rest/v1/rpc/check_registration_exists`, {}).subscribe();
+    const request = controller.expectOne(`${environment.supabaseUrl}/rest/v1/rpc/check_registration_exists`);
+    expect(request.request.headers.get('apikey')).toBe(environment.supabasePublishableKey);
     expect(request.request.headers.has('Authorization')).toBe(false);
-    request.flush([]);
+    request.flush(false);
 
     controller.verify();
   });
 
-  it('não envia Authorization para APIs públicas externas como o IBGE ou domínios com prefixo semelhante', () => {
+  it('preserva Authorization explícito enviado na requisição ao Supabase mesmo antes de a sessão ficar ativa', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClientTesting(),
+      ],
+    });
+
+    const http = TestBed.inject(HttpClient);
+    const controller = TestBed.inject(HttpTestingController);
+
+    http
+      .post(`${environment.supabaseUrl}/rest/v1/users`, {}, { headers: { Authorization: 'Bearer transient-jwt' } })
+      .subscribe();
+    const request = controller.expectOne(`${environment.supabaseUrl}/rest/v1/users`);
+    expect(request.request.headers.get('apikey')).toBe(environment.supabasePublishableKey);
+    expect(request.request.headers.get('Authorization')).toBe('Bearer transient-jwt');
+    request.flush({});
+
+    controller.verify();
+  });
+
+  it('não envia apikey nem Authorization para APIs públicas externas como o IBGE ou domínios com prefixo semelhante', () => {
     const accessToken = signal<string | null>('jwt-token-123');
     TestBed.configureTestingModule({
       providers: [
@@ -73,18 +98,21 @@ describe('authInterceptor', () => {
       'https://servicodados.ibge.gov.br/api/v1/localidades/estados/PR/municipios?orderBy=nome';
     http.get(ibgeUrl).subscribe();
     const ibgeRequest = controller.expectOne(ibgeUrl);
+    expect(ibgeRequest.request.headers.has('apikey')).toBe(false);
     expect(ibgeRequest.request.headers.has('Authorization')).toBe(false);
     ibgeRequest.flush([]);
 
-    const spoofedDomainUrl = `${environment.apiUrl}.evil.com/rides`;
+    const spoofedDomainUrl = `${environment.supabaseUrl}.evil.com/rest/v1/rides`;
     http.get(spoofedDomainUrl).subscribe();
     const spoofedDomainRequest = controller.expectOne(spoofedDomainUrl);
+    expect(spoofedDomainRequest.request.headers.has('apikey')).toBe(false);
     expect(spoofedDomainRequest.request.headers.has('Authorization')).toBe(false);
     spoofedDomainRequest.flush([]);
 
-    const spoofedPortUrl = `${environment.apiUrl}1/rides`;
+    const spoofedPortUrl = `${environment.supabaseUrl}1/rest/v1/rides`;
     http.get(spoofedPortUrl).subscribe();
     const spoofedPortRequest = controller.expectOne(spoofedPortUrl);
+    expect(spoofedPortRequest.request.headers.has('apikey')).toBe(false);
     expect(spoofedPortRequest.request.headers.has('Authorization')).toBe(false);
     spoofedPortRequest.flush([]);
 
@@ -111,8 +139,9 @@ describe('authInterceptor', () => {
     const http = TestBed.inject(HttpClient);
     const controller = TestBed.inject(HttpTestingController);
 
-    http.get(`${environment.apiUrl}/rides`).subscribe();
-    const request = controller.expectOne(`${environment.apiUrl}/rides`);
+    http.get(`${environment.supabaseUrl}/rest/v1/rides`).subscribe();
+    const request = controller.expectOne(`${environment.supabaseUrl}/rest/v1/rides`);
+    expect(request.request.headers.get('apikey')).toBe(environment.supabasePublishableKey);
     expect(request.request.headers.get('Authorization')).toBe('Bearer jwt-app-config');
     request.flush([]);
 

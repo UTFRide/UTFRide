@@ -7,6 +7,9 @@ import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
+const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
+const registrationExistsRpcUrl = `${environment.supabaseUrl}/rest/v1/rpc/check_registration_exists`;
+
 const fakeSupabaseUser: SupabaseUser = {
   id: 'supabase-user-1',
   app_metadata: {},
@@ -48,7 +51,7 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 describe('AuthData', () => {
-  it('cadastra no Supabase Auth com metadados, espelha em /users sem senha e encerra sessão automática', async () => {
+  it('cadastra no Supabase Auth com metadados, grava perfil em /rest/v1/users sem senha e encerra sessão automática', async () => {
     const fakeAuth = createFakeAuthClient();
     TestBed.configureTestingModule({
       providers: [
@@ -61,9 +64,9 @@ describe('AuthData', () => {
     expect(service.result()).toBeUndefined();
     service.register({ name: 'Ana', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123', password: 'senha123', whatsapp: '41987654321' });
     const http = TestBed.inject(HttpTestingController);
-    const lookup = http.expectOne((request) => request.url === 'http://localhost:3000/registration-exists' && request.method === 'POST');
-    expect(lookup.request.body).toEqual({ email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123' });
-    lookup.flush({ exists: false });
+    const lookup = http.expectOne((request) => request.url === registrationExistsRpcUrl && request.method === 'POST');
+    expect(lookup.request.body).toEqual({ p_email: 'ana@alunos.utfpr.edu.br', p_registration_number: '123' });
+    lookup.flush(false);
 
     await flushMicrotasks();
 
@@ -81,34 +84,52 @@ describe('AuthData', () => {
       },
     });
 
-    const request = http.expectOne('http://localhost:3000/users');
+    const request = http.expectOne(usersUrl);
     expect(request.request.method).toBe('POST');
+    expect(request.request.headers.get('Authorization')).toBe('Bearer jwt-token');
+    expect(request.request.headers.get('Prefer')).toBe('return=representation');
+    expect(request.request.headers.get('Accept')).toBe('application/vnd.pgrst.object+json');
     expect(request.request.body).toEqual({
       id: 'supabase-user-1',
       name: 'Ana',
       email: 'ana@alunos.utfpr.edu.br',
-      registrationNumber: '123',
+      registration_number: '123',
       whatsapp: '41987654321',
       role: 'student',
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 0,
-      createdAt: expect.any(String),
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 0,
+      created_at: expect.any(String),
     });
     expect(request.request.body).not.toHaveProperty('password');
-    const user = { ...request.request.body };
-    request.flush(user);
+    const row = { ...request.request.body };
+    request.flush(row);
 
     await flushMicrotasks();
 
     expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
-    expect(service.result()).toEqual({ duplicate: false, user });
+    expect(service.result()).toEqual({
+      duplicate: false,
+      user: {
+        id: 'supabase-user-1',
+        name: 'Ana',
+        email: 'ana@alunos.utfpr.edu.br',
+        registrationNumber: '123',
+        whatsapp: '41987654321',
+        password: '',
+        role: 'student',
+        isBlocked: false,
+        isEmailConfirmed: true,
+        ratingAverage: 0,
+        createdAt: row.created_at,
+      },
+    });
     expect(service.currentUser()).toBeNull();
     expect(service.accessToken()).toBeNull();
     http.verify();
   });
 
-  it('retorna duplicado quando o Supabase Auth informa usuário já registrado sem espelhar em /users', async () => {
+  it('retorna duplicado quando o Supabase Auth informa usuário já registrado sem gravar em /rest/v1/users', async () => {
     const fakeAuth = createFakeAuthClient();
     vi.mocked(fakeAuth.signUp).mockResolvedValueOnce({
       data: { user: null, session: null },
@@ -125,12 +146,12 @@ describe('AuthData', () => {
     const http = TestBed.inject(HttpTestingController);
 
     service.register({ name: 'Ana', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123', password: 'senha123', whatsapp: '' });
-    http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+    http.expectOne(registrationExistsRpcUrl).flush(false);
 
     await flushMicrotasks();
 
     expect(service.result()).toEqual({ duplicate: true });
-    http.expectNone('http://localhost:3000/users');
+    http.expectNone(usersUrl);
     http.verify();
   });
 
@@ -151,12 +172,12 @@ describe('AuthData', () => {
     const http = TestBed.inject(HttpTestingController);
 
     service.register({ name: 'Ana', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123', password: 'senha123', whatsapp: '' });
-    http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+    http.expectOne(registrationExistsRpcUrl).flush(false);
 
     await flushMicrotasks();
 
     expect(service.result()).toEqual({ duplicate: true });
-    http.expectNone('http://localhost:3000/users');
+    http.expectNone(usersUrl);
     http.verify();
   });
 
@@ -182,16 +203,16 @@ describe('AuthData', () => {
     const http = TestBed.inject(HttpTestingController);
 
     service.register({ name: 'Ana', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123', password: 'senha123', whatsapp: '' });
-    http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+    http.expectOne(registrationExistsRpcUrl).flush(false);
 
     await flushMicrotasks();
 
     expect(service.result()).toEqual({ authError: expectedMessage });
-    http.expectNone('http://localhost:3000/users');
+    http.expectNone(usersUrl);
     http.verify();
   });
 
-  it('autentica via Supabase Auth, armazena accessToken e perfil sem comparar ou expor senha', async () => {
+  it('autentica via Supabase Auth, busca perfil em /rest/v1/users e armazena accessToken sem expor senha', async () => {
     const fakeAuth = createFakeAuthClient();
     TestBed.configureTestingModule({
       providers: [
@@ -215,29 +236,31 @@ describe('AuthData', () => {
     });
 
     const profileRequest = http.expectOne(
-      (request) => request.url === 'http://localhost:3000/users' && request.params.get('email') === 'ana@alunos.utfpr.edu.br',
+      (request) =>
+        request.url === usersUrl &&
+        request.method === 'GET' &&
+        request.params.get('id') === 'eq.supabase-user-1',
     );
-    expect(profileRequest.request.method).toBe('GET');
+    expect(profileRequest.request.headers.get('Authorization')).toBe('Bearer jwt-token');
     profileRequest.flush([
       {
-        id: '1',
+        id: 'supabase-user-1',
         name: 'Ana',
         email: 'ana@alunos.utfpr.edu.br',
-        password: 'outra-senha-legada-no-db',
-        registrationNumber: '123',
+        registration_number: '123',
         whatsapp: '41987654321',
         role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 4.5,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 4.5,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
     await flushMicrotasks();
 
     expect(service.accessToken()).toBe('jwt-token');
     expect(service.currentUser()).toEqual({
-      id: '1',
+      id: 'supabase-user-1',
       name: 'Ana',
       email: 'ana@alunos.utfpr.edu.br',
       registrationNumber: '123',
@@ -255,7 +278,7 @@ describe('AuthData', () => {
     http.verify();
   });
 
-  it('sincroniza o perfil espelho em /users a partir dos metadados do Supabase quando não existe em db.json', async () => {
+  it('sincroniza o perfil espelho em /rest/v1/users a partir dos metadados do Supabase quando não existe no banco', async () => {
     const fakeAuth = createFakeAuthClient();
     const userWithMetadata: SupabaseUser = {
       ...fakeSupabaseUser,
@@ -288,14 +311,35 @@ describe('AuthData', () => {
 
     http
       .expectOne(
-        (request) => request.url === `${environment.apiUrl}/users` && request.method === 'GET' && request.params.get('email') === 'novo@alunos.utfpr.edu.br',
+        (request) =>
+          request.url === usersUrl &&
+          request.method === 'GET' &&
+          request.params.get('id') === 'eq.supabase-mirror-1',
       )
       .flush([]);
 
     const postRequest = http.expectOne(
-      (request) => request.url === `${environment.apiUrl}/users` && request.method === 'POST',
+      (request) => request.url === usersUrl && request.method === 'POST',
     );
+    expect(postRequest.request.headers.get('Authorization')).toBe('Bearer jwt-mirror');
     expect(postRequest.request.body).toEqual({
+      id: 'supabase-mirror-1',
+      name: 'Novo Aluno',
+      email: 'novo@alunos.utfpr.edu.br',
+      registration_number: '2026123',
+      whatsapp: '41999991111',
+      role: 'student',
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 0,
+      created_at: expect.any(String),
+    });
+    expect(postRequest.request.body).not.toHaveProperty('password');
+    const row = { ...postRequest.request.body };
+    postRequest.flush(row);
+    await flushMicrotasks();
+
+    const expectedUser = {
       id: 'supabase-mirror-1',
       name: 'Novo Aluno',
       email: 'novo@alunos.utfpr.edu.br',
@@ -305,16 +349,12 @@ describe('AuthData', () => {
       isBlocked: false,
       isEmailConfirmed: true,
       ratingAverage: 0,
-      createdAt: expect.any(String),
-    });
-    expect(postRequest.request.body).not.toHaveProperty('password');
-    const mirroredUser = { ...postRequest.request.body };
-    postRequest.flush(mirroredUser);
-    await flushMicrotasks();
+      createdAt: row.created_at,
+    };
 
     expect(service.accessToken()).toBe('jwt-mirror');
-    expect(service.currentUser()).toEqual(mirroredUser);
-    expect(service.loginResult()).toEqual({ user: mirroredUser });
+    expect(service.currentUser()).toEqual(expectedUser);
+    expect(service.loginResult()).toEqual({ user: { ...expectedUser, password: '' } });
     http.verify();
   });
 
@@ -333,18 +373,18 @@ describe('AuthData', () => {
     service.login('bloqueado@alunos.utfpr.edu.br', 'senha123');
     await flushMicrotasks();
 
-    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+    http.expectOne((request) => request.url === usersUrl).flush([
       {
         id: 'blocked-1',
         name: 'Aluno Bloqueado',
         email: 'bloqueado@alunos.utfpr.edu.br',
-        registrationNumber: '999',
+        registration_number: '999',
         whatsapp: '41999990000',
         role: 'student',
-        isBlocked: true,
-        isEmailConfirmed: true,
-        ratingAverage: 4.0,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: true,
+        is_email_confirmed: true,
+        rating_average: 4.0,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
     await flushMicrotasks();
@@ -375,18 +415,18 @@ describe('AuthData', () => {
 
     service.login('ana@alunos.utfpr.edu.br', 'senha123');
     await flushMicrotasks();
-    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+    http.expectOne((request) => request.url === usersUrl).flush([
       {
         id: '1',
         name: 'Ana',
         email: 'ana@alunos.utfpr.edu.br',
-        registrationNumber: '123',
+        registration_number: '123',
         whatsapp: '41987654321',
         role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 4.5,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 4.5,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
     await flushMicrotasks();
@@ -396,18 +436,18 @@ describe('AuthData', () => {
 
     service.login('suporte@alunos.utfpr.edu.br', 'senha123');
     await flushMicrotasks();
-    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+    http.expectOne((request) => request.url === usersUrl).flush([
       {
         id: 'support-1',
         name: 'Suporte',
         email: 'suporte@alunos.utfpr.edu.br',
-        registrationNumber: '000',
+        registration_number: '000',
         whatsapp: '41900000000',
         role: 'support',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 5,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 5,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
     await flushMicrotasks();
@@ -441,7 +481,7 @@ describe('classificação de falhas de autenticação', () => {
 
     service.login(registration.email, registration.password);
     await flushMicrotasks();
-    http.expectOne((request) => request.url.endsWith('/users')).flush('erro', { status, statusText: 'Erro' });
+    http.expectOne((request) => request.url === usersUrl).flush('erro', { status, statusText: 'Erro' });
     await flushMicrotasks();
 
     expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
@@ -457,11 +497,11 @@ describe('classificação de falhas de autenticação', () => {
     await flushMicrotasks();
 
     expect(service.loginResult()).toEqual({ user: null });
-    http.expectNone((request) => request.url.endsWith('/users'));
+    http.expectNone(usersUrl);
     http.verify();
   });
 
-  it('retorna user null sem consultar /users nem vazar erro em inglês quando credenciais são inválidas no Supabase', async () => {
+  it('retorna user null sem consultar /rest/v1/users nem vazar erro em inglês quando credenciais são inválidas no Supabase', async () => {
     vi.mocked(fakeAuth.signInWithPassword).mockResolvedValueOnce({
       data: { user: null, session: null },
       error: { name: 'AuthApiError', message: 'Invalid login credentials', status: 400, code: 'invalid_credentials' } as never,
@@ -477,11 +517,11 @@ describe('classificação de falhas de autenticação', () => {
     expect(service.currentUser()).toBeNull();
     expect(service.accessToken()).toBeNull();
     expect(notice.message()).toBe('');
-    http.expectNone((request) => request.url.endsWith('/users'));
+    http.expectNone(usersUrl);
     http.verify();
   });
 
-  it('informa falha de conexão quando signInWithPassword falha por rede sem consultar /users', async () => {
+  it('informa falha de conexão quando signInWithPassword falha por rede sem consultar /rest/v1/users', async () => {
     vi.mocked(fakeAuth.signInWithPassword).mockRejectedValueOnce(new TypeError('Failed to fetch'));
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
@@ -492,7 +532,7 @@ describe('classificação de falhas de autenticação', () => {
     expect(service.loginResult()).toEqual({ connectionError: true });
     expect(service.currentUser()).toBeNull();
     expect(service.accessToken()).toBeNull();
-    http.expectNone((request) => request.url.endsWith('/users'));
+    http.expectNone(usersUrl);
     http.verify();
   });
 
@@ -512,18 +552,18 @@ describe('classificação de falhas de autenticação', () => {
     expect(notice.message()).toBe('Falha inesperada. Tente novamente.');
     expect(service.currentUser()).toBeNull();
     expect(service.accessToken()).toBeNull();
-    http.expectNone((request) => request.url.endsWith('/users'));
+    http.expectNone(usersUrl);
     http.verify();
   });
 
-  it('informa falha de conexão e encerra sessão do Supabase quando GET ou POST /users falha no login', async () => {
+  it('informa falha de conexão e encerra sessão do Supabase quando GET ou POST /rest/v1/users falha no login', async () => {
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
     service.login(registration.email, registration.password);
     await flushMicrotasks();
-    http.expectOne((request) => request.url.endsWith('/users') && request.method === 'GET').flush([]);
-    http.expectOne((request) => request.url.endsWith('/users') && request.method === 'POST').error(new ProgressEvent('error'));
+    http.expectOne((request) => request.url === usersUrl && request.method === 'GET').flush([]);
+    http.expectOne((request) => request.url === usersUrl && request.method === 'POST').error(new ProgressEvent('error'));
     await flushMicrotasks();
 
     expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
@@ -540,18 +580,18 @@ describe('classificação de falhas de autenticação', () => {
 
     service.login('bloqueado@alunos.utfpr.edu.br', registration.password);
     await flushMicrotasks();
-    http.expectOne((request) => request.url.endsWith('/users')).flush([
+    http.expectOne((request) => request.url === usersUrl).flush([
       {
         id: 'blocked-1',
         name: 'Aluno Bloqueado',
         email: 'bloqueado@alunos.utfpr.edu.br',
-        registrationNumber: '999',
+        registration_number: '999',
         whatsapp: '',
         role: 'student',
-        isBlocked: true,
-        isEmailConfirmed: true,
-        ratingAverage: 0,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: true,
+        is_email_confirmed: true,
+        rating_average: 0,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
     await flushMicrotasks();
@@ -567,11 +607,11 @@ describe('classificação de falhas de autenticação', () => {
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
     service.register(registration);
-    http.expectOne((request) => request.url.endsWith('/registration-exists')).flush('erro', { status: 500, statusText: 'Erro' });
+    http.expectOne(registrationExistsRpcUrl).flush('erro', { status: 500, statusText: 'Erro' });
     expect(service.result()).toEqual({ requestError: true });
     expect(fakeAuth.signUp).not.toHaveBeenCalled();
     service.register(registration);
-    http.expectOne((request) => request.url.endsWith('/registration-exists')).flush({ exists: true });
+    http.expectOne(registrationExistsRpcUrl).flush(true);
     expect(service.result()).toEqual({ duplicate: true });
     expect(fakeAuth.signUp).not.toHaveBeenCalled();
     http.verify();
@@ -583,7 +623,7 @@ describe('classificação de falhas de autenticação', () => {
 
     service.login(registration.email, registration.password);
     await flushMicrotasks();
-    http.expectOne((request) => request.url.endsWith('/users')).flush({});
+    http.expectOne((request) => request.url === usersUrl).flush({});
     await flushMicrotasks();
 
     expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
@@ -602,13 +642,13 @@ describe('classificação de falhas de autenticação', () => {
     http.verify();
   });
 
-  it('informa falha de conexão ao criar a conta no json-server e limpa eventual sessão do Supabase', async () => {
+  it('informa falha de conexão ao gravar perfil no Supabase e limpa eventual sessão do Auth', async () => {
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
     service.register(registration);
-    http.expectOne((request) => request.url.endsWith('/registration-exists')).flush({ exists: false });
+    http.expectOne(registrationExistsRpcUrl).flush(false);
     await flushMicrotasks();
-    http.expectOne((request) => request.url.endsWith('/users')).error(new ProgressEvent('error'));
+    http.expectOne(usersUrl).error(new ProgressEvent('error'));
     await flushMicrotasks();
     expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
     expect(service.result()).toEqual({ connectionError: true });
@@ -620,14 +660,14 @@ describe('classificação de falhas de autenticação', () => {
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
     service.register(registration);
-    http.expectOne((request) => request.url.endsWith('/registration-exists')).flush({ exists: false });
+    http.expectOne(registrationExistsRpcUrl).flush(false);
     await flushMicrotasks();
     expect(service.result()).toEqual({ connectionError: true });
-    http.expectNone((request) => request.url.endsWith('/users'));
+    http.expectNone(usersUrl);
     http.verify();
   });
 
-  it('não conclui o cadastro com sucesso quando signOut retorna erro após criar o perfil em /users', async () => {
+  it('não conclui o cadastro com sucesso quando signOut retorna erro após criar o perfil em /rest/v1/users', async () => {
     vi.mocked(fakeAuth.signOut).mockResolvedValueOnce({
       error: { name: 'AuthApiError', message: 'Logout failed', status: 500 } as never,
     });
@@ -635,9 +675,9 @@ describe('classificação de falhas de autenticação', () => {
     const http = TestBed.inject(HttpTestingController);
 
     service.register(registration);
-    http.expectOne((request) => request.url.endsWith('/registration-exists')).flush({ exists: false });
+    http.expectOne(registrationExistsRpcUrl).flush(false);
     await flushMicrotasks();
-    const request = http.expectOne((request) => request.url.endsWith('/users'));
+    const request = http.expectOne(usersUrl);
     request.flush({ id: 'supabase-user-1', ...request.request.body });
     await flushMicrotasks();
 
@@ -648,15 +688,15 @@ describe('classificação de falhas de autenticação', () => {
     http.verify();
   });
 
-  it('informa falha de conexão quando signOut rejeita por rede após criar o perfil em /users', async () => {
+  it('informa falha de conexão quando signOut rejeita por rede após criar o perfil em /rest/v1/users', async () => {
     vi.mocked(fakeAuth.signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
     service.register(registration);
-    http.expectOne((request) => request.url.endsWith('/registration-exists')).flush({ exists: false });
+    http.expectOne(registrationExistsRpcUrl).flush(false);
     await flushMicrotasks();
-    const request = http.expectOne((request) => request.url.endsWith('/users'));
+    const request = http.expectOne(usersUrl);
     request.flush({ id: 'supabase-user-1', ...request.request.body });
     await flushMicrotasks();
 
@@ -667,15 +707,15 @@ describe('classificação de falhas de autenticação', () => {
     http.verify();
   });
 
-  it('não conclui o cadastro com sucesso quando signOut rejeita por erro inesperado após criar o perfil em /users', async () => {
+  it('não conclui o cadastro com sucesso quando signOut rejeita por erro inesperado após criar o perfil em /rest/v1/users', async () => {
     vi.mocked(fakeAuth.signOut).mockRejectedValueOnce(new Error('Storage unavailable'));
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
     service.register(registration);
-    http.expectOne((request) => request.url.endsWith('/registration-exists')).flush({ exists: false });
+    http.expectOne(registrationExistsRpcUrl).flush(false);
     await flushMicrotasks();
-    const request = http.expectOne((request) => request.url.endsWith('/users'));
+    const request = http.expectOne(usersUrl);
     request.flush({ id: 'supabase-user-1', ...request.request.body });
     await flushMicrotasks();
 
@@ -686,15 +726,15 @@ describe('classificação de falhas de autenticação', () => {
     http.verify();
   });
 
-  it('preserva o erro HTTP original do json-server no rollback mesmo quando signOut falha', async () => {
+  it('preserva o erro HTTP original no rollback mesmo quando signOut falha', async () => {
     vi.mocked(fakeAuth.signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
     service.register(registration);
-    http.expectOne((request) => request.url.endsWith('/registration-exists')).flush({ exists: false });
+    http.expectOne(registrationExistsRpcUrl).flush(false);
     await flushMicrotasks();
-    http.expectOne((request) => request.url.endsWith('/users')).flush('erro', { status: 500, statusText: 'Erro' });
+    http.expectOne(usersUrl).flush('erro', { status: 500, statusText: 'Erro' });
     await flushMicrotasks();
 
     expect(fakeAuth.signOut).toHaveBeenCalledTimes(1);
@@ -703,9 +743,9 @@ describe('classificação de falhas de autenticação', () => {
   });
 });
 
-it('usa a URL configurada para cadastro e login', async () => {
-  const originalApiUrl = environment.apiUrl;
-  environment.apiUrl = 'http://api.test';
+it('usa supabaseUrl configurado para cadastro e login', async () => {
+  const originalSupabaseUrl = environment.supabaseUrl;
+  environment.supabaseUrl = 'https://projeto-teste.supabase.co';
   try {
     const fakeAuth = createFakeAuthClient();
     TestBed.configureTestingModule({
@@ -718,30 +758,36 @@ it('usa a URL configurada para cadastro e login', async () => {
     const service = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
     service.register({ name: 'Ana', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123', password: 'senha123', whatsapp: '41987654321' });
-    http.expectOne('http://api.test/registration-exists').flush({ exists: false });
+    http.expectOne('https://projeto-teste.supabase.co/rest/v1/rpc/check_registration_exists').flush(false);
     await flushMicrotasks();
-    http.expectOne('http://api.test/users').flush({});
+    http.expectOne('https://projeto-teste.supabase.co/rest/v1/users').flush({});
     await flushMicrotasks();
     service.login('ana@alunos.utfpr.edu.br', 'senha123');
     await flushMicrotasks();
-    http.expectOne((request) => request.url === 'http://api.test/users' && request.params.get('email') === 'ana@alunos.utfpr.edu.br').flush([
-      {
-        id: 'supabase-user-1',
-        name: 'Ana',
-        email: 'ana@alunos.utfpr.edu.br',
-        registrationNumber: '123',
-        whatsapp: '41987654321',
-        role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 0,
-        createdAt: '2026-01-01T00:00:00.000Z',
-      },
-    ]);
+    http
+      .expectOne(
+        (request) =>
+          request.url === 'https://projeto-teste.supabase.co/rest/v1/users' &&
+          request.params.get('id') === 'eq.supabase-user-1',
+      )
+      .flush([
+        {
+          id: 'supabase-user-1',
+          name: 'Ana',
+          email: 'ana@alunos.utfpr.edu.br',
+          registration_number: '123',
+          whatsapp: '41987654321',
+          role: 'student',
+          is_blocked: false,
+          is_email_confirmed: true,
+          rating_average: 0,
+          created_at: '2026-01-01T00:00:00.000Z',
+        },
+      ]);
     await flushMicrotasks();
     http.verify();
   } finally {
-    environment.apiUrl = originalApiUrl;
+    environment.supabaseUrl = originalSupabaseUrl;
   }
 });
 
@@ -759,7 +805,7 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
     });
   });
 
-  it('restaura currentUser e accessToken a partir de getSession() e perfil em /users', async () => {
+  it('restaura currentUser e accessToken a partir de getSession() e perfil em /rest/v1/users', async () => {
     vi.mocked(fakeAuth.getSession).mockResolvedValueOnce({
       data: { session: fakeSession },
       error: null,
@@ -772,22 +818,23 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
 
     const profileRequest = http.expectOne(
       (request) =>
-        request.url === `${environment.apiUrl}/users` &&
+        request.url === usersUrl &&
         request.method === 'GET' &&
-        request.params.get('email') === 'ana@alunos.utfpr.edu.br',
+        request.params.get('id') === 'eq.supabase-user-1',
     );
+    expect(profileRequest.request.headers.get('Authorization')).toBe('Bearer jwt-token');
     profileRequest.flush([
       {
         id: 'supabase-user-1',
         name: 'Ana',
         email: 'ana@alunos.utfpr.edu.br',
-        registrationNumber: '123',
+        registration_number: '123',
         whatsapp: '41987654321',
         role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 4.5,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 4.5,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
 
@@ -809,7 +856,7 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
     http.verify();
   });
 
-  it('espelha perfil em /users a partir dos metadados do Supabase quando ainda não existe no json-server', async () => {
+  it('espelha perfil em /rest/v1/users a partir dos metadados do Supabase quando ainda não existe no banco', async () => {
     const userWithMetadata: SupabaseUser = {
       ...fakeSupabaseUser,
       id: 'supabase-restore-mirror',
@@ -841,21 +888,33 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
     http
       .expectOne(
         (request) =>
-          request.url === `${environment.apiUrl}/users` &&
+          request.url === usersUrl &&
           request.method === 'GET' &&
-          request.params.get('email') === 'calouro@alunos.utfpr.edu.br',
+          request.params.get('id') === 'eq.supabase-restore-mirror',
       )
       .flush([]);
 
     const postRequest = http.expectOne(
-      (request) => request.url === `${environment.apiUrl}/users` && request.method === 'POST',
+      (request) => request.url === usersUrl && request.method === 'POST',
     );
-    const mirroredUser = { ...postRequest.request.body };
-    postRequest.flush(mirroredUser);
+    expect(postRequest.request.headers.get('Authorization')).toBe('Bearer jwt-restored-mirror');
+    const row = { ...postRequest.request.body };
+    postRequest.flush(row);
 
     await expect(restorePromise).resolves.toBe(true);
     expect(service.accessToken()).toBe('jwt-restored-mirror');
-    expect(service.currentUser()).toEqual(mirroredUser);
+    expect(service.currentUser()).toEqual({
+      id: 'supabase-restore-mirror',
+      name: 'Calouro',
+      email: 'calouro@alunos.utfpr.edu.br',
+      registrationNumber: '2026999',
+      whatsapp: '41988887777',
+      role: 'student',
+      isBlocked: false,
+      isEmailConfirmed: true,
+      ratingAverage: 0,
+      createdAt: row.created_at,
+    });
     http.verify();
   });
 
@@ -879,18 +938,18 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
     resolveSession({ data: { session: fakeSession }, error: null });
     await flushMicrotasks();
 
-    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+    http.expectOne((request) => request.url === usersUrl).flush([
       {
         id: 'supabase-user-1',
         name: 'Ana',
         email: 'ana@alunos.utfpr.edu.br',
-        registrationNumber: '123',
+        registration_number: '123',
         whatsapp: '41987654321',
         role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 4.5,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 4.5,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
 
@@ -902,7 +961,7 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
     http.verify();
   });
 
-  it('retorna false sem consultar /users quando não há sessão ou faltam user/access_token', async () => {
+  it('retorna false sem consultar /rest/v1/users quando não há sessão ou faltam user/access_token', async () => {
     vi.mocked(fakeAuth.getSession)
       .mockResolvedValueOnce({ data: { session: null }, error: null })
       .mockResolvedValueOnce({
@@ -919,7 +978,7 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
 
     await expect(service.ensureSessionRestored()).resolves.toBe(false);
     expect(fakeAuth.getSession).toHaveBeenCalledTimes(2);
-    http.expectNone((request) => request.url.endsWith('/users'));
+    http.expectNone(usersUrl);
     http.verify();
   });
 
@@ -941,7 +1000,7 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
     expect(service.currentUser()).toBeNull();
     expect(service.accessToken()).toBeNull();
     expect(fakeAuth.getSession).toHaveBeenCalledTimes(2);
-    http.expectNone((request) => request.url.endsWith('/users'));
+    http.expectNone(usersUrl);
     http.verify();
   });
 
@@ -956,18 +1015,18 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
     const restorePromise = service.ensureSessionRestored();
     await flushMicrotasks();
 
-    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+    http.expectOne((request) => request.url === usersUrl).flush([
       {
         id: 'blocked-1',
         name: 'Aluno Bloqueado',
         email: 'ana@alunos.utfpr.edu.br',
-        registrationNumber: '999',
+        registration_number: '999',
         whatsapp: '41999990000',
         role: 'student',
-        isBlocked: true,
-        isEmailConfirmed: true,
-        ratingAverage: 4,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: true,
+        is_email_confirmed: true,
+        rating_average: 4,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
 
@@ -979,7 +1038,7 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
     http.verify();
   });
 
-  it('executa rollback e resolve false sem rejeitar quando json-server falha na restauração', async () => {
+  it('executa rollback e resolve false sem rejeitar quando /rest/v1/users falha na restauração', async () => {
     vi.mocked(fakeAuth.getSession).mockResolvedValueOnce({
       data: { session: fakeSession },
       error: null,
@@ -991,7 +1050,7 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
     await flushMicrotasks();
 
     http
-      .expectOne((request) => request.url === `${environment.apiUrl}/users`)
+      .expectOne((request) => request.url === usersUrl)
       .flush('erro', { status: 500, statusText: 'Erro' });
 
     await expect(restorePromise).resolves.toBe(false);
@@ -1020,18 +1079,18 @@ describe('logout()', () => {
   async function authenticate(service: AuthData, http: HttpTestingController): Promise<void> {
     service.login('ana@alunos.utfpr.edu.br', 'senha123');
     await flushMicrotasks();
-    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+    http.expectOne((request) => request.url === usersUrl).flush([
       {
         id: 'supabase-user-1',
         name: 'Ana',
         email: 'ana@alunos.utfpr.edu.br',
-        registrationNumber: '123',
+        registration_number: '123',
         whatsapp: '41987654321',
         role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 4.5,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 4.5,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
     await flushMicrotasks();

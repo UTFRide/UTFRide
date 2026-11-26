@@ -12,6 +12,26 @@ import { ErrorNotice } from './error-notice';
 import { RideData } from './ride-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
+const ridesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
+const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
+const driverSummariesRpcUrl = `${environment.supabaseUrl}/rest/v1/rpc/get_driver_summaries`;
+
+function toRideRow(ride: Ride) {
+  return {
+    id: ride.id,
+    driver_id: ride.driverId,
+    origin: ride.origin,
+    destination: ride.destination,
+    departure_time: ride.departureTime,
+    total_seats: ride.totalSeats,
+    available_seats: ride.availableSeats,
+    price_per_seat: ride.pricePerSeat,
+    status: ride.status,
+    ...(ride.notes !== undefined ? { notes: ride.notes } : {}),
+    created_at: ride.createdAt,
+  };
+}
+
 const fakeSupabaseUser: SupabaseUser = {
   id: 'driver-1',
   app_metadata: {},
@@ -56,19 +76,18 @@ async function authenticateStudent(http: HttpTestingController, overrides: Recor
   const email = (overrides['email'] as string | undefined) ?? 'motorista@alunos.utfpr.edu.br';
   auth.login(email, 'senha123');
   await flushMicrotasks();
-  http.expectOne((request) => request.url.endsWith('/users')).flush([
+  http.expectOne((request) => request.url === usersUrl).flush([
     {
-      id: 'driver-1',
+      id: (overrides['id'] as string | undefined) ?? 'driver-1',
       name: 'Carlos Motorista',
       email,
-      registrationNumber: '2020123',
+      registration_number: '2020123',
       whatsapp: '41999998888',
-      role: 'student',
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 5,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      ...overrides,
+      role: (overrides['role'] as string | undefined) ?? 'student',
+      is_blocked: (overrides['isBlocked'] as boolean | undefined) ?? false,
+      is_email_confirmed: true,
+      rating_average: 5,
+      created_at: '2026-01-01T00:00:00.000Z',
     },
   ]);
   await flushMicrotasks();
@@ -85,14 +104,16 @@ describe('RideData', () => {
     });
   });
 
-  it('carrega a oferta por id com o resumo público e cancela a leitura anterior ao trocar o id', async () => {
+  it('carrega a oferta por id via /rest/v1/rides com o resumo público do motorista e cancela a leitura anterior ao trocar o id', async () => {
     const http = TestBed.inject(HttpTestingController);
     await authenticateStudent(http);
     const id = signal('ride-old');
     const detail = TestBed.inject(RideData).loadRideDetail(id, TestBed.inject(Injector));
     expect(detail()).toEqual({ status: 'loading' });
     TestBed.tick();
-    const oldRead = http.expectOne({ url: `${environment.apiUrl}/rides/ride-old`, method: 'GET' });
+    const oldRead = http.expectOne(
+      (req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-old',
+    );
 
     id.set('007');
     TestBed.tick();
@@ -109,30 +130,40 @@ describe('RideData', () => {
       status: 'completed',
       createdAt: '2025-12-30T10:00:00.000Z',
     };
-    http.expectOne({ url: `${environment.apiUrl}/rides/007`, method: 'GET' }).flush(ride);
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.007')
+      .flush([toRideRow(ride)]);
+
     const summaries = http.expectOne(
-      (request) => request.url === `${environment.apiUrl}/driver-summaries`,
+      (request) => request.url === driverSummariesRpcUrl && request.method === 'POST',
     );
-    expect(summaries.request.method).toBe('GET');
-    expect(summaries.request.params.getAll('id')).toEqual(['driver-1']);
+    expect(summaries.request.body).toEqual({ p_driver_ids: ['driver-1'] });
     expect(detail()).toEqual({ status: 'loading' });
-    summaries.flush([{ id: 'driver-1', name: 'Carlos Motorista', ratingAverage: 5 }]);
+    summaries.flush([{ id: 'driver-1', name: 'Carlos Motorista', rating_average: 5 }]);
     expect(detail()).toEqual({
       status: 'loaded',
       ride: { ...ride, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
     });
 
+    id.set('999999');
+    expect(detail()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.999999')
+      .flush({ code: '22P02', message: 'invalid input syntax for type uuid' }, { status: 400, statusText: 'Bad Request' });
+    expect(detail()).toEqual({ status: 'not-found' });
+
     id.set('ride-offline');
     expect(detail()).toEqual({ status: 'loading' });
     TestBed.tick();
     http
-      .expectOne({ url: `${environment.apiUrl}/rides/ride-offline`, method: 'GET' })
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-offline')
       .error(new ProgressEvent('error'));
     expect(detail()).toEqual({ status: 'error', connectionError: true });
     http.verify();
   });
 
-  it('publica uma oferta ativa vinculada ao aluno autenticado', async () => {
+  it('publica uma oferta ativa em /rest/v1/rides vinculada ao aluno autenticado', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
     await authenticateStudent(http);
@@ -149,8 +180,27 @@ describe('RideData', () => {
       notes: 'Em frente ao terminal',
     });
 
-    const request = http.expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.method === 'POST');
+    const request = http.expectOne((req) => req.url === ridesUrl && req.method === 'POST');
+    expect(request.request.headers.get('Prefer')).toBe('return=representation');
+    expect(request.request.headers.get('Accept')).toBe('application/vnd.pgrst.object+json');
     expect(request.request.body).toEqual({
+      driver_id: 'driver-1',
+      origin: 'Portão',
+      destination: 'UTFPR - Sede Centro',
+      departure_time: departureTime,
+      total_seats: 3,
+      available_seats: 3,
+      price_per_seat: 0,
+      status: 'active',
+      notes: 'Em frente ao terminal',
+      created_at: expect.any(String),
+    });
+
+    const row = { id: 'ride-1', ...request.request.body };
+    request.flush(row);
+
+    const created: Ride = {
+      id: 'ride-1',
       driverId: 'driver-1',
       origin: 'Portão',
       destination: 'UTFPR - Sede Centro',
@@ -160,12 +210,8 @@ describe('RideData', () => {
       pricePerSeat: 0,
       status: 'active',
       notes: 'Em frente ao terminal',
-      createdAt: expect.any(String),
-    });
-
-    const created: Ride = { id: 'ride-1', ...request.request.body };
-    request.flush(created);
-
+      createdAt: row.created_at,
+    };
     expect(rideData.publishResult()).toEqual({ ride: created });
     http.verify();
   });
@@ -182,12 +228,12 @@ describe('RideData', () => {
       pricePerSeat: 8,
     });
 
-    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(ridesUrl);
     expect(rideData.publishResult()).toEqual({ unauthorized: true });
     http.verify();
   });
 
-  it('carrega as ofertas do motorista autenticado e verifica se a oferta aceita novos pedidos', async () => {
+  it('carrega as ofertas do motorista autenticado em /rest/v1/rides e verifica se a oferta aceita novos pedidos', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
     await authenticateStudent(http);
@@ -216,11 +262,11 @@ describe('RideData', () => {
 
     const request = http.expectOne(
       (req) =>
-        req.url === `${environment.apiUrl}/rides` &&
+        req.url === ridesUrl &&
         req.method === 'GET' &&
-        req.params.get('driverId') === 'driver-1',
+        req.params.get('driver_id') === 'eq.driver-1',
     );
-    request.flush([activeRide, fullRide]);
+    request.flush([toRideRow(activeRide), toRideRow(fullRide)]);
 
     expect(rideData.driverRides()).toEqual([activeRide, fullRide]);
     expect(rideData.canAcceptNewRequests(activeRide)).toBe(true);
@@ -250,15 +296,14 @@ describe('RideData', () => {
 
     rideData.loadDriverRides();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([existingRide]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(existingRide)]);
 
     rideData.startEditing(existingRide);
     expect(rideData.editingRide()).toEqual(existingRide);
 
     const newDeparture = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString();
 
-    // Deve rejeitar dados inválidos (origem vazia, vagas fora de 1..4, data passada)
     rideData.update(existingRide, {
       origin: '   ',
       destination: 'UTFPR - Sede Centro',
@@ -266,7 +311,7 @@ describe('RideData', () => {
       totalSeats: 3,
       pricePerSeat: 10,
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ invalidData: true });
 
     rideData.update(existingRide, {
@@ -276,7 +321,7 @@ describe('RideData', () => {
       totalSeats: 5,
       pricePerSeat: 10,
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ invalidData: true });
 
     rideData.update(existingRide, {
@@ -286,10 +331,9 @@ describe('RideData', () => {
       totalSeats: 3,
       pricePerSeat: 10,
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ invalidData: true });
 
-    // Deve salvar dados válidos antes da viagem
     rideData.update(existingRide, {
       origin: 'Cabral',
       destination: 'UTFPR - Sede Centro',
@@ -300,9 +344,23 @@ describe('RideData', () => {
     });
 
     const patchReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
+    expect(patchReq.request.headers.get('Prefer')).toBe('return=representation');
+    expect(patchReq.request.headers.get('Accept')).toBe('application/vnd.pgrst.object+json');
     expect(patchReq.request.body).toEqual({
+      origin: 'Cabral',
+      destination: 'UTFPR - Sede Centro',
+      departure_time: newDeparture,
+      total_seats: 4,
+      available_seats: 4,
+      price_per_seat: 12,
+      status: 'active',
+      notes: 'Em frente ao terminal do Cabral',
+    });
+
+    const updatedRide: Ride = {
+      ...existingRide,
       origin: 'Cabral',
       destination: 'UTFPR - Sede Centro',
       departureTime: newDeparture,
@@ -311,20 +369,15 @@ describe('RideData', () => {
       pricePerSeat: 12,
       status: 'active',
       notes: 'Em frente ao terminal do Cabral',
-    });
-
-    const updatedRide: Ride = {
-      ...existingRide,
-      ...patchReq.request.body,
     };
-    patchReq.flush(updatedRide);
+    patchReq.flush(toRideRow(updatedRide));
 
     expect(rideData.updateResult()).toEqual({ ride: updatedRide });
     expect(rideData.driverRides()[0]).toEqual(updatedRide);
     http.verify();
   });
 
-  it('restringe edição de oferta com passageiros confirmados antes da viagem: bloqueia alterações de trajeto, data, horário, valor e redução de vagas; permite aumento dentro dos limites e retorna oferta esgotada para ativa', async () => {
+  it('restringe edição de oferta com passageiros confirmados antes da viagem e retorna oferta esgotada para ativa', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
     await authenticateStudent(http);
@@ -346,10 +399,9 @@ describe('RideData', () => {
 
     rideData.loadDriverRides();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([fullRideWithPassengers]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(fullRideWithPassengers)]);
 
-    // 1. Bloqueia alteração de origem
     rideData.update(fullRideWithPassengers, {
       origin: 'Cabral',
       destination: 'UTFPR Neoville',
@@ -358,10 +410,9 @@ describe('RideData', () => {
       pricePerSeat: 9,
       notes: 'Saída pontual',
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ invalidData: true });
 
-    // 2. Bloqueia alteração de destino
     rideData.update(fullRideWithPassengers, {
       origin: 'Batel',
       destination: 'UTFPR - Sede Centro',
@@ -370,10 +421,9 @@ describe('RideData', () => {
       pricePerSeat: 9,
       notes: 'Saída pontual',
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ invalidData: true });
 
-    // 3. Bloqueia alteração de data/horário
     rideData.update(fullRideWithPassengers, {
       origin: 'Batel',
       destination: 'UTFPR Neoville',
@@ -382,10 +432,9 @@ describe('RideData', () => {
       pricePerSeat: 9,
       notes: 'Saída pontual',
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ invalidData: true });
 
-    // 4. Bloqueia alteração de valor
     rideData.update(fullRideWithPassengers, {
       origin: 'Batel',
       destination: 'UTFPR Neoville',
@@ -394,10 +443,9 @@ describe('RideData', () => {
       pricePerSeat: 12,
       notes: 'Saída pontual',
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ invalidData: true });
 
-    // 5. Bloqueia redução de vagas
     rideData.update(fullRideWithPassengers, {
       origin: 'Batel',
       destination: 'UTFPR Neoville',
@@ -406,10 +454,9 @@ describe('RideData', () => {
       pricePerSeat: 9,
       notes: 'Saída pontual',
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ invalidData: true });
 
-    // 6. Bloqueia aumento acima do limite permitido (4)
     rideData.update(fullRideWithPassengers, {
       origin: 'Batel',
       destination: 'UTFPR Neoville',
@@ -418,10 +465,9 @@ describe('RideData', () => {
       pricePerSeat: 9,
       notes: 'Saída pontual',
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ invalidData: true });
 
-    // 7. Permite aumento dentro dos limites (2 -> 3) e retorna oferta esgotada para ativa com 1 vaga disponível
     rideData.update(fullRideWithPassengers, {
       origin: 'Batel',
       destination: 'UTFPR Neoville',
@@ -432,24 +478,26 @@ describe('RideData', () => {
     });
 
     const patchReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
     expect(patchReq.request.body).toEqual({
       origin: 'Batel',
       destination: 'UTFPR Neoville',
-      departureTime: initialDeparture,
-      totalSeats: 3,
-      availableSeats: 1,
-      pricePerSeat: 9,
+      departure_time: initialDeparture,
+      total_seats: 3,
+      available_seats: 1,
+      price_per_seat: 9,
       status: 'active',
       notes: 'Saída pontual',
     });
 
     const reopenedRide: Ride = {
       ...fullRideWithPassengers,
-      ...patchReq.request.body,
+      totalSeats: 3,
+      availableSeats: 1,
+      status: 'active',
     };
-    patchReq.flush(reopenedRide);
+    patchReq.flush(toRideRow(reopenedRide));
 
     expect(rideData.updateResult()).toEqual({ ride: reopenedRide });
     expect(rideData.driverRides()[0]).toEqual(reopenedRide);
@@ -490,16 +538,16 @@ describe('RideData', () => {
 
     rideData.loadDriverRides();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([activeRide]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(activeRide)]);
 
     const cancelPromise = firstValueFrom(rideData.cancel$(activeRide));
     const patchReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
     expect(patchReq.request.body).toEqual({ status: 'cancelled' });
     const updated: Ride = { ...activeRide, status: 'cancelled' };
-    patchReq.flush(updated);
+    patchReq.flush(toRideRow(updated));
 
     const result = await cancelPromise;
     expect(result).toEqual(updated);
@@ -508,7 +556,7 @@ describe('RideData', () => {
     http.verify();
   });
 
-  it('impede que aluno bloqueado publique oferta (canOffer false e não dispara POST /rides)', async () => {
+  it('impede que aluno bloqueado publique oferta (canOffer false e não dispara POST /rest/v1/rides)', async () => {
     const rideData = TestBed.inject(RideData);
     const authData = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
@@ -536,12 +584,12 @@ describe('RideData', () => {
       pricePerSeat: 8,
     });
 
-    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(ridesUrl);
     expect(rideData.publishResult()).toEqual({ unauthorized: true });
     http.verify();
   });
 
-  it('impede que perfil de suporte publique oferta (canOffer false e não dispara POST /rides)', async () => {
+  it('impede que perfil de suporte publique oferta (canOffer false e não dispara POST /rest/v1/rides)', async () => {
     const rideData = TestBed.inject(RideData);
     const http = TestBed.inject(HttpTestingController);
     await authenticateStudent(http, {
@@ -559,7 +607,7 @@ describe('RideData', () => {
       pricePerSeat: 8,
     });
 
-    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(ridesUrl);
     expect(rideData.publishResult()).toEqual({ unauthorized: true });
     http.verify();
   });
@@ -591,8 +639,8 @@ describe('RideData', () => {
 
     rideData.loadRideForEdit('ride-1');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
-      .flush(rideFromDriver1);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(rideFromDriver1)]);
     expect(rideData.editingRide()).toBeNull();
     expect(rideData.editRideLoadResult()).toEqual({ unauthorized: true });
 
@@ -603,12 +651,12 @@ describe('RideData', () => {
       totalSeats: 3,
       pricePerSeat: 10,
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ unauthorized: true });
 
     await expect(firstValueFrom(rideData.cancel$(rideFromDriver1))).rejects.toThrow();
     await expect(firstValueFrom(rideData.occupySeat$(rideFromDriver1))).rejects.toThrow();
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
 
     http.verify();
   });
@@ -652,11 +700,11 @@ describe('RideData', () => {
     expect(rideData.editingRide()).toBeNull();
 
     rideData.loadRideForEdit('ride-1');
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.editRideLoadResult()).toEqual({ unauthorized: true });
 
     rideData.loadDriverRides();
-    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(ridesUrl);
     expect(rideData.driverRidesResult()).toEqual({ unauthorized: true });
 
     rideData.update(rideFromDriver1, {
@@ -668,7 +716,7 @@ describe('RideData', () => {
     });
     await expect(firstValueFrom(rideData.cancel$(rideFromDriver1))).rejects.toThrow();
     await expect(firstValueFrom(rideData.occupySeat$(rideFromDriver1))).rejects.toThrow();
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ unauthorized: true });
 
     http.verify();
@@ -700,8 +748,8 @@ describe('RideData', () => {
 
     rideData.loadDriverRides();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([ownRide, foreignRide]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ownRide), toRideRow(foreignRide)]);
 
     expect(rideData.driverRides()).toEqual([ownRide]);
     expect(rideData.driverRidesResult()).toEqual({ rides: [ownRide] });
@@ -743,11 +791,11 @@ describe('RideData', () => {
     expect(rideData.startEditing(ownRide)).toBe(false);
 
     rideData.loadDriverRides();
-    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(ridesUrl);
     expect(rideData.driverRidesResult()).toEqual({ unauthorized: true });
 
     rideData.loadRideForEdit('ride-1');
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.editRideLoadResult()).toEqual({ unauthorized: true });
 
     rideData.publish({
@@ -757,7 +805,7 @@ describe('RideData', () => {
       totalSeats: 2,
       pricePerSeat: 8,
     });
-    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(ridesUrl);
     expect(rideData.publishResult()).toEqual({ unauthorized: true });
 
     rideData.update(ownRide, {
@@ -767,12 +815,12 @@ describe('RideData', () => {
       totalSeats: 3,
       pricePerSeat: 10,
     });
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ unauthorized: true });
 
     await expect(firstValueFrom(rideData.cancel$(ownRide))).rejects.toThrow();
     await expect(firstValueFrom(rideData.occupySeat$(ownRide))).rejects.toThrow();
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
 
     http.verify();
   });
@@ -793,10 +841,9 @@ describe('RideData', () => {
       notes: 'Terminal do Portão',
     };
 
-    // 1. Falha de conexão ao publicar + nova tentativa
     rideData.publish(draft);
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.method === 'POST')
+      .expectOne((req) => req.url === ridesUrl && req.method === 'POST')
       .error(new ProgressEvent('error'));
 
     expect(rideData.publishResult()).toEqual({ connectionError: true });
@@ -805,7 +852,7 @@ describe('RideData', () => {
     rideData.publish(draft);
     expect(errorNotice.message()).toBe('');
     const retryPublish = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides` && req.method === 'POST',
+      (req) => req.url === ridesUrl && req.method === 'POST',
     );
     const createdRide: Ride = {
       id: 'ride-1',
@@ -815,17 +862,16 @@ describe('RideData', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       ...draft,
     };
-    retryPublish.flush(createdRide);
+    retryPublish.flush(toRideRow(createdRide));
     expect(rideData.publishResult()).toEqual({ ride: createdRide });
 
-    // 2. Falha de conexão ao listar ofertas do motorista + nova tentativa
     rideData.loadDriverRides();
     http
       .expectOne(
         (req) =>
-          req.url === `${environment.apiUrl}/rides` &&
+          req.url === ridesUrl &&
           req.method === 'GET' &&
-          req.params.get('driverId') === 'driver-1',
+          req.params.get('driver_id') === 'eq.driver-1',
       )
       .error(new ProgressEvent('error'));
 
@@ -837,18 +883,17 @@ describe('RideData', () => {
     http
       .expectOne(
         (req) =>
-          req.url === `${environment.apiUrl}/rides` &&
+          req.url === ridesUrl &&
           req.method === 'GET' &&
-          req.params.get('driverId') === 'driver-1',
+          req.params.get('driver_id') === 'eq.driver-1',
       )
-      .flush([createdRide]);
+      .flush([toRideRow(createdRide)]);
     expect(rideData.driverRides()).toEqual([createdRide]);
     expect(rideData.driverRidesResult()).toEqual({ rides: [createdRide] });
 
-    // 3. Falha de conexão ao carregar oferta para edição + nova tentativa
     rideData.loadRideForEdit('ride-1');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
       .error(new ProgressEvent('error'));
 
     expect(rideData.editRideLoadResult()).toEqual({ connectionError: true });
@@ -858,12 +903,11 @@ describe('RideData', () => {
     rideData.loadRideForEdit('ride-1');
     expect(errorNotice.message()).toBe('');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
-      .flush(createdRide);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(createdRide)]);
     expect(rideData.editRideLoadResult()).toEqual({ ride: createdRide });
     expect(rideData.editingRide()).toEqual(createdRide);
 
-    // 4. Falha de conexão ao editar oferta + preservação do estado + nova tentativa
     const updatedDraft = {
       ...draft,
       origin: 'Água Verde',
@@ -872,7 +916,7 @@ describe('RideData', () => {
     };
     rideData.update(createdRide, updatedDraft);
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH')
+      .expectOne((req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1')
       .error(new ProgressEvent('error'));
 
     expect(rideData.updateResult()).toEqual({ connectionError: true });
@@ -883,14 +927,14 @@ describe('RideData', () => {
     rideData.update(createdRide, updatedDraft);
     expect(errorNotice.message()).toBe('');
     const retryUpdate = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
     const updatedRide: Ride = {
       ...createdRide,
       ...updatedDraft,
       availableSeats: 4,
     };
-    retryUpdate.flush(updatedRide);
+    retryUpdate.flush(toRideRow(updatedRide));
     expect(rideData.updateResult()).toEqual({ ride: updatedRide });
     expect(rideData.editingRide()).toEqual(updatedRide);
     expect(rideData.driverRides()[0]).toEqual(updatedRide);
@@ -900,9 +944,6 @@ describe('RideData', () => {
 });
 
 describe('Busca de ofertas em RideData (CA1)', () => {
-  const ridesUrl = `${environment.apiUrl}/rides`;
-  const usersUrl = `${environment.apiUrl}/users`;
-  const driverSummariesUrl = `${environment.apiUrl}/driver-summaries`;
   const filters = { origin: '', destination: '', date: '' };
   const debounceMs = 250;
 
@@ -933,7 +974,7 @@ describe('Busca de ofertas em RideData (CA1)', () => {
     vi.advanceTimersByTime(debounceMs);
   }
 
-  it('aplica os três filtros e enriquece apenas as ofertas elegíveis com dados públicos do motorista', async () => {
+  it('aplica os três filtros via PostgREST e enriquece apenas as ofertas elegíveis com RPC get_driver_summaries', async () => {
     const http = TestBed.inject(HttpTestingController);
     const { criteria, result } = await startSearch(http);
     const eligible: Ride = {
@@ -954,32 +995,35 @@ describe('Busca de ofertas em RideData (CA1)', () => {
     expect(result()).toEqual({ status: 'loading' });
     runDebounce();
     const ridesRequest = http.expectOne((request) => request.url === ridesUrl && request.method === 'GET');
-    expect(ridesRequest.request.params.get('_where')).toContain('"contains":"são josé"');
-    expect(ridesRequest.request.params.get('_where')).toContain('"contains":"sede centro"');
+    expect(ridesRequest.request.params.get('status')).toBe('eq.active');
+    expect(ridesRequest.request.params.get('available_seats')).toBe('gt.0');
+    expect(ridesRequest.request.params.get('driver_id')).toBe('neq.driver-1');
+    expect(ridesRequest.request.params.get('origin')).toBe('ilike.*são josé*');
+    expect(ridesRequest.request.params.get('destination')).toBe('ilike.*sede centro*');
     ridesRequest.flush([
-      eligible,
-      another,
-      { ...eligible, id: 'same-driver', departureTime: new Date(2030, 4, 10, 22).toISOString() },
-      { ...eligible, id: 'full', status: 'full' },
-      { ...eligible, id: 'cancelled', status: 'cancelled' },
-      { ...eligible, id: 'completed', status: 'completed' },
-      { ...eligible, id: 'zero-seats', status: 'active', availableSeats: 0 },
-      { ...eligible, id: 'passed', departureTime: new Date(2030, 4, 9, 17).toISOString() },
-      { ...eligible, id: 'own', driverId: 'driver-1' },
-      { ...eligible, id: 'wrong-origin', origin: 'Pinhais' },
-      { ...eligible, id: 'wrong-destination', destination: 'UTFPR Neoville' },
-      { ...eligible, id: 'wrong-date', departureTime: new Date(2030, 4, 11, 0).toISOString() },
+      toRideRow(eligible),
+      toRideRow(another),
+      toRideRow({ ...eligible, id: 'same-driver', departureTime: new Date(2030, 4, 10, 22).toISOString() }),
+      toRideRow({ ...eligible, id: 'full', status: 'full' }),
+      toRideRow({ ...eligible, id: 'cancelled', status: 'cancelled' }),
+      toRideRow({ ...eligible, id: 'completed', status: 'completed' }),
+      toRideRow({ ...eligible, id: 'zero-seats', status: 'active', availableSeats: 0 }),
+      toRideRow({ ...eligible, id: 'passed', departureTime: new Date(2030, 4, 9, 17).toISOString() }),
+      toRideRow({ ...eligible, id: 'own', driverId: 'driver-1' }),
+      toRideRow({ ...eligible, id: 'wrong-origin', origin: 'Pinhais' }),
+      toRideRow({ ...eligible, id: 'wrong-destination', destination: 'UTFPR Neoville' }),
+      toRideRow({ ...eligible, id: 'wrong-date', departureTime: new Date(2030, 4, 11, 0).toISOString() }),
     ]);
 
     http.expectNone((request) => request.url === usersUrl);
     const driversRequest = http.expectOne(
-      (request) => request.url === driverSummariesUrl && request.method === 'GET',
+      (request) => request.url === driverSummariesRpcUrl && request.method === 'POST',
     );
-    expect(driversRequest.request.params.getAll('id')).toEqual(['007', 'driver-3']);
+    expect(driversRequest.request.body).toEqual({ p_driver_ids: ['007', 'driver-3'] });
     expect(result()).toEqual({ status: 'loading' });
     driversRequest.flush([
-      { id: '007', name: 'Gabriela Silva', ratingAverage: 4.9 },
-      { id: 'driver-3', name: 'Camila Rocha', ratingAverage: 4.8 },
+      { id: '007', name: 'Gabriela Silva', rating_average: 4.9 },
+      { id: 'driver-3', name: 'Camila Rocha', rating_average: 4.8 },
     ]);
 
     expect(result()).toEqual({
@@ -1004,30 +1048,30 @@ describe('Busca de ofertas em RideData (CA1)', () => {
 
     TestBed.tick();
     vi.advanceTimersByTime(debounceMs - 1);
-    http.expectNone((request) => request.url === ridesUrl);
+    http.expectNone(ridesUrl);
     criteria.set({ ...filters, origin: 'Batel' });
     TestBed.tick();
     vi.advanceTimersByTime(debounceMs - 1);
-    http.expectNone((request) => request.url === ridesUrl);
+    http.expectNone(ridesUrl);
 
     vi.advanceTimersByTime(1);
     const first = http.expectOne((request) => request.url === ridesUrl);
-    expect(first.request.params.get('_where')).toContain('"contains":"batel"');
+    expect(first.request.params.get('origin')).toBe('ilike.*batel*');
 
     criteria.set({ ...filters, origin: '  BATEL ' });
     runDebounce();
-    http.expectNone((request) => request.url === ridesUrl);
+    http.expectNone(ridesUrl);
     expect(first.cancelled).toBe(false);
 
     criteria.set({ ...filters, origin: 'Portão' });
     expect(result()).toEqual({ status: 'loading' });
     runDebounce();
     const second = http.expectOne((request) => request.url === ridesUrl);
-    expect(second.request.params.get('_where')).toContain('"contains":"portão"');
+    expect(second.request.params.get('origin')).toBe('ilike.*portão*');
     expect(first.cancelled).toBe(true);
     second.flush([]);
 
-    http.expectNone((request) => request.url === driverSummariesUrl);
+    http.expectNone(driverSummariesRpcUrl);
     expect(result()).toEqual({ status: 'loaded', rides: [] });
     http.verify();
   });
