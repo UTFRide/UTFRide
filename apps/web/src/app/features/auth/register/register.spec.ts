@@ -4,9 +4,13 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
 import { AuthData } from '../../../core/services/auth-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
+
+const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
+const registrationExistsRpcUrl = `${environment.supabaseUrl}/rest/v1/rpc/check_registration_exists`;
 
 const fakeSupabaseUser: SupabaseUser = {
   id: 'supabase-user-1',
@@ -122,7 +126,7 @@ it('bloqueia cadastro com e-mail fora do domínio institucional e informa o dom�
 
   expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
   root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-  TestBed.inject(HttpTestingController).expectNone('http://localhost:3000/users');
+  TestBed.inject(HttpTestingController).expectNone(usersUrl);
   expect(fakeAuth.signUp).not.toHaveBeenCalled();
   const alert = root.querySelector<HTMLElement>('[role="alert"]');
   expect(alert).not.toBeNull();
@@ -154,13 +158,13 @@ it('bloqueia cadastro com senha menor que 6 caracteres sem enviar requisição',
 
   expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
   root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-  TestBed.inject(HttpTestingController).expectNone('http://localhost:3000/registration-exists');
+  TestBed.inject(HttpTestingController).expectNone(registrationExistsRpcUrl);
   expect(fakeAuth.signUp).not.toHaveBeenCalled();
   TestBed.inject(HttpTestingController).verify();
 });
 
 describe('Cadastro institucional', () => {
-  it('cria conta no Supabase Auth, espelha em /users sem senha, encerra sessão automática e navega para /login com aviso', async () => {
+  it('cria conta no Supabase Auth, grava em /rest/v1/users sem senha, encerra sessão automática e navega para /login com aviso', async () => {
     const fakeAuth = setupRegisterTesting();
     const harness = await RouterTestingHarness.create('/register');
     const root = harness.routeNativeElement as HTMLElement;
@@ -177,7 +181,7 @@ describe('Cadastro institucional', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
     const http = TestBed.inject(HttpTestingController);
-    http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+    http.expectOne(registrationExistsRpcUrl).flush(false);
     await flushMicrotasks();
 
     expect(fakeAuth.signUp).toHaveBeenCalledWith({
@@ -194,19 +198,19 @@ describe('Cadastro institucional', () => {
       },
     });
 
-    const request = http.expectOne('http://localhost:3000/users');
+    const request = http.expectOne(usersUrl);
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({
       id: 'supabase-user-1',
       name: 'Ana Silva',
       email: 'ana@alunos.utfpr.edu.br',
-      registrationNumber: '1234567',
+      registration_number: '1234567',
       whatsapp: '(41) 98765-4321',
       role: 'student',
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 0,
-      createdAt: expect.any(String),
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 0,
+      created_at: expect.any(String),
     });
     expect(request.request.body).not.toHaveProperty('password');
     expect(request.request.body).not.toHaveProperty('confirmPassword');
@@ -267,9 +271,9 @@ it('usa o serviço global e não redireciona ao retornar após um cadastro', asy
   expect(harness.routeDebugElement!.injector.get(AuthData)).toBe(service);
   service.register({ name: 'Ana', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123', password: 'senha123', whatsapp: '' });
   const http = TestBed.inject(HttpTestingController);
-  http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+  http.expectOne(registrationExistsRpcUrl).flush(false);
   await flushMicrotasks();
-  const request = http.expectOne('http://localhost:3000/users');
+  const request = http.expectOne(usersUrl);
   request.flush({ id: 'supabase-user-1', ...request.request.body });
   await flushMicrotasks();
   await harness.fixture.whenStable();
@@ -287,14 +291,14 @@ it('cancela a resposta pendente ao sair e permite um cadastro na próxima visita
   const data = { name: 'Ana', email: 'ana@alunos.utfpr.edu.br', registrationNumber: '123', password: 'senha123', whatsapp: '' };
   service.register(data);
   const http = TestBed.inject(HttpTestingController);
-  const previous = http.expectOne('http://localhost:3000/registration-exists');
+  const previous = http.expectOne(registrationExistsRpcUrl);
   await harness.navigateByUrl('/');
   expect(previous.cancelled).toBe(true);
   await harness.navigateByUrl('/register');
   service.register(data);
-  http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+  http.expectOne(registrationExistsRpcUrl).flush(false);
   await flushMicrotasks();
-  const current = http.expectOne('http://localhost:3000/users');
+  const current = http.expectOne(usersUrl);
   current.flush({ id: 'supabase-user-1', ...current.request.body });
   await flushMicrotasks();
   await harness.fixture.whenStable();
@@ -302,7 +306,7 @@ it('cancela a resposta pendente ao sair e permite um cadastro na próxima visita
   http.verify();
 });
 
-it('alerta e não cria conta quando já existe cadastro no json-server', async () => {
+it('alerta e não cria conta quando já existe cadastro no banco', async () => {
   const fakeAuth = setupRegisterTesting();
   const harness = await RouterTestingHarness.create('/register');
   const root = harness.routeNativeElement as HTMLElement;
@@ -314,8 +318,8 @@ it('alerta e não cria conta quando já existe cadastro no json-server', async (
   terms.dispatchEvent(new Event('change', { bubbles: true }));
   root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   const http = TestBed.inject(HttpTestingController);
-  const lookup = http.expectOne((request) => request.url === 'http://localhost:3000/registration-exists' && request.method === 'POST');
-  lookup.flush({ exists: true });
+  const lookup = http.expectOne((request) => request.url === registrationExistsRpcUrl && request.method === 'POST');
+  lookup.flush(true);
   await harness.fixture.whenStable();
   expect(fakeAuth.signUp).not.toHaveBeenCalled();
   expect(root.querySelector('[role="alert"]')?.textContent).toContain('já cadastrado');
@@ -342,14 +346,14 @@ it('alerta em português e não redireciona quando o Supabase informa usuário j
   root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
   const http = TestBed.inject(HttpTestingController);
-  http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+  http.expectOne(registrationExistsRpcUrl).flush(false);
   await flushMicrotasks();
   await harness.fixture.whenStable();
 
   expect(root.querySelector('[role="alert"]')?.textContent).toContain('já cadastrado');
   expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
   expect(TestBed.inject(Router).url).toBe('/register');
-  http.expectNone('http://localhost:3000/users');
+  http.expectNone(usersUrl);
   http.verify();
 });
 
@@ -371,7 +375,7 @@ it('exibe alerta em português quando o Supabase retorna erro de cadastro e perm
 
   const http = TestBed.inject(HttpTestingController);
   submit();
-  http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+  http.expectOne(registrationExistsRpcUrl).flush(false);
   await flushMicrotasks();
   await harness.fixture.whenStable();
 
@@ -380,12 +384,12 @@ it('exibe alerta em português quando o Supabase retorna erro de cadastro e perm
   expect(alert).not.toContain('Signups not allowed');
   expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
   expect(TestBed.inject(Router).url).toBe('/register');
-  http.expectNone('http://localhost:3000/users');
+  http.expectNone(usersUrl);
 
   submit();
-  http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+  http.expectOne(registrationExistsRpcUrl).flush(false);
   await flushMicrotasks();
-  const request = http.expectOne('http://localhost:3000/users');
+  const request = http.expectOne(usersUrl);
   request.flush({ id: 'supabase-user-1', ...request.request.body });
   await flushMicrotasks();
   await harness.fixture.whenStable();
@@ -407,14 +411,14 @@ it('informa falha de conexão no cadastro e permite tentar novamente', async () 
   const submit = () => root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   const http = TestBed.inject(HttpTestingController);
   submit();
-  http.expectOne('http://localhost:3000/registration-exists').error(new ProgressEvent('error'));
+  http.expectOne(registrationExistsRpcUrl).error(new ProgressEvent('error'));
   await harness.fixture.whenStable();
   expect(root.querySelector('[role="alert"]')?.textContent).toContain('conexão');
   expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
   submit();
-  http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+  http.expectOne(registrationExistsRpcUrl).flush(false);
   await flushMicrotasks();
-  const request = http.expectOne('http://localhost:3000/users');
+  const request = http.expectOne(usersUrl);
   request.flush({ id: 'supabase-user-1', ...request.request.body });
   await flushMicrotasks();
   await harness.fixture.whenStable();
@@ -422,7 +426,7 @@ it('informa falha de conexão no cadastro e permite tentar novamente', async () 
   http.verify();
 });
 
-it('exibe alerta em português e não redireciona para /login quando signOut falha após criar o perfil em /users', async () => {
+it('exibe alerta em português e não redireciona para /login quando signOut falha após criar o perfil em /rest/v1/users', async () => {
   const fakeAuth = setupRegisterTesting();
   vi.mocked(fakeAuth.signOut).mockResolvedValueOnce({
     error: { name: 'AuthApiError', message: 'Logout failed', status: 500 } as never,
@@ -438,9 +442,9 @@ it('exibe alerta em português e não redireciona para /login quando signOut fal
   root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
   const http = TestBed.inject(HttpTestingController);
-  http.expectOne('http://localhost:3000/registration-exists').flush({ exists: false });
+  http.expectOne(registrationExistsRpcUrl).flush(false);
   await flushMicrotasks();
-  const request = http.expectOne('http://localhost:3000/users');
+  const request = http.expectOne(usersUrl);
   request.flush({ id: 'supabase-user-1', ...request.request.body });
   await flushMicrotasks();
   await harness.fixture.whenStable();

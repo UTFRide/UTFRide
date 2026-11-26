@@ -8,7 +8,6 @@ import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
-import { Notification } from '../../../core/models/notification.model';
 import { Ride } from '../../../core/models/ride.model';
 import { RideRequest } from '../../../core/models/ride-request.model';
 import { AuthData } from '../../../core/services/auth-data';
@@ -56,22 +55,53 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
+const ridesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
+const requestsUrl = `${environment.supabaseUrl}/rest/v1/ride_requests`;
+const notificationsUrl = `${environment.supabaseUrl}/rest/v1/notifications`;
+
+function toRideRow(ride: Ride) {
+  return {
+    id: ride.id,
+    driver_id: ride.driverId,
+    origin: ride.origin,
+    destination: ride.destination,
+    departure_time: ride.departureTime,
+    total_seats: ride.totalSeats,
+    available_seats: ride.availableSeats,
+    price_per_seat: ride.pricePerSeat,
+    status: ride.status,
+    ...(ride.notes !== undefined ? { notes: ride.notes } : {}),
+    created_at: ride.createdAt,
+  };
+}
+
+function toRideRequestRow(request: RideRequest) {
+  return {
+    id: request.id,
+    ride_id: request.rideId,
+    passenger_id: request.passengerId,
+    status: request.status,
+    created_at: request.createdAt,
+  };
+}
+
 async function authenticateDriver(http: HttpTestingController): Promise<void> {
   const auth = TestBed.inject(AuthData);
   auth.login('motorista@alunos.utfpr.edu.br', 'senha123');
   await flushMicrotasks();
-  http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+  http.expectOne((request) => request.url === usersUrl).flush([
     {
       id: 'driver-1',
       name: 'Carlos Motorista',
       email: 'motorista@alunos.utfpr.edu.br',
-      registrationNumber: '2020123',
+      registration_number: '2020123',
       whatsapp: '41999998888',
       role: 'student',
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 5,
-      createdAt: '2026-01-01T00:00:00.000Z',
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 5,
+      created_at: '2026-01-01T00:00:00.000Z',
     },
   ]);
   await flushMicrotasks();
@@ -160,13 +190,13 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     const root = harness.routeNativeElement as HTMLElement;
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([ride]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ride)]);
     await harness.fixture.whenStable();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
-      .flush(requests);
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush(requests.map(toRideRequestRow));
     await harness.fixture.whenStable();
 
     expect(root.textContent).toContain('Batel → UTFPR Neoville');
@@ -181,10 +211,10 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     rejectBtn4!.click();
 
     const rejectReq4 = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/ride_requests/req-4` && req.method === 'PATCH',
+      (req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-4',
     );
     expect(rejectReq4.request.body).toEqual({ status: 'rejected' });
-    rejectReq4.flush({ ...requests[3], status: 'rejected' });
+    rejectReq4.flush(toRideRequestRow({ ...requests[3], status: 'rejected' }));
     await harness.fixture.whenStable();
 
     expect(root.querySelector('[data-testid="reject-request-req-4"]')).toBeNull();
@@ -198,17 +228,17 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     acceptBtn3!.click();
 
     const acceptReq3 = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/ride_requests/req-3` && req.method === 'PATCH',
+      (req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-3',
     );
     expect(acceptReq3.request.body).toEqual({ status: 'accepted' });
-    acceptReq3.flush({ ...requests[2], status: 'accepted' });
+    acceptReq3.flush(toRideRequestRow({ ...requests[2], status: 'accepted' }));
 
     const patchRide = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
-    expect(patchRide.request.body).toEqual({ availableSeats: 0, status: 'full' });
+    expect(patchRide.request.body).toEqual({ available_seats: 0, status: 'full' });
     const updatedFullRide: Ride = { ...ride, availableSeats: 0, status: 'full' };
-    patchRide.flush(updatedFullRide);
+    patchRide.flush(toRideRow(updatedFullRide));
     await harness.fixture.whenStable();
 
     // Oferta passa a esgotada e informa que não aceita novos pedidos
@@ -226,23 +256,36 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     // Mesmo tentando clicar no botão desabilitado, nenhuma requisição é disparada
     acceptBtn5!.click();
     await harness.fixture.whenStable();
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-5`);
+    http.expectNone((req) => req.url === requestsUrl && req.params.get('id') === 'eq.req-5');
 
     // Verificar que a oferta esgotada não aceita novos pedidos
     const auth = TestBed.inject(AuthData);
     const driver = auth.currentUser()!;
     auth.login(driver.email, 'senha123');
     await flushMicrotasks();
-    http.expectOne((req) => req.url === `${environment.apiUrl}/users`).flush([
-      { ...driver, id: 'passenger-1', name: 'Novo Passageiro' },
+    http.expectOne((req) => req.url === usersUrl).flush([
+      {
+        id: 'passenger-1',
+        name: 'Novo Passageiro',
+        email: driver.email,
+        registration_number: driver.registrationNumber,
+        whatsapp: driver.whatsapp,
+        role: driver.role,
+        is_blocked: driver.isBlocked,
+        is_email_confirmed: driver.isEmailConfirmed,
+        rating_average: driver.ratingAverage,
+        created_at: driver.createdAt,
+      },
     ]);
     await flushMicrotasks();
     const result = firstValueFrom(requestData.createRequest(updatedFullRide.id));
     http
-      .expectOne((req) => req.method === 'GET' && req.url === `${environment.apiUrl}/ride_requests`)
+      .expectOne((req) => req.method === 'GET' && req.url === requestsUrl)
       .flush([]);
-    http.expectOne({ method: 'GET', url: `${environment.apiUrl}/rides/ride-1` }).flush(updatedFullRide);
-    http.expectNone({ method: 'POST', url: `${environment.apiUrl}/ride_requests` });
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === ridesUrl && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(updatedFullRide)]);
+    http.expectNone({ method: 'POST', url: requestsUrl });
     expect(await result).toEqual({ status: 'unavailable', reason: 'full', ride: updatedFullRide });
 
     http.verify();
@@ -278,12 +321,12 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     const root = harness.routeNativeElement as HTMLElement;
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([ride]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ride)]);
     await harness.fixture.whenStable();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
       .flush([]);
     await harness.fixture.whenStable();
 
@@ -343,13 +386,13 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     const root = harness.routeNativeElement as HTMLElement;
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([fullRide]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(fullRide)]);
     await harness.fixture.whenStable();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
-      .flush(confirmedRequests);
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush(confirmedRequests.map(toRideRequestRow));
     await harness.fixture.whenStable();
 
     const editBtn = root.querySelector<HTMLButtonElement>('[data-testid="edit-ride-button"]');
@@ -417,13 +460,13 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     const root = harness.routeNativeElement as HTMLElement;
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([ride]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ride)]);
     await harness.fixture.whenStable();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
-      .flush(requests);
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush(requests.map(toRideRequestRow));
     await harness.fixture.whenStable();
 
     // 1. Clicar em "Cancelar" apenas abre o diálogo de confirmação, sem enviar requisições
@@ -459,37 +502,37 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     confirmBtn!.click();
 
     const patchRide = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
     expect(patchRide.request.body).toEqual({ status: 'cancelled' });
-    patchRide.flush({ ...ride, status: 'cancelled' });
+    patchRide.flush(toRideRow({ ...ride, status: 'cancelled' }));
 
     const getRideRequests = http.expectOne(
       (req) =>
-        req.url === `${environment.apiUrl}/ride_requests` &&
+        req.url === requestsUrl &&
         req.method === 'GET' &&
-        req.params.get('rideId') === 'ride-1',
+        req.params.get('ride_id') === 'eq.ride-1',
     );
-    getRideRequests.flush(requests);
+    getRideRequests.flush(requests.map(toRideRequestRow));
 
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-accepted`);
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-rejected`);
+    http.expectNone((req) => req.url === requestsUrl && req.params.get('id') === 'eq.req-accepted');
+    http.expectNone((req) => req.url === requestsUrl && req.params.get('id') === 'eq.req-rejected');
 
     const patchPending = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/ride_requests/req-pending` && req.method === 'PATCH',
+      (req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-pending',
     );
     expect(patchPending.request.body).toEqual({ status: 'cancelled' });
-    patchPending.flush({ ...requests[1], status: 'cancelled' });
+    patchPending.flush(toRideRequestRow({ ...requests[1], status: 'cancelled' }));
 
     const notifReqs = http.match(
-      (req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'POST',
+      (req) => req.url === notificationsUrl && req.method === 'POST',
     );
-    expect(notifReqs.map((req) => (req.request.body as { recipientId: string }).recipientId)).toEqual([
+    expect(notifReqs.map((req) => (req.request.body as { recipient_id: string }).recipient_id)).toEqual([
       'Mariana Silva',
       'Lucas Andrade',
     ]);
     notifReqs.forEach((req, index) => {
-      const body = req.request.body as Omit<Notification, 'id'>;
+      const body = req.request.body as Record<string, unknown>;
       req.flush({ id: `notif-${index + 1}`, ...body });
     });
 
@@ -535,12 +578,12 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     const root = harness.routeNativeElement as HTMLElement;
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([pastRide]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(pastRide)]);
     await harness.fixture.whenStable();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-past')
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-past')
       .flush([]);
     await harness.fixture.whenStable();
 
@@ -590,30 +633,30 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     const component = harness.routeDebugElement?.componentInstance as MyRides;
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([ride]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ride)]);
     await harness.fixture.whenStable();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
-      .flush([pendingRequest]);
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush([toRideRequestRow(pendingRequest)]);
     await harness.fixture.whenStable();
 
     // Outro aluno assume a sessão após o carregamento da tela
     authData.login('outro@alunos.utfpr.edu.br', 'senha123');
     await flushMicrotasks();
-    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+    http.expectOne((request) => request.url === usersUrl).flush([
       {
         id: 'driver-2',
         name: 'Outro Aluno',
         email: 'outro@alunos.utfpr.edu.br',
-        registrationNumber: '2020999',
+        registration_number: '2020999',
         whatsapp: '41988887777',
         role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 5,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 5,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
     await flushMicrotasks();
@@ -633,22 +676,22 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
     component.confirmCancelRide();
     await harness.fixture.whenStable();
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
-    http.expectNone(`${environment.apiUrl}/ride_requests`);
-    http.expectNone(`${environment.apiUrl}/notifications`);
+    http.expectNone(ridesUrl);
+    http.expectNone(requestsUrl);
+    http.expectNone(notificationsUrl);
     expect(requestData.cancelResult()).toEqual({ unauthorized: true });
     expect(root.querySelector('[role="alert"]')?.textContent).toContain('autor');
 
     component.acceptRequest(pendingRequest);
     await harness.fixture.whenStable();
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-pending`);
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(requestsUrl);
+    http.expectNone(ridesUrl);
     expect(requestData.decisionResult()).toEqual({ unauthorized: true });
     expect(root.querySelector('[role="alert"]')?.textContent).toContain('autor');
 
     component.rejectRequest(pendingRequest);
     await harness.fixture.whenStable();
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-pending`);
+    http.expectNone(requestsUrl);
     expect(requestData.decisionResult()).toEqual({ unauthorized: true });
     expect(root.querySelector('[role="alert"]')?.textContent).toContain('autor');
 
@@ -686,7 +729,7 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     const root = harness.routeNativeElement as HTMLElement;
     await harness.fixture.whenStable();
 
-    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(ridesUrl);
     expect(rideData.driverRidesResult()).toEqual({ unauthorized: true });
     expect(root.querySelector('[role="alert"]')?.textContent?.toLowerCase()).toContain('bloquead');
     http.verify();
@@ -730,13 +773,13 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     const root = harness.routeNativeElement as HTMLElement;
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([ride]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ride)]);
     await harness.fixture.whenStable();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
-      .flush([pendingRequest]);
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush([toRideRequestRow(pendingRequest)]);
     await harness.fixture.whenStable();
 
     root.querySelector<HTMLButtonElement>('[data-testid="cancel-ride-button"]')!.click();
@@ -746,7 +789,7 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     confirmBtn.click();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH')
+      .expectOne((req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1')
       .error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
@@ -766,27 +809,27 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     confirmBtn.click();
 
     const retryPatchRide = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
-    retryPatchRide.flush({ ...ride, status: 'cancelled' });
+    retryPatchRide.flush(toRideRow({ ...ride, status: 'cancelled' }));
 
     http
       .expectOne(
         (req) =>
-          req.url === `${environment.apiUrl}/ride_requests` &&
+          req.url === requestsUrl &&
           req.method === 'GET' &&
-          req.params.get('rideId') === 'ride-1',
+          req.params.get('ride_id') === 'eq.ride-1',
       )
-      .flush([pendingRequest]);
+      .flush([toRideRequestRow(pendingRequest)]);
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests/req-pending` && req.method === 'PATCH')
-      .flush({ ...pendingRequest, status: 'cancelled' });
+      .expectOne((req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-pending')
+      .flush(toRideRequestRow({ ...pendingRequest, status: 'cancelled' }));
 
     const notifReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'POST',
+      (req) => req.url === notificationsUrl && req.method === 'POST',
     );
-    notifReq.flush({ id: 'notif-1', ...(notifReq.request.body as Omit<Notification, 'id'>) });
+    notifReq.flush({ id: 'notif-1', ...(notifReq.request.body as Record<string, unknown>) });
     await harness.fixture.whenStable();
 
     expect(root.querySelector('[role="dialog"]')).toBeNull();
@@ -833,7 +876,7 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
     // 1. Falha de conexão ao carregar ofertas
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
       .error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
@@ -848,13 +891,13 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     retryLoadBtn.click();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([ride]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ride)]);
     await harness.fixture.whenStable();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
-      .flush([pendingRequest]);
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush([toRideRequestRow(pendingRequest)]);
     await harness.fixture.whenStable();
 
     expect(root.querySelector('[data-testid="my-rides-load-error"]')).toBeNull();
@@ -865,7 +908,7 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     acceptBtn.click();
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests/req-pending` && req.method === 'PATCH')
+      .expectOne((req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-pending')
       .error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
@@ -877,11 +920,11 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
     root.querySelector<HTMLButtonElement>('[data-testid="accept-request-req-pending"]')!.click();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests/req-pending` && req.method === 'PATCH')
-      .flush({ ...pendingRequest, status: 'accepted' });
+      .expectOne((req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-pending')
+      .flush(toRideRequestRow({ ...pendingRequest, status: 'accepted' }));
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH')
-      .flush({ ...ride, availableSeats: 1 });
+      .expectOne((req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1')
+      .flush(toRideRow({ ...ride, availableSeats: 1 }));
     await harness.fixture.whenStable();
 
     expect(root.querySelector('[data-testid="request-decision-error"]')).toBeNull();
@@ -907,7 +950,7 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
     const harness = await RouterTestingHarness.create('/driver/my-rides');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
       .flush([]);
     await harness.fixture.whenStable();
 
@@ -954,7 +997,7 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
 
     const harness = await RouterTestingHarness.create('/driver/my-rides');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
       .flush([]);
     await harness.fixture.whenStable();
 

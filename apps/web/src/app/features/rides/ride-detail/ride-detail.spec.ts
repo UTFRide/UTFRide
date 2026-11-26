@@ -15,12 +15,48 @@ import { ErrorNotice } from '../../../core/services/error-notice';
 import { RideRequestData } from '../../../core/services/ride-request-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 
-const ridesUrl = `${environment.apiUrl}/rides`;
-const requestsUrl = `${environment.apiUrl}/ride_requests`;
+const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
+const ridesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
+const driverSummariesUrl = `${environment.supabaseUrl}/rest/v1/rpc/get_driver_summaries`;
+const requestsUrl = `${environment.supabaseUrl}/rest/v1/ride_requests`;
+const tripsUrl = `${environment.supabaseUrl}/rest/v1/rpc/get_passenger_trip_summaries`;
 const openLabel = 'Solicitar vaga';
 const confirmLabel = 'Confirmar solicitação de vaga';
 const dismissLabel = 'Desistir';
 const panelSelector = 'app-ride-request-confirm-panel';
+
+function toRideRow(ride: Ride) {
+  return {
+    id: ride.id,
+    driver_id: ride.driverId,
+    origin: ride.origin,
+    destination: ride.destination,
+    departure_time: ride.departureTime,
+    total_seats: ride.totalSeats,
+    available_seats: ride.availableSeats,
+    price_per_seat: ride.pricePerSeat,
+    status: ride.status,
+    ...(ride.notes !== undefined ? { notes: ride.notes } : {}),
+    created_at: ride.createdAt,
+  };
+}
+
+function toRideRequestRow(request: RideRequest) {
+  return {
+    id: request.id,
+    ride_id: request.rideId,
+    passenger_id: request.passengerId,
+    status: request.status,
+    created_at: request.createdAt,
+  };
+}
+
+function expectRideRead(http: HttpTestingController, rideId = '007') {
+  return http.expectOne(
+    (request) =>
+      request.method === 'GET' && request.url === ridesUrl && request.params.get('id') === `eq.${rideId}`,
+  );
+}
 
 function makeRide(overrides: Partial<Ride> = {}): Ride {
   return {
@@ -102,19 +138,19 @@ async function authenticate(http: HttpTestingController, id = '008', role: User[
   TestBed.inject(AuthData).login('passageiro@alunos.utfpr.edu.br', 'senha123');
   await flushMicrotasks();
   http
-    .expectOne((request) => request.url === `${environment.apiUrl}/users`)
+    .expectOne((request) => request.url === usersUrl)
     .flush([
       {
         id,
         name: 'Joana Oliveira',
         email: 'passageiro@alunos.utfpr.edu.br',
-        registrationNumber: '2026001',
+        registration_number: '2026001',
         whatsapp: '41999998888',
         role,
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 0,
-        createdAt: '2026-01-01T08:00:00.000Z',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 0,
+        created_at: '2026-01-01T08:00:00.000Z',
       },
     ]);
   await flushMicrotasks();
@@ -122,21 +158,19 @@ async function authenticate(http: HttpTestingController, id = '008', role: User[
 
 function expectRequestRead(http: HttpTestingController, rideId = '007', passengerId = '008') {
   const read = http.expectOne((request) => request.method === 'GET' && request.url === requestsUrl);
-  expect(JSON.parse(read.request.params.get('_where')!)).toEqual({
-    rideId: { eq: rideId },
-    passengerId: { eq: passengerId },
-  });
+  expect(read.request.params.get('ride_id')).toBe(`eq.${rideId}`);
+  expect(read.request.params.get('passenger_id')).toBe(`eq.${passengerId}`);
   return read;
 }
 
 function flushRide(http: HttpTestingController, ride: Ride): void {
-  http.expectOne({ method: 'GET', url: `${ridesUrl}/${ride.id}` }).flush(ride);
-  http.expectOne((request) => request.url === `${environment.apiUrl}/driver-summaries`).flush([]);
+  expectRideRead(http, ride.id).flush([toRideRow(ride)]);
+  http.expectOne((request) => request.url === driverSummariesUrl).flush([]);
 }
 
 function flushDetail(http: HttpTestingController, ride: Ride, requests: RideRequest[] = []): void {
   flushRide(http, ride);
-  expectRequestRead(http, ride.id).flush(requests);
+  expectRequestRead(http, ride.id).flush(requests.map(toRideRequestRow));
 }
 
 async function enterDetail(ride: Ride, requests: RideRequest[] = []) {
@@ -156,8 +190,8 @@ function expectNoPost(http: HttpTestingController): void {
 function flushTrips(http: HttpTestingController): void {
   http
     .expectOne({
-      method: 'GET',
-      url: `${environment.apiUrl}/passenger-trip-summaries?passengerId=008`,
+      method: 'POST',
+      url: tripsUrl,
     })
     .flush([]);
 }
@@ -267,15 +301,15 @@ describe('Solicitação de vaga em RideDetail', () => {
     const auth = TestBed.inject(AuthData);
     await authenticate(http);
     const harness = await RouterTestingHarness.create(`/rides/${ride.id}`);
-    const oldOffer = http.expectOne({ method: 'GET', url: `${ridesUrl}/${ride.id}` });
+    const oldOffer = expectRideRead(http, ride.id);
     const oldRequest = expectRequestRead(http);
 
     auth.logout();
     await authenticate(http);
     const newSession = auth.currentUser();
-    oldOffer.flush(ride);
-    oldRequest.flush([makeRequest({ status: 'accepted' })]);
-    http.expectNone((request) => request.url === `${environment.apiUrl}/driver-summaries`);
+    oldOffer.flush([toRideRow(ride)]);
+    oldRequest.flush([toRideRequestRow(makeRequest({ status: 'accepted' }))]);
+    http.expectNone((request) => request.url === driverSummariesUrl);
 
     await harness.fixture.whenStable();
     const root = harness.routeNativeElement!.querySelector('main')!;
@@ -296,10 +330,10 @@ describe('Solicitação de vaga em RideDetail', () => {
       const harness = await RouterTestingHarness.create('/rides/007');
       expectRequestRead(http).flush([]);
 
-      let read = http.expectOne({ method: 'GET', url: `${ridesUrl}/007` });
+      let read = expectRideRead(http, '007');
       if (resource === 'motorista') {
-        read.flush(makeRide());
-        read = http.expectOne((request) => request.url === `${environment.apiUrl}/driver-summaries`);
+        read.flush([toRideRow(makeRide())]);
+        read = http.expectOne((request) => request.url === driverSummariesUrl);
       }
       read.flush(null, { status: 401, statusText: 'Unauthorized' });
       await harness.fixture.whenStable();
@@ -450,23 +484,25 @@ describe('Solicitação de vaga em RideDetail', () => {
       confirm.click();
       expectNoPost(http);
 
-      expectRequestRead(http).flush([
-        previous,
-        makeRequest({ id: 'other-ride', rideId: '7' }),
-        makeRequest({ id: 'other-passenger', passengerId: '8' }),
-      ]);
-      const offer = http.expectOne({ method: 'GET', url: `${ridesUrl}/007` });
+      expectRequestRead(http).flush(
+        [
+          previous,
+          makeRequest({ id: 'other-ride', rideId: '7' }),
+          makeRequest({ id: 'other-passenger', passengerId: '8' }),
+        ].map(toRideRequestRow),
+      );
+      const offer = expectRideRead(http, '007');
       expectNoPost(http);
-      offer.flush(ride);
+      offer.flush([toRideRow(ride)]);
 
       const post = http.expectOne({ method: 'POST', url: requestsUrl });
       expect(post.request.body).toEqual({
-        rideId: '007',
-        passengerId: '008',
+        ride_id: '007',
+        passenger_id: '008',
         status: 'pending',
-        createdAt: expect.any(String),
+        created_at: expect.any(String),
       });
-      expect(Number.isNaN(Date.parse(post.request.body.createdAt))).toBe(false);
+      expect(Number.isNaN(Date.parse(post.request.body.created_at))).toBe(false);
       post.flush({ id: 'request-2', ...post.request.body });
       await harness.fixture.whenStable();
 
@@ -516,7 +552,7 @@ describe('Solicitação de vaga em RideDetail', () => {
       await harness.fixture.whenStable();
       button(root, confirmLabel).click();
       expectRequestRead(http).flush([]);
-      http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(makeRide(fields));
+      expectRideRead(http, '007').flush([toRideRow(makeRide(fields))]);
       await harness.fixture.whenStable();
 
       expect(root.textContent).toContain(message);
@@ -556,15 +592,17 @@ describe('Solicitação de vaga em RideDetail', () => {
       button(root, openLabel).click();
       await harness.fixture.whenStable();
       button(root, confirmLabel).click();
-      expectRequestRead(http).flush([
-        makeRequest({ status }),
-        makeRequest({
-          id: 'request-2',
-          status: 'cancelled',
-          createdAt: '2026-01-02T08:00:00.000Z',
-        }),
-      ]);
-      http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
+      expectRequestRead(http).flush(
+        [
+          makeRequest({ status }),
+          makeRequest({
+            id: 'request-2',
+            status: 'cancelled',
+            createdAt: '2026-01-02T08:00:00.000Z',
+          }),
+        ].map(toRideRequestRow),
+      );
+      expectRideRead(http, '007').flush([toRideRow(ride)]);
       await harness.fixture.whenStable();
 
       expect(root.textContent).toContain(message);
@@ -581,7 +619,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http).flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
+    expectRideRead(http, '007').flush([toRideRow(ride)]);
     const firstPost = http.expectOne({ method: 'POST', url: requestsUrl });
 
     const otherRide = makeRide({ id: '009', origin: 'Boqueirão' });
@@ -593,10 +631,10 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http, '009').flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/009` }).flush(otherRide);
+    expectRideRead(http, '009').flush([toRideRow(otherRide)]);
     const secondPost = http.expectOne({ method: 'POST', url: requestsUrl });
-    secondPost.flush(makeRequest({ rideId: '009' }));
-    firstPost.flush(makeRequest({ id: 'request-2' }));
+    secondPost.flush(toRideRequestRow(makeRequest({ rideId: '009' })));
+    firstPost.flush(toRideRequestRow(makeRequest({ id: 'request-2' })));
     await harness.fixture.whenStable();
 
     expect(root.textContent).toContain('Aguardando aprovação do motorista');
@@ -611,11 +649,11 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http).flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
+    expectRideRead(http, '007').flush([toRideRow(ride)]);
     const post = http.expectOne({ method: 'POST', url: requestsUrl });
     const repeated = firstValueFrom(TestBed.inject(RideRequestData).createRequest(ride.id));
     http.expectNone((request) => request.url === requestsUrl);
-    http.expectNone(`${ridesUrl}/007`);
+    http.expectNone(ridesUrl);
 
     await harness.navigateByUrl('/rides/my-trips');
     flushTrips(http);
@@ -626,7 +664,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     expect(findButton(root, openLabel)).toBeUndefined();
 
     const request = makeRequest();
-    post.flush(request);
+    post.flush(toRideRequestRow(request));
     expect(await repeated).toEqual({ status: 'created', ride, request });
     await harness.fixture.whenStable();
     expect(root.textContent).toContain('Aguardando aprovação do motorista');
@@ -639,8 +677,8 @@ describe('Solicitação de vaga em RideDetail', () => {
     button(root, openLabel).click();
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
-    expectRequestRead(http).flush([previous]);
-    const revalidation = http.expectOne({ method: 'GET', url: `${ridesUrl}/007` });
+    expectRequestRead(http).flush([toRideRequestRow(previous)]);
+    const revalidation = expectRideRead(http, '007');
 
     await harness.navigateByUrl('/rides/my-trips');
     flushTrips(http);
@@ -651,13 +689,13 @@ describe('Solicitação de vaga em RideDetail', () => {
     expect(root.textContent).toContain('1 de 2 vagas livres');
     expect(findButton(root, openLabel)).toBeUndefined();
 
-    revalidation.flush(makeRide({ availableSeats: 0, status: 'full' }));
+    revalidation.flush([toRideRow(makeRide({ availableSeats: 0, status: 'full' }))]);
     await harness.fixture.whenStable();
     const history = expectRequestRead(http);
     expect(root.textContent).toContain('0 de 2 vagas livres');
     expect(root.textContent).toContain('Todas as vagas desta carona foram preenchidas.');
     expect(root.textContent).toContain('Consultando sua solicitação');
-    history.flush([previous]);
+    history.flush([toRideRequestRow(previous)]);
     await harness.fixture.whenStable();
     expect(root.textContent).toContain('Solicitação rejeitada');
     expect(root.textContent).toContain('0 de 2 vagas livres');
@@ -676,10 +714,10 @@ describe('Solicitação de vaga em RideDetail', () => {
       let operation = expectRequestRead(http);
       if (step !== 'pedidos anteriores') {
         operation.flush([]);
-        operation = http.expectOne({ method: 'GET', url: `${ridesUrl}/${ride.id}` });
+        operation = expectRideRead(http, ride.id);
       }
       if (step === 'envio') {
-        operation.flush(ride);
+        operation.flush([toRideRow(ride)]);
         operation = http.expectOne({ method: 'POST', url: requestsUrl });
         await harness.navigateByUrl('/rides/my-trips');
         flushTrips(http);
@@ -702,7 +740,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http).flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/${ride.id}` }).flush(ride);
+    expectRideRead(http, ride.id).flush([toRideRow(ride)]);
     const post = http.expectOne({ method: 'POST', url: requestsUrl });
 
     const auth = TestBed.inject(AuthData);
@@ -729,11 +767,11 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http).flush([]);
-    const offer = http.expectOne({ method: 'GET', url: `${ridesUrl}/007` });
+    const offer = expectRideRead(http, '007');
 
     TestBed.inject(AuthData).logout();
     await authenticate(http, '009');
-    offer.flush(ride);
+    offer.flush([toRideRow(ride)]);
     await harness.fixture.whenStable();
     flushRide(http, ride);
     expectRequestRead(http, '007', '009').flush([]);
@@ -754,7 +792,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http).flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
+    expectRideRead(http, '007').flush([toRideRow(ride)]);
     const post = http.expectOne({ method: 'POST', url: requestsUrl });
     if (connectionLost) post.error(new ProgressEvent('error'));
     else post.flush(null, { status: 500, statusText: 'Server Error' });
@@ -778,11 +816,11 @@ describe('Solicitação de vaga em RideDetail', () => {
     const harness = await RouterTestingHarness.create(`/rides/${ride.id}`);
     const root = harness.routeNativeElement!.querySelector('main')!;
     expectRequestRead(http).flush([]);
-    const offer = http.expectOne({ method: 'GET', url: `${ridesUrl}/${ride.id}` });
+    const offer = expectRideRead(http, ride.id);
     if (status === 0) offer.error(new ProgressEvent('error'));
     else {
-      offer.flush(ride);
-      http.expectOne((request) => request.url === `${environment.apiUrl}/driver-summaries`)
+      offer.flush([toRideRow(ride)]);
+      http.expectOne((request) => request.url === driverSummariesUrl)
         .flush(null, { status, statusText: 'Not Found' });
     }
     await harness.fixture.whenStable();
@@ -805,7 +843,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     const harness = await RouterTestingHarness.create('/rides/inexistente');
     const root = harness.routeNativeElement!.querySelector('main')!;
     expectRequestRead(http, 'inexistente').flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/inexistente` })
+    expectRideRead(http, 'inexistente')
       .flush(null, { status: 404, statusText: 'Not Found' });
     await harness.fixture.whenStable();
     expect(root.querySelector('[role="alert"]')?.textContent).toContain('Oferta de carona não encontrada');
@@ -833,7 +871,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     expect(TestBed.inject(ErrorNotice).message()).toBe('');
     button(root, 'Tentar novamente').click();
     await harness.fixture.whenStable();
-    expectRequestRead(http).flush([makeRequest()]);
+    expectRequestRead(http).flush([toRideRequestRow(makeRequest())]);
     await harness.fixture.whenStable();
     expect(root.textContent).toContain('Aguardando aprovação do motorista');
     expectNoPost(http);
@@ -845,7 +883,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http).flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` })
+    expectRideRead(http, '007')
       .flush(null, { status: 404, statusText: 'Not Found' });
     await harness.fixture.whenStable();
 
@@ -865,7 +903,7 @@ describe('Solicitação de vaga em RideDetail', () => {
       await harness.fixture.whenStable();
       button(root, confirmLabel).click();
       expectRequestRead(http).flush([]);
-      http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
+      expectRideRead(http, '007').flush([toRideRow(ride)]);
       http.expectOne({ method: 'POST', url: requestsUrl }).error(new ProgressEvent('error'));
       await harness.fixture.whenStable();
 
@@ -873,17 +911,17 @@ describe('Solicitação de vaga em RideDetail', () => {
       retry.click();
       retry.click();
       const active = makeRequest({ status: 'accepted' });
-      expectRequestRead(http).flush(stillQueued ? [] : [active]);
+      expectRequestRead(http).flush(stillQueued ? [] : [toRideRequestRow(active)]);
       if (stillQueued) {
-        http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
+        expectRideRead(http, '007').flush([toRideRow(ride)]);
         http.expectOne({ method: 'POST', url: requestsUrl }).flush(
           { code: 'active-ride-request', error: 'An active request already exists' },
           { status: 409, statusText: 'Conflict' },
         );
-        expectRequestRead(http).flush([active]);
+        expectRequestRead(http).flush([toRideRequestRow(active)]);
       }
-      http.expectOne({ method: 'GET', url: `${ridesUrl}/007` })
-        .flush({ ...ride, availableSeats: 0, status: 'full' });
+      expectRideRead(http, '007')
+        .flush([toRideRow({ ...ride, availableSeats: 0, status: 'full' })]);
       await harness.fixture.whenStable();
 
       expect(root.querySelector(panelSelector)).toBeNull();
@@ -903,14 +941,14 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http).flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
+    expectRideRead(http, '007').flush([toRideRow(ride)]);
     http.expectOne({ method: 'POST', url: requestsUrl }).error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
     const accepted = makeRequest({ status: 'accepted' });
     button(root, 'Tentar novamente').click();
-    expectRequestRead(http).flush([accepted]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).error(new ProgressEvent('error'));
+    expectRequestRead(http).flush([toRideRequestRow(accepted)]);
+    expectRideRead(http, '007').error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
     expect(root.querySelector('[role="alert"]')?.textContent).toContain('atualizar a disponibilidade');
@@ -918,9 +956,9 @@ describe('Solicitação de vaga em RideDetail', () => {
     expectNoPost(http);
 
     button(root, 'Tentar novamente').click();
-    expectRequestRead(http).flush([accepted]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` })
-      .flush({ ...ride, availableSeats: 0, status: 'full' });
+    expectRequestRead(http).flush([toRideRequestRow(accepted)]);
+    expectRideRead(http, '007')
+      .flush([toRideRow({ ...ride, availableSeats: 0, status: 'full' })]);
     await harness.fixture.whenStable();
 
     expect(root.textContent).toContain('Solicitação confirmada');
@@ -935,15 +973,15 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http).flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
+    expectRideRead(http, '007').flush([toRideRow(ride)]);
     http.expectOne({ method: 'POST', url: requestsUrl }).error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
     button(root, 'Tentar novamente').click();
     const pending = makeRequest();
     const accepted = { ...pending, status: 'accepted' as const };
-    expectRequestRead(http).flush([pending]);
-    const refresh = http.expectOne({ method: 'GET', url: `${ridesUrl}/007` });
+    expectRequestRead(http).flush([toRideRequestRow(pending)]);
+    const refresh = expectRideRead(http, '007');
     await harness.navigateByUrl('/rides/my-trips');
     flushTrips(http);
     await harness.navigateByUrl('/rides/007');
@@ -961,7 +999,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     button(returned, 'Tentar novamente').click();
     await harness.fixture.whenStable();
     const failedRead = expectRequestRead(http);
-    http.expectNone({ method: 'GET', url: `${ridesUrl}/007` });
+    http.expectNone(ridesUrl);
     failedRead.flush(null, { status: 404, statusText: 'Not Found' });
     await harness.fixture.whenStable();
     expect(returned.querySelector('[role="alert"]')?.textContent).toContain('consultar');
@@ -971,7 +1009,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     button(returned, 'Tentar novamente').click();
     await harness.fixture.whenStable();
     const interruptedRead = expectRequestRead(http);
-    http.expectNone({ method: 'GET', url: `${ridesUrl}/007` });
+    http.expectNone(ridesUrl);
     await harness.navigateByUrl('/rides/my-trips');
     flushTrips(http);
     expect(interruptedRead.cancelled).toBe(true);
@@ -980,13 +1018,13 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.navigateByUrl('/rides/007');
     flushRide(http, ride);
     const recoveredRead = expectRequestRead(http);
-    http.expectNone({ method: 'GET', url: `${ridesUrl}/007` });
-    recoveredRead.flush([accepted]);
-    const refreshedRide = http.expectOne({ method: 'GET', url: `${ridesUrl}/007` });
+    http.expectNone(ridesUrl);
+    recoveredRead.flush([toRideRequestRow(accepted)]);
+    const refreshedRide = expectRideRead(http, '007');
     await harness.fixture.whenStable();
     const reopened = harness.routeNativeElement!.querySelector('main')!;
     expect(reopened.textContent).not.toContain('Solicitação confirmada');
-    refreshedRide.flush({ ...ride, availableSeats: 0, status: 'full' });
+    refreshedRide.flush([toRideRow({ ...ride, availableSeats: 0, status: 'full' })]);
     await harness.fixture.whenStable();
     expect(reopened.textContent).toContain('Solicitação confirmada');
     expect(reopened.textContent).toContain('Carona lotada');
@@ -1002,7 +1040,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http).flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
+    expectRideRead(http, '007').flush([toRideRow(ride)]);
     http.expectOne({ method: 'POST', url: requestsUrl }).flush(
       { code: 'active-ride-request', error: 'An active request already exists' },
       { status: 409, statusText: 'Conflict' },
@@ -1025,13 +1063,13 @@ describe('Solicitação de vaga em RideDetail', () => {
     button(returned, 'Tentar novamente').click();
     await harness.fixture.whenStable();
     const recoveredRead = expectRequestRead(http);
-    http.expectNone({ method: 'GET', url: `${ridesUrl}/007` });
+    http.expectNone(ridesUrl);
     // O motorista ocupa a última vaga depois que a oferta ativa foi lida ao voltar.
     const accepted = makeRequest({ status: 'accepted' });
-    recoveredRead.flush([accepted]);
+    recoveredRead.flush([toRideRequestRow(accepted)]);
     await harness.fixture.whenStable();
     expect(returned.textContent).not.toContain('Solicitação confirmada');
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).error(new ProgressEvent('error'));
+    expectRideRead(http, '007').error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
     expect(returned.querySelector('[role="alert"]')?.textContent).toContain('atualizar a disponibilidade');
     expect(returned.querySelector('[role="alert"]')?.textContent).toContain('Falha de conexão');
@@ -1040,10 +1078,10 @@ describe('Solicitação de vaga em RideDetail', () => {
     button(returned, 'Tentar novamente').click();
     await harness.fixture.whenStable();
     const lastRead = expectRequestRead(http);
-    http.expectNone({ method: 'GET', url: `${ridesUrl}/007` });
-    lastRead.flush([accepted]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` })
-      .flush({ ...ride, availableSeats: 0, status: 'full' });
+    http.expectNone(ridesUrl);
+    lastRead.flush([toRideRequestRow(accepted)]);
+    expectRideRead(http, '007')
+      .flush([toRideRow({ ...ride, availableSeats: 0, status: 'full' })]);
     await harness.fixture.whenStable();
     expect(returned.textContent).toContain('Solicitação confirmada');
     expect(returned.textContent).toContain('Carona lotada');
@@ -1058,24 +1096,24 @@ describe('Solicitação de vaga em RideDetail', () => {
     button(root, openLabel).click();
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
-    expectRequestRead(http).flush([makeRequest()]);
-    const refresh = http.expectOne({ method: 'GET', url: `${ridesUrl}/007` });
+    expectRequestRead(http).flush([toRideRequestRow(makeRequest())]);
+    const refresh = expectRideRead(http, '007');
 
     await harness.navigateByUrl('/rides/my-trips');
     flushTrips(http);
-    refresh.flush(ride);
+    refresh.flush([toRideRow(ride)]);
     expectNoPost(http);
 
     await harness.navigateByUrl('/rides/007');
     flushRide(http, ride);
     // Só depois da leitura acima o motorista confirma o pedido e ocupa a última vaga.
     const accepted = makeRequest({ status: 'accepted' });
-    expectRequestRead(http).flush([accepted]);
+    expectRequestRead(http).flush([toRideRequestRow(accepted)]);
     await harness.fixture.whenStable();
     const returned = harness.routeNativeElement!.querySelector('main')!;
     expect(returned.textContent).not.toContain('Solicitação confirmada');
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` })
-      .flush({ ...ride, availableSeats: 0, status: 'full' });
+    expectRideRead(http, '007')
+      .flush([toRideRow({ ...ride, availableSeats: 0, status: 'full' })]);
     await harness.fixture.whenStable();
     expect(returned.textContent).toContain('Solicitação confirmada');
     expect(returned.textContent).toContain('Carona lotada');
@@ -1095,15 +1133,15 @@ describe('Solicitação de vaga em RideDetail', () => {
       button(root, openLabel).click();
       await harness.fixture.whenStable();
       button(root, confirmLabel).click();
-      expectRequestRead(http).flush([makeRequest()]);
-      http.expectOne({ method: 'GET', url: `${ridesUrl}/007` })
+      expectRequestRead(http).flush([toRideRequestRow(makeRequest())]);
+      expectRideRead(http, '007')
         .flush(null, { status: 503, statusText: 'Unavailable' });
       await harness.navigateByUrl('/rides/my-trips');
       flushTrips(http);
       await harness.navigateByUrl('/rides/007');
       flushRide(http, ride);
-      expectRequestRead(http).flush([makeRequest({ status: 'accepted' })]);
-      const refreshedRide = http.expectOne({ method: 'GET', url: `${ridesUrl}/007` });
+      expectRequestRead(http).flush([toRideRequestRow(makeRequest({ status: 'accepted' }))]);
+      const refreshedRide = expectRideRead(http, '007');
       const auth = TestBed.inject(AuthData);
       if (renewSession) {
         auth.logout();
@@ -1122,7 +1160,7 @@ describe('Solicitação de vaga em RideDetail', () => {
         expect(TestBed.inject(Router).url).toBe('/rides/007');
         expect(TestBed.inject(ErrorNotice).message()).toBe('');
         expect(returned.textContent).toContain('Solicitação cancelada');
-        http.expectNone({ method: 'GET', url: `${ridesUrl}/007` });
+        http.expectNone(ridesUrl);
       } else if (status === 401) {
         expect(auth.currentUser()).toBeNull();
         expect(TestBed.inject(Router).url).toBe('/login');
@@ -1144,7 +1182,7 @@ describe('Solicitação de vaga em RideDetail', () => {
     await harness.fixture.whenStable();
     button(root, confirmLabel).click();
     expectRequestRead(http).flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
+    expectRideRead(http, '007').flush([toRideRow(ride)]);
     http.expectOne({ method: 'POST', url: requestsUrl }).flush(null, { status, statusText });
     await harness.fixture.whenStable();
     expect(root.querySelector(panelSelector)?.querySelector('[role="alert"]')?.textContent)
@@ -1152,8 +1190,8 @@ describe('Solicitação de vaga em RideDetail', () => {
     expect(TestBed.inject(ErrorNotice).message()).toBe('');
     button(root, 'Tentar novamente').click();
     expectRequestRead(http).flush([]);
-    http.expectOne({ method: 'GET', url: `${ridesUrl}/007` }).flush(ride);
-    http.expectOne({ method: 'POST', url: requestsUrl }).flush(makeRequest());
+    expectRideRead(http, '007').flush([toRideRow(ride)]);
+    http.expectOne({ method: 'POST', url: requestsUrl }).flush(toRideRequestRow(makeRequest()));
     await harness.fixture.whenStable();
     expect(root.textContent).toContain('Aguardando aprovação do motorista');
     expect(root.querySelector('[role="alert"]')).toBeNull();

@@ -51,22 +51,41 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
+const ridesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
+
+function toRideRow(ride: Ride) {
+  return {
+    id: ride.id,
+    driver_id: ride.driverId,
+    origin: ride.origin,
+    destination: ride.destination,
+    departure_time: ride.departureTime,
+    total_seats: ride.totalSeats,
+    available_seats: ride.availableSeats,
+    price_per_seat: ride.pricePerSeat,
+    status: ride.status,
+    ...(ride.notes !== undefined ? { notes: ride.notes } : {}),
+    created_at: ride.createdAt,
+  };
+}
+
 async function authenticateStudent(http: HttpTestingController): Promise<void> {
   const auth = TestBed.inject(AuthData);
   auth.login('motorista@alunos.utfpr.edu.br', 'senha123');
   await flushMicrotasks();
-  http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+  http.expectOne((request) => request.url === usersUrl).flush([
     {
       id: 'driver-1',
       name: 'Carlos Motorista',
       email: 'motorista@alunos.utfpr.edu.br',
-      registrationNumber: '2020123',
+      registration_number: '2020123',
       whatsapp: '41999998888',
       role: 'student',
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 5,
-      createdAt: '2026-01-01T00:00:00.000Z',
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 5,
+      created_at: '2026-01-01T00:00:00.000Z',
     },
   ]);
   await flushMicrotasks();
@@ -150,18 +169,18 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     expect(submitButton.disabled).toBe(false);
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
-    const request = http.expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.method === 'POST');
+    const request = http.expectOne((req) => req.url === ridesUrl && req.method === 'POST');
     expect(request.request.body).toEqual({
-      driverId: 'driver-1',
+      driver_id: 'driver-1',
       origin: 'Praça do Japão',
       destination: 'UTFPR - Sede Centro',
-      departureTime: future.toISOString(),
-      totalSeats: 2,
-      availableSeats: 2,
-      pricePerSeat: 0,
+      departure_time: future.toISOString(),
+      total_seats: 2,
+      available_seats: 2,
+      price_per_seat: 0,
       status: 'active',
       notes: 'Próximo à parada de ônibus',
-      createdAt: expect.any(String),
+      created_at: expect.any(String),
     });
 
     request.flush({ id: 'ride-1', ...request.request.body });
@@ -201,7 +220,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await harness.fixture.whenStable();
 
-    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(ridesUrl);
     const alertsText = Array.from(root.querySelectorAll('[role="alert"]'))
       .map((el) => el.textContent ?? '')
       .join(' ');
@@ -250,7 +269,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     root.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
     await harness.fixture.whenStable();
 
-    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(ridesUrl);
     const alertsText = Array.from(root.querySelectorAll('[role="alert"]'))
       .map((el) => el.textContent ?? '')
       .join(' ');
@@ -317,7 +336,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await harness.fixture.whenStable();
 
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     const alertsText = Array.from(root.querySelectorAll('[role="alert"]'))
       .map((el) => el.textContent ?? '')
       .join(' ');
@@ -342,20 +361,20 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
     const patchReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
     expect(patchReq.request.body).toEqual({
       origin: 'Água Verde',
       destination: 'UTFPR - Sede Ecoville',
-      departureTime: updatedDeparture.toISOString(),
-      totalSeats: 4,
-      availableSeats: 4,
-      pricePerSeat: 11,
+      departure_time: updatedDeparture.toISOString(),
+      total_seats: 4,
+      available_seats: 4,
+      price_per_seat: 11,
       status: 'active',
       notes: 'Saída em frente à praça',
     });
 
-    patchReq.flush({ ...existingRide, ...patchReq.request.body });
+    patchReq.flush({ ...toRideRow(existingRide), ...(patchReq.request.body as Record<string, unknown>) });
     await harness.fixture.whenStable();
 
     expect(root.textContent).toContain('Oferta Atualizada!');
@@ -430,7 +449,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await harness.fixture.whenStable();
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
 
     const reductionAlerts = Array.from(root.querySelectorAll('[role="alert"]'))
       .map((el) => el.textContent ?? '')
@@ -440,7 +459,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     setField(root, 'totalSeats', '5');
     await harness.fixture.whenStable();
     expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
 
     // 3. Aumentar vagas dentro do limite permitido (2 -> 3) disponibiliza 1 vaga e retorna oferta esgotada para ativa
     seatBtn3.click();
@@ -451,20 +470,20 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
     const patchReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
     expect(patchReq.request.body).toEqual({
       origin: 'Batel',
       destination: 'UTFPR Neoville',
-      departureTime: initialDeparture.toISOString(),
-      totalSeats: 3,
-      availableSeats: 1,
-      pricePerSeat: 9,
+      departure_time: initialDeparture.toISOString(),
+      total_seats: 3,
+      available_seats: 1,
+      price_per_seat: 9,
       status: 'active',
       notes: 'Próximo ao shopping',
     });
 
-    patchReq.flush({ ...fullRideWithPassengers, ...patchReq.request.body });
+    patchReq.flush({ ...toRideRow(fullRideWithPassengers), ...(patchReq.request.body as Record<string, unknown>) });
     await harness.fixture.whenStable();
 
     expect(root.textContent).toContain('Oferta Atualizada!');
@@ -525,7 +544,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await harness.fixture.whenStable();
 
-    http.expectNone(`${environment.apiUrl}/rides`);
+    http.expectNone(ridesUrl);
     expect(rideData.publishResult()).toEqual({ unauthorized: true });
     expect(root.textContent).not.toContain('Carona Publicada!');
     const alertsAfterSubmit = Array.from(root.querySelectorAll('[role="alert"]'))
@@ -565,8 +584,8 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     };
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-other` && req.method === 'GET')
-      .flush(foreignRide);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-other')
+      .flush([toRideRow(foreignRide)]);
     await harness.fixture.whenStable();
 
     expect(rideData.editingRide()).toBeNull();
@@ -585,8 +604,8 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await harness.fixture.whenStable();
 
-    http.expectNone(`${environment.apiUrl}/rides`);
-    http.expectNone(`${environment.apiUrl}/rides/ride-other`);
+    http.expectNone(ridesUrl);
+    http.expectNone(ridesUrl);
     http.verify();
   });
 
@@ -626,18 +645,18 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
     authData.login('outro@alunos.utfpr.edu.br', 'senha123');
     await flushMicrotasks();
-    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+    http.expectOne((request) => request.url === usersUrl).flush([
       {
         id: 'driver-2',
         name: 'Outro Aluno',
         email: 'outro@alunos.utfpr.edu.br',
-        registrationNumber: '2020999',
+        registration_number: '2020999',
         whatsapp: '41988887777',
         role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 5,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 5,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
     await flushMicrotasks();
@@ -650,7 +669,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await harness.fixture.whenStable();
 
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(rideData.updateResult()).toEqual({ unauthorized: true });
     const alertsText = Array.from(root.querySelectorAll('[role="alert"]'))
       .map((el) => el.textContent ?? '')
@@ -692,7 +711,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
     submit();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.method === 'POST')
+      .expectOne((req) => req.url === ridesUrl && req.method === 'POST')
       .error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
@@ -724,19 +743,19 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     // Nova tentativa envia novamente os dados preservados
     submit();
     const retryReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides` && req.method === 'POST',
+      (req) => req.url === ridesUrl && req.method === 'POST',
     );
     expect(retryReq.request.body).toEqual({
-      driverId: 'driver-1',
+      driver_id: 'driver-1',
       origin: 'Praça do Japão',
       destination: 'UTFPR - Sede Centro',
-      departureTime: future.toISOString(),
-      totalSeats: 2,
-      availableSeats: 2,
-      pricePerSeat: 12,
+      departure_time: future.toISOString(),
+      total_seats: 2,
+      available_seats: 2,
+      price_per_seat: 12,
       status: 'active',
       notes: 'Em frente à banca',
-      createdAt: expect.any(String),
+      created_at: expect.any(String),
     });
     retryReq.flush({ id: 'ride-1', ...retryReq.request.body });
     await harness.fixture.whenStable();
@@ -795,7 +814,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
     submit();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH')
+      .expectOne((req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1')
       .error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
@@ -823,19 +842,19 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     // Nova tentativa salva alterações preservadas
     submit();
     const retryPatch = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
     expect(retryPatch.request.body).toEqual({
       origin: 'Água Verde',
       destination: 'UTFPR - Sede Ecoville',
-      departureTime: updatedDeparture.toISOString(),
-      totalSeats: 4,
-      availableSeats: 4,
-      pricePerSeat: 11,
+      departure_time: updatedDeparture.toISOString(),
+      total_seats: 4,
+      available_seats: 4,
+      price_per_seat: 11,
       status: 'active',
       notes: 'Saída em frente à praça',
     });
-    retryPatch.flush({ ...existingRide, ...retryPatch.request.body });
+    retryPatch.flush({ ...toRideRow(existingRide), ...(retryPatch.request.body as Record<string, unknown>) });
     await harness.fixture.whenStable();
 
     expect(root.querySelector('[data-testid="offer-operation-error"]')).toBeNull();
@@ -862,7 +881,7 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     const root = harness.routeNativeElement as HTMLElement;
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
       .error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
@@ -889,8 +908,8 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
     };
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
-      .flush(existingRide);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(existingRide)]);
     await harness.fixture.whenStable();
 
     expect(root.querySelector('[data-testid="edit-load-error"]')).toBeNull();
@@ -981,8 +1000,8 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
     const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-1');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
-      .flush(savedRide);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(savedRide)]);
     await harness.fixture.whenStable();
 
     const root = harness.routeNativeElement as HTMLElement;
@@ -1001,8 +1020,8 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
     await harness.navigateByUrl('/driver/offer?rideId=ride-1');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
-      .flush(savedRide);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(savedRide)]);
     await harness.fixture.whenStable();
 
     const returnedRoot = harness.routeNativeElement as HTMLElement;
@@ -1057,8 +1076,8 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
     const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-1');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
-      .flush(savedRideWithPassengers);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(savedRideWithPassengers)]);
     await harness.fixture.whenStable();
 
     const root = harness.routeNativeElement as HTMLElement;
@@ -1133,8 +1152,8 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
     const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-other');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-other` && req.method === 'GET')
-      .flush(foreignRide);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-other')
+      .flush([toRideRow(foreignRide)]);
     await harness.fixture.whenStable();
 
     const root = harness.routeNativeElement as HTMLElement;
@@ -1178,8 +1197,8 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
     await harness.navigateByUrl('/driver/offer?rideId=ride-1');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
-      .flush(ride1);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(ride1)]);
     await harness.fixture.whenStable();
 
     expect(root.querySelector<HTMLInputElement>('[formControlName="origin"]')!.value).toBe('Água Verde');
@@ -1187,8 +1206,8 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
 
     await harness.navigateByUrl('/driver/offer?rideId=ride-2');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-2` && req.method === 'GET')
-      .flush(ride2);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-2')
+      .flush([toRideRow(ride2)]);
     await harness.fixture.whenStable();
 
     http.expectNone((req) => req.method === 'PATCH' || req.method === 'POST');

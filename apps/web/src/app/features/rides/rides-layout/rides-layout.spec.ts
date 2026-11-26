@@ -57,18 +57,18 @@ async function authenticateStudent(http: HttpTestingController): Promise<void> {
   const auth = TestBed.inject(AuthData);
   auth.login('mariana@alunos.utfpr.edu.br', 'senha123');
   await flushMicrotasks();
-  http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+  http.expectOne((request) => request.url === `${environment.supabaseUrl}/rest/v1/users`).flush([
     {
       id: 'student-1',
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',
-      registrationNumber: '2020999',
+      registration_number: '2020999',
       whatsapp: '41988887777',
       role: 'student',
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 4.9,
-      createdAt: '2026-01-01T00:00:00.000Z',
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 4.9,
+      created_at: '2026-01-01T00:00:00.000Z',
     },
   ]);
   await flushMicrotasks();

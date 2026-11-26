@@ -72,6 +72,38 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
+const listRidesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
+const requestsUrl = `${environment.supabaseUrl}/rest/v1/ride_requests`;
+const notificationsUrl = `${environment.supabaseUrl}/rest/v1/notifications`;
+const tripsUrl = `${environment.supabaseUrl}/rest/v1/rpc/get_passenger_trip_summaries`;
+
+function toRideRow(ride: Ride) {
+  return {
+    id: ride.id,
+    driver_id: ride.driverId,
+    origin: ride.origin,
+    destination: ride.destination,
+    departure_time: ride.departureTime,
+    total_seats: ride.totalSeats,
+    available_seats: ride.availableSeats,
+    price_per_seat: ride.pricePerSeat,
+    status: ride.status,
+    ...(ride.notes !== undefined ? { notes: ride.notes } : {}),
+    created_at: ride.createdAt,
+  };
+}
+
+function toNotificationRow(notification: Notification) {
+  return {
+    id: notification.id,
+    recipient_id: notification.recipientId,
+    ride_id: notification.rideId,
+    message: notification.message,
+    created_at: notification.createdAt,
+  };
+}
+
 async function authenticatePassenger(
   http: HttpTestingController,
   user: { id: string; name: string; email: string },
@@ -79,18 +111,18 @@ async function authenticatePassenger(
   const auth = TestBed.inject(AuthData);
   auth.login(user.email, 'senha123');
   await flushMicrotasks();
-  http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+  http.expectOne((request) => request.url === usersUrl).flush([
     {
       id: user.id,
       name: user.name,
       email: user.email,
-      registrationNumber: '2020999',
+      registration_number: '2020999',
       whatsapp: '41988887777',
       role: 'student',
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 4.9,
-      createdAt: '2026-01-01T00:00:00.000Z',
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 4.9,
+      created_at: '2026-01-01T00:00:00.000Z',
     },
   ]);
   await flushMicrotasks();
@@ -276,9 +308,9 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
 
     http
       .expectOne(
-        (req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'GET',
+        (req) => req.url === notificationsUrl && req.method === 'GET',
       )
-      .flush(notificationsPayload);
+      .flush(notificationsPayload.map(toNotificationRow));
     await harness.fixture.whenStable();
 
     const panel = root.querySelector<HTMLElement>('[data-testid="notifications-panel"]');
@@ -310,17 +342,17 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
 
     http
       .expectOne(
-        (req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'GET',
+        (req) => req.url === notificationsUrl && req.method === 'GET',
       )
       .flush([
-        ...notificationsPayload,
-        {
+        ...notificationsPayload.map(toNotificationRow),
+        toNotificationRow({
           id: 'notif-lucas-pending',
           recipientId: 'Lucas Andrade',
           rideId: 'ride-confirmed',
           message: 'A carona Bacacheri → UTFPR Neoville foi cancelada pelo motorista.',
           createdAt: '2026-01-01T10:15:00.000Z',
-        },
+        }),
       ]);
     await harness.fixture.whenStable();
 
@@ -378,7 +410,7 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
     http
       .expectOne(
         (req) =>
-          req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1',
+          req.url === listRidesUrl && req.params.get('driver_id') === 'eq.driver-1',
       )
       .flush([]);
     await harness.fixture.whenStable();
@@ -394,7 +426,7 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
     myRidesBell!.click();
     http
       .expectOne(
-        (req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'GET',
+        (req) => req.url === notificationsUrl && req.method === 'GET',
       )
       .flush([]);
     await harness.fixture.whenStable();
@@ -433,7 +465,7 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
     // 1. Falha de conexão (status === 0)
     bellButton.click();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'GET')
+      .expectOne((req) => req.url === notificationsUrl && req.method === 'GET')
       .error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
@@ -453,7 +485,7 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
     expect(errorNotice.message()).toBe('');
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'GET')
+      .expectOne((req) => req.url === notificationsUrl && req.method === 'GET')
       .flush({});
     await harness.fixture.whenStable();
 
@@ -470,15 +502,15 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
     expect(errorNotice.message()).toBe('');
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'GET')
+      .expectOne((req) => req.url === notificationsUrl && req.method === 'GET')
       .flush([
-        {
+        toNotificationRow({
           id: 'notif-1',
           recipientId: 'passenger-1',
           rideId: 'ride-1',
           message: 'A carona Batel → UTFPR Neoville foi cancelada pelo motorista.',
           createdAt: '2026-01-01T10:00:00.000Z',
-        },
+        }),
       ]);
     await harness.fixture.whenStable();
 
@@ -516,7 +548,7 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
     )!;
     offerBell.click();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'GET')
+      .expectOne((req) => req.url === notificationsUrl && req.method === 'GET')
       .error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
 
@@ -532,7 +564,7 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
     http
       .expectOne(
         (req) =>
-          req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1',
+          req.url === listRidesUrl && req.params.get('driver_id') === 'eq.driver-1',
       )
       .flush([]);
     await harness.fixture.whenStable();
@@ -544,7 +576,7 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
     expect(errorNotice.message()).toBe('');
 
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'GET')
+      .expectOne((req) => req.url === notificationsUrl && req.method === 'GET')
       .flush({});
     await harness.fixture.whenStable();
 
@@ -560,8 +592,8 @@ describe('Cabeçalho autenticado, navegação e avisos internos (CA8)', () => {
 
 describe('Busca de caronas (CA1, CA3 e CA11)', () => {
   const debounceMs = 250;
-  const ridesUrl = `${environment.apiUrl}/rides`;
-  const driverSummariesUrl = `${environment.apiUrl}/driver-summaries`;
+  const ridesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
+  const driverSummariesUrl = `${environment.supabaseUrl}/rest/v1/rpc/get_driver_summaries`;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -680,12 +712,12 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     enterValue(destination, 'UTFPR - Sede Centro');
     enterValue(date, '2030-05-10');
     const request = searchRequest(http);
-    expect(request.request.params.get('_where')).toContain('"contains":"curitiba"');
-    expect(request.request.params.get('_where')).toContain('"contains":"utfpr - sede centro"');
+    expect(request.request.params.get('origin')?.toLowerCase()).toBe('ilike.*curitiba*');
+    expect(request.request.params.get('destination')?.toLowerCase()).toBe('ilike.*utfpr - sede centro*');
     harness.detectChanges();
     expect(root.textContent).toContain('Buscando caronas');
     expect(root.textContent).not.toContain('Nenhuma carona');
-    request.flush([ride]);
+    request.flush([toRideRow(ride)]);
     harness.detectChanges();
     expect(root.textContent).not.toContain('Buscando caronas');
     expect(root.textContent).toContain('Nenhuma carona');
@@ -698,11 +730,12 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     expect([origin.value, destination.value, date.value]).toEqual(['', '', '']);
 
     const cleared = searchRequest(http);
-    expect(cleared.request.params.get('_where')).not.toContain('contains');
-    cleared.flush([ride]);
+    expect(cleared.request.params.has('origin')).toBe(false);
+    expect(cleared.request.params.has('destination')).toBe(false);
+    cleared.flush([toRideRow(ride)]);
     http
-      .expectOne((query) => query.url === driverSummariesUrl && query.method === 'GET')
-      .flush([{ id: 'driver-2', name: 'Camila Rocha', ratingAverage: 4.9 }]);
+      .expectOne((query) => query.url === driverSummariesUrl && query.method === 'POST')
+      .flush([{ id: 'driver-2', name: 'Camila Rocha', rating_average: 4.9 }]);
     harness.detectChanges();
     const card = root.querySelector('article')!;
     expect(card.textContent).toContain('Curitiba');
@@ -728,14 +761,14 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     enterValue(date, '2030-05-10');
 
     const pending = searchRequest(http);
-    expect(pending.request.params.get('_where')).toContain('"contains":"portão (terminal)"');
+    expect(pending.request.params.get('origin')?.toLowerCase()).toBe('ilike.*portão (terminal)*');
 
     await harness.navigateByUrl('/rides/my-trips');
     expect(pending.cancelled).toBe(true);
     http
       .expectOne({
-        method: 'GET',
-        url: `${environment.apiUrl}/passenger-trip-summaries?passengerId=passenger-1`,
+        method: 'POST',
+        url: tripsUrl,
       })
       .flush([]);
     await harness.navigateByUrl('/rides');
@@ -745,7 +778,8 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
       '', '', '',
     ]);
     const request = searchRequest(http);
-    expect(request.request.params.get('_where')).not.toContain('contains');
+    expect(request.request.params.has('origin')).toBe(false);
+    expect(request.request.params.has('destination')).toBe(false);
     request.flush([]);
     harness.detectChanges();
     expect(root.textContent).toContain('Nenhuma carona');
@@ -768,8 +802,8 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
       notes: 'Em frente à farmácia',
       createdAt: new Date(2030, 4, 9, 16).toISOString(),
     };
-    const driver = { id: 'driver-2', name: 'Camila Rocha', ratingAverage: 4.9 };
-    searchRequest(http).flush([ride]);
+    const driver = { id: 'driver-2', name: 'Camila Rocha', rating_average: 4.9 };
+    searchRequest(http).flush([toRideRow(ride)]);
     http.expectOne((request) => request.url === driverSummariesUrl).flush([driver]);
     await harness.fixture.whenStable();
 
@@ -781,9 +815,12 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     expect(TestBed.inject(Router).url).toBe('/rides/007');
     expect(harness.routeNativeElement).toBe(root);
 
-    http.expectOne({ url: `${ridesUrl}/007`, method: 'GET' }).flush(ride);
+    http
+      .expectOne((request) => request.url === ridesUrl && request.method === 'GET' && request.params.get('id') === 'eq.007')
+      .flush([toRideRow(ride)]);
     const driverSummary = http.expectOne((request) => request.url === driverSummariesUrl);
-    expect(driverSummary.request.params.getAll('id')).toEqual(['driver-2']);
+    expect(driverSummary.request.method).toBe('POST');
+    expect(driverSummary.request.body).toEqual({ p_driver_ids: ['driver-2'] });
     driverSummary.flush([driver]);
 
     await harness.fixture.whenStable();
@@ -808,14 +845,14 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     expect(details.textContent).not.toContain('Você ainda não solicitou');
 
     http
-      .expectOne((request) => request.url === `${environment.apiUrl}/ride_requests`)
+      .expectOne((request) => request.url === requestsUrl)
       .flush([
         {
           id: 'request-1',
-          rideId: '007',
-          passengerId: 'passenger-1',
+          ride_id: '007',
+          passenger_id: 'passenger-1',
           status: 'pending',
-          createdAt: ride.createdAt,
+          created_at: ride.createdAt,
         },
       ]);
     await harness.fixture.whenStable();
@@ -826,17 +863,21 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     expect(details.textContent).toContain('Carregando detalhes');
     expect(details.textContent).not.toContain('Aguardando aprovação do motorista');
     expect(details.textContent).not.toContain('Praça do Japão');
-    http.expectOne({ url: `${ridesUrl}/full-ride`, method: 'GET' }).flush({
-      ...ride,
-      id: 'full-ride',
-      origin: 'Batel',
-      availableSeats: 0,
-      status: 'full',
-      notes: undefined,
-    });
+    http
+      .expectOne((request) => request.url === ridesUrl && request.method === 'GET' && request.params.get('id') === 'eq.full-ride')
+      .flush([
+        toRideRow({
+          ...ride,
+          id: 'full-ride',
+          origin: 'Batel',
+          availableSeats: 0,
+          status: 'full',
+          notes: undefined,
+        }),
+      ]);
     http.expectOne((request) => request.url === driverSummariesUrl).flush([driver]);
     http
-      .expectOne((request) => request.url === `${environment.apiUrl}/ride_requests`)
+      .expectOne((request) => request.url === requestsUrl)
       .error(new ProgressEvent('error'));
     await harness.fixture.whenStable();
     expect(details.textContent).toContain('Batel');
@@ -845,13 +886,17 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     expect(details.textContent).not.toContain('Você ainda não solicitou');
 
     await harness.navigateByUrl('/rides/another-ride');
-    http.expectOne({ url: `${ridesUrl}/another-ride`, method: 'GET' }).flush({
-      ...ride,
-      id: 'another-ride',
-      notes: undefined,
-    });
+    http
+      .expectOne((request) => request.url === ridesUrl && request.method === 'GET' && request.params.get('id') === 'eq.another-ride')
+      .flush([
+        toRideRow({
+          ...ride,
+          id: 'another-ride',
+          notes: undefined,
+        }),
+      ]);
     http.expectOne((request) => request.url === driverSummariesUrl).flush([driver]);
-    http.expectOne((request) => request.url === `${environment.apiUrl}/ride_requests`).flush([]);
+    http.expectOne((request) => request.url === requestsUrl).flush([]);
     await harness.fixture.whenStable();
     expect(details.textContent).toContain('Você ainda não solicitou uma vaga');
     expect(details.textContent).not.toContain('Ponto de referência');
@@ -903,7 +948,8 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     retry!.click();
     expect(root.querySelector<HTMLInputElement>('#ride-search-date')?.value).toBe('2030-05-10');
     const repeated = searchRequest(http);
-    expect(repeated.request.params.get('_where')).toBe(first.request.params.get('_where'));
+    expect(repeated.request.params.get('origin')).toBe(first.request.params.get('origin'));
+    expect(repeated.request.params.get('destination')).toBe(first.request.params.get('destination'));
     harness.detectChanges();
     expect(root.textContent).toContain('Buscando caronas');
     expect(root.querySelector('main [role="alert"]')).toBeNull();
@@ -924,18 +970,20 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
       name: 'Mariana Silva',
       email: 'mariana@alunos.utfpr.edu.br',
     });
-    accepted.flush([{
-      id: 'ride-1',
-      driverId: 'driver-1',
-      origin: 'Batel',
-      destination: 'UTFPR Neoville',
-      departureTime: new Date(2030, 4, 10, 8).toISOString(),
-      totalSeats: 2,
-      availableSeats: 2,
-      pricePerSeat: 7,
-      status: 'active',
-      createdAt: new Date(2030, 4, 9, 16).toISOString(),
-    } satisfies Ride]);
+    accepted.flush([
+      toRideRow({
+        id: 'ride-1',
+        driverId: 'driver-1',
+        origin: 'Batel',
+        destination: 'UTFPR Neoville',
+        departureTime: new Date(2030, 4, 10, 8).toISOString(),
+        totalSeats: 2,
+        availableSeats: 2,
+        pricePerSeat: 7,
+        status: 'active',
+        createdAt: new Date(2030, 4, 9, 16).toISOString(),
+      } satisfies Ride),
+    ]);
     http.expectNone((request) => request.url === driverSummariesUrl);
 
     searchRequest(http).flush(null, { status: 401, statusText: 'Unauthorized' });
