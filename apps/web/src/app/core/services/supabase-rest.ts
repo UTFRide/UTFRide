@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { Notification } from '../models/notification.model';
 import { Ride, RideStatus } from '../models/ride.model';
+import { RideRequest, RideRequestStatus } from '../models/ride-request.model';
 import { User } from '../models/user.model';
 
 /** Cabeçalhos PostgREST para receber a linha única criada ou atualizada como objeto JSON. */
@@ -49,6 +50,14 @@ export interface DriverSummaryRow {
   id: string;
   name: string;
   rating_average: number | string;
+}
+
+export interface RideRequestRow {
+  id: string;
+  ride_id: string;
+  passenger_id: string;
+  status: RideRequestStatus;
+  created_at: string;
 }
 
 /** Monta a URL de uma tabela/recurso da API REST do Supabase. */
@@ -114,4 +123,15 @@ export function isInvalidUuidError(error: HttpErrorResponse): boolean {
     ? (error.error as { code?: unknown }).code
     : undefined;
   return error.status === 400 && code === '22P02';
+}
+
+/** Converte um registro `ride_requests` (snake_case) do PostgreSQL para `RideRequest` (camelCase). */
+export function mapRideRequestRow(row: RideRequestRow): RideRequest {
+  return {
+    id: row.id,
+    rideId: row.ride_id,
+    passengerId: row.passenger_id,
+    status: row.status,
+    createdAt: row.created_at,
+  };
 }

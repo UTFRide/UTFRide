@@ -18,7 +18,6 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { environment } from '../../../environments/environment';
 import { HANDLE_SESSION_EXPIRATION_ONLY } from '../interceptors/error-interceptor';
 import { Notification } from '../models/notification.model';
 import { Ride, RideDriverSummary } from '../models/ride.model';
@@ -33,6 +32,15 @@ import {
   RideErrorResult,
   RideUnauthorizedError,
 } from './ride-data';
+import {
+  mapRideRequestRow,
+  mapRideRow,
+  RideRequestRow,
+  RideRow,
+  SUPABASE_SINGLE_OBJECT_HEADERS,
+  supabaseRestUrl,
+  supabaseRpcUrl,
+} from './supabase-rest';
 
 export type RideRequestDecisionResult =
   | { request: RideRequest; ride: Ride }
@@ -181,19 +189,27 @@ export class RideRequestData {
               return this.fetchRequestsForRide(rideId);
             }
 
-            return this.http.get<Ride>(`${environment.apiUrl}/rides/${rideId}`).pipe(
-              switchMap((ride) => {
-                if (!this.rideData.canManageRide(ride)) {
+            return this.http
+              .get<RideRow[]>(supabaseRestUrl('rides'), { params: { id: `eq.${rideId}` } })
+              .pipe(
+                switchMap((rows) => {
+                  const row = rows[0];
+                  if (!row) {
+                    this.requestsState.set([]);
+                    return of({ requestError: true as const });
+                  }
+                  const ride = mapRideRow(row);
+                  if (!this.rideData.canManageRide(ride)) {
+                    this.requestsState.set([]);
+                    return of({ unauthorized: true as const });
+                  }
+                  return this.fetchRequestsForRide(rideId);
+                }),
+                catchError((error: unknown) => {
                   this.requestsState.set([]);
-                  return of({ unauthorized: true as const });
-                }
-                return this.fetchRequestsForRide(rideId);
-              }),
-              catchError((error: unknown) => {
-                this.requestsState.set([]);
-                return of(this.mapError(error));
-              }),
-            );
+                  return of(this.mapError(error));
+                }),
+              );
           }),
           startWith(undefined),
         ),
@@ -227,10 +243,13 @@ export class RideRequestData {
               }
 
               return this.http
-                .patch<RideRequest>(`${environment.apiUrl}/ride_requests/${request.id}`, {
-                  status: 'accepted',
-                })
+                .patch<RideRequestRow>(
+                  supabaseRestUrl('ride_requests'),
+                  { status: 'accepted' },
+                  { params: { id: `eq.${request.id}` }, headers: SUPABASE_SINGLE_OBJECT_HEADERS },
+                )
                 .pipe(
+                  map(mapRideRequestRow),
                   switchMap((updatedRequest) =>
                     this.rideData.occupySeat$(ride).pipe(
                       map((updatedRide) => ({ request: updatedRequest, ride: updatedRide })),
@@ -250,10 +269,13 @@ export class RideRequestData {
             }
 
             return this.http
-              .patch<RideRequest>(`${environment.apiUrl}/ride_requests/${request.id}`, {
-                status: 'rejected',
-              })
+              .patch<RideRequestRow>(
+                supabaseRestUrl('ride_requests'),
+                { status: 'rejected' },
+                { params: { id: `eq.${request.id}` }, headers: SUPABASE_SINGLE_OBJECT_HEADERS },
+              )
               .pipe(
+                map(mapRideRequestRow),
                 tap((updatedRequest) =>
                   this.requestsState.update((items) =>
                     items.map((item) => (item.id === updatedRequest.id ? updatedRequest : item)),
@@ -286,10 +308,11 @@ export class RideRequestData {
             return this.rideData.cancel$(ride).pipe(
               switchMap((cancelledRide) =>
                 this.http
-                  .get<RideRequest[]>(`${environment.apiUrl}/ride_requests`, {
-                    params: { rideId: ride.id },
+                  .get<RideRequestRow[]>(supabaseRestUrl('ride_requests'), {
+                    params: { ride_id: `eq.${ride.id}` },
                   })
                   .pipe(
+                    map((rows) => rows.map(mapRideRequestRow)),
                     switchMap((requests) =>
                       this.cancelPendingAndNotify(cancelledRide, requests),
                     ),
@@ -324,12 +347,20 @@ export class RideRequestData {
             startWith(passenger),
             switchMap(() =>
               this.http
-                .get<PassengerTripSummary[]>(`${environment.apiUrl}/passenger-trip-summaries`, {
-                  params: { passengerId: passenger.id },
-                  context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
-                })
+                .post<PassengerTripSummary[]>(
+                  supabaseRpcUrl('get_passenger_trip_summaries'),
+                  {},
+                  {
+                    context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
+                  },
+                )
                 .pipe(
-                  map((trips): PassengerTripsResult => ({ status: 'loaded', trips })),
+                  map((trips): PassengerTripsResult => ({
+                    status: 'loaded',
+                    trips: trips.map(({ whatsapp, ...trip }) =>
+                      whatsapp ? { ...trip, whatsapp } : trip,
+                    ),
+                  })),
                   catchError((error: unknown) => of(passengerLoadError(error))),
                   startWith({ status: 'loading' } as const),
                   map((result) => ({ passenger, result })),
@@ -523,44 +554,54 @@ export class RideRequestData {
     passenger: AuthenticatedUser,
   ): Observable<CancelPassengerRequestResult> {
     const context = new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true);
-    const url = `${environment.apiUrl}/ride_requests/${encodeURIComponent(requestId)}`;
-    return this.http.get<RideRequest>(url, { context }).pipe(
-      switchMap((request): Observable<CancelPassengerRequestResult> => {
-        const failure = this.passengerAccessFailure(passenger);
-        if (failure) return of(failure);
-        if (request.id !== requestId) return of({ status: 'request-error' });
-        if (request.passengerId !== passenger.id) return of({ status: 'not-owned' });
-        if (request.status !== 'pending') return of({ status: 'invalid-state' });
+    const url = supabaseRestUrl('ride_requests');
+    return this.http
+      .get<RideRequestRow[]>(url, { context, params: { id: `eq.${requestId}` } })
+      .pipe(
+        switchMap((rows): Observable<CancelPassengerRequestResult> => {
+          const failure = this.passengerAccessFailure(passenger);
+          if (failure) return of(failure);
+          const row = rows[0];
+          if (!row) return of({ status: 'request-error' });
+          const request = mapRideRequestRow(row);
+          if (request.id !== requestId) return of({ status: 'request-error' });
+          if (request.passengerId !== passenger.id) return of({ status: 'not-owned' });
+          if (request.status !== 'pending') return of({ status: 'invalid-state' });
 
-        return this.http
-          .patch<RideRequest>(
-            url,
-            { status: 'cancelled' },
-            { context, params: { passengerId: passenger.id } },
-          )
-          .pipe(
-            map((updated): CancelPassengerRequestResult => {
-              const failure = this.passengerAccessFailure(passenger);
-              if (failure) return failure;
-              return updated?.id === requestId &&
-                updated.passengerId === passenger.id &&
-                updated.status === 'cancelled'
-                ? { status: 'cancelled', request: updated }
-                : { status: 'request-error' };
-            }),
-            catchError((error: unknown): Observable<CancelPassengerRequestResult> => {
-              const failure = this.passengerAccessFailure(passenger);
-              if (failure) return of(failure);
-              if (error instanceof HttpErrorResponse) {
-                if (error.status === 409) return of({ status: 'invalid-state' });
-                if (error.status === 403) return of({ status: 'not-owned' });
-              }
-              return of(this.passengerOperationError(error, passenger));
-            }),
-          );
-      }),
-      catchError((error: unknown) => of(this.passengerOperationError(error, passenger))),
-    );
+          return this.http
+            .patch<RideRequestRow>(
+              url,
+              { status: 'cancelled' },
+              {
+                context,
+                params: { id: `eq.${requestId}`, passenger_id: `eq.${passenger.id}` },
+                headers: SUPABASE_SINGLE_OBJECT_HEADERS,
+              },
+            )
+            .pipe(
+              map((updatedRow): CancelPassengerRequestResult => {
+                const failure = this.passengerAccessFailure(passenger);
+                if (failure) return failure;
+                const updated = mapRideRequestRow(updatedRow);
+                return updated.id === requestId &&
+                  updated.passengerId === passenger.id &&
+                  updated.status === 'cancelled'
+                  ? { status: 'cancelled', request: updated }
+                  : { status: 'request-error' };
+              }),
+              catchError((error: unknown): Observable<CancelPassengerRequestResult> => {
+                const failure = this.passengerAccessFailure(passenger);
+                if (failure) return of(failure);
+                if (error instanceof HttpErrorResponse) {
+                  if (error.status === 409) return of({ status: 'invalid-state' });
+                  if (error.status === 403) return of({ status: 'not-owned' });
+                }
+                return of(this.passengerOperationError(error, passenger));
+              }),
+            );
+        }),
+        catchError((error: unknown) => of(this.passengerOperationError(error, passenger))),
+      );
   }
 
   private submitPassengerRequest(
@@ -608,18 +649,23 @@ export class RideRequestData {
     passenger: AuthenticatedUser,
   ): Observable<CreateRideRequestResult> {
     const body = {
-      rideId: ride.id,
-      passengerId: passenger.id,
+      ride_id: ride.id,
+      passenger_id: passenger.id,
       status: 'pending' as const,
-      createdAt: new Date().toISOString(),
+      created_at: new Date().toISOString(),
     };
     return this.http
-      .post<RideRequest>(`${environment.apiUrl}/ride_requests`, body, {
+      .post<RideRequestRow>(supabaseRestUrl('ride_requests'), body, {
         context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
+        headers: SUPABASE_SINGLE_OBJECT_HEADERS,
       })
       .pipe(
-        map((request): CreateRideRequestResult =>
-          this.passengerAccessFailure(passenger) ?? { status: 'created', ride, request },
+        map((row): CreateRideRequestResult =>
+          this.passengerAccessFailure(passenger) ?? {
+            status: 'created',
+            ride,
+            request: mapRideRequestRow(row),
+          },
         ),
         catchError((error: unknown) => {
           const failure = this.passengerAccessFailure(passenger);
@@ -627,7 +673,7 @@ export class RideRequestData {
           if (
             error instanceof HttpErrorResponse &&
             error.status === 409 &&
-            error.error?.code === 'active-ride-request'
+            (error.error?.code === '23505' || error.error?.code === 'active-ride-request')
           ) {
             this.rememberPassengerRequestRecovery(ride.id, passenger);
             return this.recoverPassengerRequest(ride.id, passenger);
@@ -751,16 +797,15 @@ export class RideRequestData {
     rideId: string,
     passengerId: string,
   ): Observable<RideRequest | null> {
-    // _where preserva IDs textuais que o json-server converteria em filtros simples (ex.: "007").
-    const where = { rideId: { eq: rideId }, passengerId: { eq: passengerId } };
     return this.http
-      .get<RideRequest[]>(`${environment.apiUrl}/ride_requests`, {
+      .get<RideRequestRow[]>(supabaseRestUrl('ride_requests'), {
         context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
-        params: { _where: JSON.stringify(where) },
+        params: { ride_id: `eq.${rideId}`, passenger_id: `eq.${passengerId}` },
       })
       .pipe(
-        map((requests) => {
-          const matching = requests
+        map((rows) => {
+          const matching = rows
+            .map(mapRideRequestRow)
             .filter((request) => request.rideId === rideId && request.passengerId === passengerId)
             .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
           return matching.find(isActiveRideRequest) ?? matching[0] ?? null;
@@ -770,8 +815,11 @@ export class RideRequestData {
 
   private fetchRequestsForRide(rideId: string): Observable<LoadRideRequestsResult> {
     return this.http
-      .get<RideRequest[]>(`${environment.apiUrl}/ride_requests`, { params: { rideId } })
+      .get<RideRequestRow[]>(supabaseRestUrl('ride_requests'), {
+        params: { ride_id: `eq.${rideId}` },
+      })
       .pipe(
+        map((rows) => rows.map(mapRideRequestRow)),
         tap((requests) => this.requestsState.set(requests)),
         map((requests) => ({ requests })),
         catchError((error: unknown) => of(this.mapError(error))),
@@ -794,9 +842,16 @@ export class RideRequestData {
         ? of([] as RideRequest[])
         : forkJoin(
             pendingRequests.map((request) =>
-              this.http.patch<RideRequest>(`${environment.apiUrl}/ride_requests/${request.id}`, {
-                status: 'cancelled',
-              }),
+              this.http
+                .patch<RideRequestRow>(
+                  supabaseRestUrl('ride_requests'),
+                  { status: 'cancelled' },
+                  {
+                    params: { id: `eq.${request.id}` },
+                    headers: SUPABASE_SINGLE_OBJECT_HEADERS,
+                  },
+                )
+                .pipe(map(mapRideRequestRow)),
             ),
           );
 
