@@ -3,10 +3,16 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AuthError, isAuthRetryableFetchError, User as SupabaseUser } from '@supabase/supabase-js';
 import { catchError, exhaustMap, firstValueFrom, from, map, Observable, of, startWith, Subject, switchMap, throwError } from 'rxjs';
-import { environment } from '../../../environments/environment';
 import { ErrorNotice } from './error-notice';
 import { Registration, User } from '../models/user.model';
 import { SupabaseClientService } from './supabase-client';
+import {
+  mapUserRow,
+  SUPABASE_SINGLE_OBJECT_HEADERS,
+  supabaseRestUrl,
+  supabaseRpcUrl,
+  UserRow,
+} from './supabase-rest';
 
 export type AuthenticatedUser = Omit<User, 'password'>;
 export type PassengerAccessRestriction = 'blocked-account' | 'support-profile';
@@ -125,12 +131,17 @@ export class AuthData {
   readonly result = toSignal(this.resets.pipe(
     startWith(undefined),
     switchMap(() => this.submissions.pipe(
-      exhaustMap((registration) => this.http.post<{ exists: boolean }>(`${environment.apiUrl}/registration-exists`, { email: registration.email, registrationNumber: registration.registrationNumber }).pipe(
-        switchMap(({ exists }) => exists
-          ? of({ duplicate: true as const })
-          : this.registerWithSupabase(registration)),
-        catchError((error: unknown) => of(this.classifyUnexpectedFailure(error))),
-      )),
+      exhaustMap((registration) =>
+        this.http
+          .post<boolean>(supabaseRpcUrl('check_registration_exists'), {
+            p_email: registration.email,
+            p_registration_number: registration.registrationNumber,
+          })
+          .pipe(
+            switchMap((exists) => (exists ? of({ duplicate: true as const }) : this.registerWithSupabase(registration))),
+            catchError((error: unknown) => of(this.classifyUnexpectedFailure(error))),
+          ),
+      ),
       startWith(undefined),
     )),
   ));
@@ -178,60 +189,72 @@ export class AuthData {
     if (!lookupEmail) {
       return from(this.clearAutoSession()).pipe(map(() => ({ user: null })));
     }
-    // TODO: Atividade 15 — migrar coleção users para tabela no Supabase com RLS
-    return this.http.get<User[]>(`${environment.apiUrl}/users`, { params: { email: lookupEmail } }).pipe(
-      switchMap((users) => {
-        if (!Array.isArray(users)) {
-          return throwError(() => new Error('Resposta inválida ao carregar perfil.'));
-        }
-        const existing = users.find((user) => user.email.toLowerCase() === lookupEmail.toLowerCase());
-        if (existing) {
-          return of(existing);
-        }
-        return this.http.post<User>(
-          `${environment.apiUrl}/users`,
-          this.buildMirrorProfile(supabaseUser, lookupEmail),
-        );
-      }),
-      this.rollbackSessionOnError(),
-      switchMap((user) => {
-        if (user.isBlocked) {
-          return from(this.clearAutoSession()).pipe(
-            map(() => ({ user: null, blocked: true as const })),
-          );
-        }
-        this.authenticatedUser.set(user);
-        this.sessionAccessToken.set(accessToken);
-        return of({ user });
-      }),
-    );
+    return this.http
+      .get<UserRow[]>(supabaseRestUrl('users'), {
+        params: { id: `eq.${supabaseUser.id}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      .pipe(
+        switchMap((users) => {
+          if (!Array.isArray(users)) {
+            return throwError(() => new Error('Resposta inválida ao carregar perfil.'));
+          }
+          const existing = users.find((user) => user.id === supabaseUser.id) ?? users[0];
+          if (existing) {
+            return of(mapUserRow(existing));
+          }
+          return this.http
+            .post<UserRow>(
+              supabaseRestUrl('users'),
+              this.buildMirrorProfileRow(supabaseUser, lookupEmail),
+              {
+                headers: {
+                  ...SUPABASE_SINGLE_OBJECT_HEADERS,
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              },
+            )
+            .pipe(map((created) => mapUserRow(created)));
+        }),
+        this.rollbackSessionOnError(),
+        switchMap((user) => {
+          if (user.isBlocked) {
+            return from(this.clearAutoSession()).pipe(
+              map(() => ({ user: null, blocked: true as const })),
+            );
+          }
+          this.authenticatedUser.set(user);
+          this.sessionAccessToken.set(accessToken);
+          return of({ user });
+        }),
+      );
   }
 
-  private buildMirrorProfile(supabaseUser: SupabaseUser, email: string) {
+  private buildMirrorProfileRow(supabaseUser: SupabaseUser, email: string): UserRow {
     const metadata = supabaseUser.user_metadata ?? {};
     const name = typeof metadata['name'] === 'string' && metadata['name'].trim()
       ? metadata['name']
       : email.split('@')[0];
-    const registrationNumber = typeof metadata['registrationNumber'] === 'string'
+    const registration_number = typeof metadata['registrationNumber'] === 'string'
       ? metadata['registrationNumber']
       : '';
     const whatsapp = typeof metadata['whatsapp'] === 'string'
       ? metadata['whatsapp']
       : '';
     const role = metadata['role'] === 'support' ? ('support' as const) : ('student' as const);
-    const isBlocked = metadata['isBlocked'] === true;
+    const is_blocked = metadata['isBlocked'] === true;
 
     return {
-      ...(supabaseUser.id ? { id: supabaseUser.id } : {}),
+      id: supabaseUser.id,
       name,
       email,
-      registrationNumber,
+      registration_number,
       whatsapp,
       role,
-      isBlocked,
-      isEmailConfirmed: true,
-      ratingAverage: 0,
-      createdAt: supabaseUser.created_at || new Date().toISOString(),
+      is_blocked,
+      is_email_confirmed: true,
+      rating_average: 0,
+      created_at: supabaseUser.created_at || new Date().toISOString(),
     };
   }
 
@@ -264,20 +287,24 @@ export class AuthData {
         if (!data.user) {
           return of({ authError: DEFAULT_REGISTER_ERROR });
         }
-        // TODO: Atividade 15 — migrar coleção users para tabela no Supabase com RLS
-        const profile = {
-          ...(data.user.id ? { id: data.user.id } : {}),
+        const profileRow: UserRow = {
+          id: data.user.id,
           name: registration.name,
           email: registration.email,
-          registrationNumber: registration.registrationNumber,
+          registration_number: registration.registrationNumber,
           whatsapp: registration.whatsapp,
-          role: 'student' as const,
-          isBlocked: false,
-          isEmailConfirmed: true,
-          ratingAverage: 0,
-          createdAt: new Date().toISOString(),
+          role: 'student',
+          is_blocked: false,
+          is_email_confirmed: true,
+          rating_average: 0,
+          created_at: new Date().toISOString(),
         };
-        return this.http.post<User>(`${environment.apiUrl}/users`, profile).pipe(
+        const headers: Record<string, string> = { ...SUPABASE_SINGLE_OBJECT_HEADERS };
+        if (data.session?.access_token) {
+          headers['Authorization'] = `Bearer ${data.session.access_token}`;
+        }
+        return this.http.post<UserRow>(supabaseRestUrl('users'), profileRow, { headers }).pipe(
+          map((saved) => mapUserRow(saved)),
           this.rollbackSessionOnError(),
           switchMap((user) =>
             from(this.clearAutoSession()).pipe(
