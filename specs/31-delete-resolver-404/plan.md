@@ -22,7 +22,7 @@
 
 ## Tarefas
 
-- [ ] **Tarefa 1 — Implementar exclusão real de oferta cancelada (`DELETE`) no `RideData`**
+- [x] **Tarefa 1 — Implementar exclusão real de oferta cancelada (`DELETE`) no `RideData`**
   - Cobre: CA1, CA2, CA3, CA6
   - Teste primeiro: em `apps/web/src/app/core/services/ride-data.spec.ts`, adicionar testes que provam `canDelete` verdadeiro apenas para oferta `cancelled` do motorista autor ativo, envio de `DELETE /rest/v1/rides?id=eq.<id>` atualizando `driverRides` e `editingRide`, bloqueio sem HTTP para ofertas `active`/`full`/`completed` ou conta bloqueada/`support`/outro autor, e tratamento de `connectionError` (`status === 0`) e `requestError`; falha inicialmente porque `canDelete`, `deleteRide` e `deleteResult` ainda não existem.
   - Arquivos previstos: `apps/web/src/app/core/services/ride-data.spec.ts`, `apps/web/src/app/core/services/ride-data.ts`.

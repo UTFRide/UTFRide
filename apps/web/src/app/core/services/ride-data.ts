@@ -57,6 +57,12 @@ export type UpdateRideResult =
   | { invalidData: true }
   | RideErrorResult;
 
+export type DeleteRideResult =
+  | { deletedRideId: string }
+  | { unauthorized: true }
+  | { invalidState: true }
+  | RideErrorResult;
+
 export type DriverRidesResult = { rides: Ride[] } | { unauthorized: true } | RideErrorResult;
 
 export type EditRideLoadResult = { ride: Ride } | { unauthorized: true } | RideErrorResult;
@@ -114,6 +120,8 @@ export class RideData {
   private readonly publishResets = new Subject<void>();
   private readonly updateSubmissions = new Subject<{ ride: Ride; draft: RideDraft }>();
   private readonly updateResets = new Subject<void>();
+  private readonly deleteSubmissions = new Subject<Ride>();
+  private readonly deleteResets = new Subject<void>();
   private readonly editRideLoads = new Subject<string>();
   private readonly editLoadResets = new Subject<void>();
   private readonly editLoadResults = new Subject<EditRideLoadResult>();
@@ -296,6 +304,48 @@ export class RideData {
                 }),
                 map((updated) => ({ ride: updated })),
                 catchError((error: unknown) => of(this.mapError(error))),
+              );
+          }),
+          startWith(undefined),
+        ),
+      ),
+    ),
+  );
+
+  readonly deleteResult = toSignal<DeleteRideResult | undefined>(
+    this.deleteResets.pipe(
+      startWith(undefined),
+      switchMap(() =>
+        this.deleteSubmissions.pipe(
+          exhaustMap((ride) => {
+            if (!this.canManageRide(ride)) {
+              return of({ unauthorized: true as const });
+            }
+
+            if (ride.status !== 'cancelled') {
+              return of({ invalidState: true as const });
+            }
+
+            const driver = this.auth.currentUser();
+            return this.http
+              .delete<void>(supabaseRestUrl('rides'), {
+                params: { id: `eq.${ride.id}` },
+              })
+              .pipe(
+                // A sessão pode mudar antes de a resposta chegar.
+                filter(() => driver === this.auth.currentUser()),
+                tap(() => {
+                  this.driverRidesState.update((rides) =>
+                    rides.filter((item) => item.id !== ride.id),
+                  );
+                  if (this.editingRideState()?.id === ride.id) {
+                    this.editingRideState.set(null);
+                  }
+                }),
+                map(() => ({ deletedRideId: ride.id })),
+                catchError((error: unknown) =>
+                  driver === this.auth.currentUser() ? of(this.mapError(error)) : EMPTY,
+                ),
               );
           }),
           startWith(undefined),
@@ -547,6 +597,19 @@ export class RideData {
       (ride.status === 'active' || ride.status === 'full') &&
       new Date(ride.departureTime).getTime() > Date.now()
     );
+  }
+
+  canDelete(ride: Ride): boolean {
+    return this.canManageRide(ride) && ride.status === 'cancelled';
+  }
+
+  deleteRide(ride: Ride): void {
+    this.notice.message.set('');
+    this.deleteSubmissions.next(ride);
+  }
+
+  resetDelete(): void {
+    this.deleteResets.next();
   }
 
   cancel$(ride: Ride): Observable<Ride> {
