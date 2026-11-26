@@ -27,7 +27,7 @@
   - Teste primeiro: em `apps/web/src/app/core/services/ride-data.spec.ts`, adicionar testes que provam `canDelete` verdadeiro apenas para oferta `cancelled` do motorista autor ativo, envio de `DELETE /rest/v1/rides?id=eq.<id>` atualizando `driverRides` e `editingRide`, bloqueio sem HTTP para ofertas `active`/`full`/`completed` ou conta bloqueada/`support`/outro autor, e tratamento de `connectionError` (`status === 0`) e `requestError`; falha inicialmente porque `canDelete`, `deleteRide` e `deleteResult` ainda não existem.
   - Arquivos previstos: `apps/web/src/app/core/services/ride-data.spec.ts`, `apps/web/src/app/core/services/ride-data.ts`.
 
-- [ ] **Tarefa 2 — Adicionar fluxo e modal de confirmação de exclusão em `MyRides`**
+- [x] **Tarefa 2 — Adicionar fluxo e modal de confirmação de exclusão em `MyRides`**
   - Cobre: CA1, CA2, CA3, CA6
   - Teste primeiro: em `apps/web/src/app/features/driver/my-rides/my-rides.spec.ts`, adicionar testes que verificam botão **Excluir Oferta** restrito a oferta `cancelled` própria, abertura do modal acessível (`role="dialog"`, `[inert]` no fundo), desistência via **Voltar** e `Escape` sem HTTP e com retorno de foco, confirmação disparando `DELETE /rest/v1/rides?id=eq.<id>` e removendo a oferta com feedback acessível, alerta no modal em falha de conexão permitindo nova tentativa, bloqueio para outro aluno/conta bloqueada e limpeza de estado ao sair ou trocar de oferta; falha inicialmente porque a ação e o modal de exclusão ainda não existem em `MyRides`.
   - Arquivos previstos: `apps/web/src/app/features/driver/my-rides/my-rides.spec.ts`, `apps/web/src/app/features/driver/my-rides/my-rides.ts`, `apps/web/src/app/features/driver/my-rides/my-rides.html`.
