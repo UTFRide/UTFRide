@@ -34,4 +34,5 @@ export const routes: Routes = [
   },
   { path: 'driver/offer', canActivate: [authGuard], loadComponent: () => import('./features/driver/offer-ride/offer-ride').then((m) => m.OfferRide) },
   { path: 'driver/my-rides', canActivate: [authGuard], loadComponent: () => import('./features/driver/my-rides/my-rides').then((m) => m.MyRides) },
+  { path: '**', loadComponent: () => import('./features/not-found/not-found').then((m) => m.NotFound) },
 ];
