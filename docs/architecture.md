@@ -34,20 +34,19 @@
 
 A persistência do UTFRide evolui em duas fases bem demarcadas:
 
-### 2.1 Fase MVP e Transição de Autenticação — `json-server` + Supabase Auth
-- **Arquivo de Dados:** `apps/api/db.json`
-- **Execução** — `npm run server` na raiz do repositório disponibiliza a API na porta 3000. `apps/api/start.mjs` carrega o arquivo de dados e inicia `createServer` de `apps/api/server.mjs`.
-- **Camada de Integração:** `HttpClient` do Angular consumindo `http://localhost:3000/` com `authInterceptor` anexando o token JWT da sessão quando disponível.
-- **Coleções Mapeadas:** `users`, `rides`, `ride_requests`, `ride_searches`, `reviews`, `reports`, `notifications`.
-- **Autenticação e sessão (Supabase Auth na fase transitória):** o cadastro e o login migram da simulação em memória no `json-server` para o **Supabase Auth** (`@supabase/supabase-js`, via `signUp`, `signInWithPassword`, `signOut` e restauração de sessão persistida em navegador no recarregamento da página). A sessão autenticada emite um token **JWT** (`access_token`) verificado pelo `authGuard` e enviado pelo `authInterceptor`. Os demais dados de domínio (`rides`, `ride_requests`, `notifications` e perfis vinculados) permanecem temporariamente no `json-server` até a migração das tabelas na Entrega 3.
-- **Consulta de caronas** — `GET /driver-summaries?id=…` retorna apenas identificador, nome e avaliação média do motorista. `GET /passenger-trip-summaries?passengerId=…` filtra pelo ID textual da sessão e projeta os resumos de Minhas Viagens. O WhatsApp é incluído apenas nas solicitações aceitas de caronas ativas ou lotadas. O parâmetro `passengerId` identifica o filtro da consulta. A verificação da identidade no servidor com RLS está prevista na fase completa no Supabase.
-- **Gravações de solicitações** — `POST /ride_requests` confere a existência de pedido pendente ou aceito para o mesmo par oferta e passageiro dentro da fila de gravação. `PATCH /ride_requests/:id?passengerId=…` verifica a titularidade e o estado pendente no momento do cancelamento voluntário. A fila é compartilhada pela instância do servidor e publica o novo estado depois que a gravação do JSON é concluída.
+### 2.1 Fase MVP e Decisão de Integração REST — `json-server` → Supabase (`/rest/v1/...`)
+- **Fase transitória (MVP / Atividade 14):** o cadastro e o login usaram o **Supabase Auth** (`@supabase/supabase-js`), enquanto as coleções de domínio (`users`, `rides`, `ride_requests`, `notifications`) permaneceram temporariamente no `json-server` (`apps/api/db.json` na porta `3000`).
+- **Decisão arquitetural da Entrega 3 (Atividade 15):** os Services de dados (`AuthData`, `RideData`, `RideRequestData`, `NotificationData`) falam com o PostgreSQL do Supabase pelo **`HttpClient` do Angular direto na API REST (`/rest/v1/…`)**. A biblioteca `@supabase/supabase-js` continua cuidando **exclusivamente do login, cadastro e sessão** (`signUp`, `signInWithPassword`, `signOut`, `getSession`). Fazendo assim, **toda requisição de dados passa obrigatoriamente pelos interceptors funcionais** (`authInterceptor` na ida, injetando `apikey` e `Authorization: Bearer <token>`, e `errorInterceptor` na volta, tratando `401` e falhas de servidor).
+- **Consultas com projeção e validação de privacidade:**
+  - Verificação de duplicidade de e-mail ou matrícula antes do login: função RPC no PostgreSQL (`check_registration_exists`) retornando apenas booleano, sem expor a tabela `users` a visitantes anônimos.
+  - Resumo público de motorista (`driver_summaries`): projeção apenas de `id`, `name` e `rating_average` para usuários autenticados.
+  - Resumo de viagens do passageiro (`passenger_trip_summaries`): inclui o `whatsapp` do motorista **somente** quando a solicitação está `accepted` e a carona está `active` ou `full`.
 
 ### 2.2 Fase Completa (Entrega 3) — Backend-as-a-Service (**Supabase**)
-- **Banco de Dados:** PostgreSQL hospedado no Supabase.
-- **Autenticação:** Supabase Auth com gerenciamento de sessão via tokens **JWT** e validação de domínio institucional `@alunos.utfpr.edu.br`.
-- **Segurança:** Políticas de Row Level Security (RLS) protegendo dados privados e restringindo alterações a proprietários dos registros.
-- **Cliente:** Biblioteca oficial `@supabase/supabase-js` encapsulada nos Services do `core/services/`.
+- **Banco de Dados:** PostgreSQL hospedado no Supabase (`supabase/schema.sql`).
+- **Autenticação:** Supabase Auth (`@supabase/supabase-js`) com gerenciamento de sessão via tokens **JWT** e validação de domínio institucional `@alunos.utfpr.edu.br`.
+- **Segurança:** Políticas de **Row Level Security (RLS)** habilitadas em todas as tabelas, protegendo dados privados e restringindo alterações aos respectivos donos dos registros.
+- **Cliente de Dados:** Angular `HttpClient` consumindo `${supabaseUrl}/rest/v1/...` dentro dos Services de `core/services/`, com `@supabase/supabase-js` encapsulado em `SupabaseClientService` apenas para identidade/sessão.
 
 ### 2.3 Regra Fundamental da Camada de Dados
 > **Componente nunca fala com a rede ou com o banco.**  
@@ -55,8 +54,8 @@ A persistência do UTFRide evolui em duas fases bem demarcadas:
 
 ### 2.4 Interceptors e Reatividade Assíncrona
 - **Functional Interceptors:**
-  - `authInterceptor`: Lê o token JWT (`access_token`) da sessão ativa no Supabase Auth e injeta automaticamente o cabeçalho `Authorization: Bearer <token>` nas requisições HTTP do `HttpClient`.
-  - `errorInterceptor`: Trata globalmente erros 401 (encerra a sessão no `AuthData` e redireciona para `/login`), 403 (acesso proibido), 500 e falhas de servidor/rede, respeitando os tokens de contexto `SKIP_GLOBAL_ERROR_HANDLING` e `HANDLE_SESSION_EXPIRATION_ONLY`.
+  - `authInterceptor`: Identifica requisições destinadas ao `environment.supabaseUrl`, injeta o cabeçalho `apikey` (`supabasePublishableKey`) e, quando há sessão ativa em `AuthData`, injeta `Authorization: Bearer <token>`. Requisições a serviços externos (como a API do IBGE em `LocationData`) **não** recebem `apikey` nem `Authorization`.
+  - `errorInterceptor`: Trata globalmente erros `401` (encerra a sessão no `AuthData` e redireciona para `/login`), `403` (acesso proibido), `500` e servidor fora do ar / falha de rede (`status === 0`, exibindo mensagem amigável no `ErrorNotice`), respeitando os tokens de contexto `SKIP_GLOBAL_ERROR_HANDLING` e `HANDLE_SESSION_EXPIRATION_ONLY`.
 - **Ponte RxJS ↔ Signals:** Conversão de chamadas assíncronas em Signals reativos nos Services através dos utilitários `toSignal()` e `toObservable()`.
 
 ### 2.5 Ambientes e Segredos (Supabase)
@@ -175,7 +174,7 @@ UTFRide/
 
 ## 📖 5. Glossário Técnico e Modelo de Domínio (PT → EN)
 
-Para garantir consistência e evitar ambiguidades conceituais, todos os termos ubíquos definidos no [`docs/prd.md`] possuem correspondência direta no código:
+Para garantir consistência e evitar ambiguidades conceituais, todos os termos ubíquos definidos no [`docs/prd.md`] possuem correspondência direta no código (as colunas de dono no banco e as regras RLS por linha estão detalhadas na **§6**):
 
 | Termo PRD (PT) | Equivalente Técnico (EN) | Natureza no Código | Atributos e Tipos TypeScript / Detalhes |
 | :--- | :--- | :--- | :--- |
@@ -193,98 +192,117 @@ Para garantir consistência e evitar ambiguidades conceituais, todos os termos u
 
 ---
 
-## 📊 6. Diagrama Entidade-Relacionamento (Mermaid)
+## 📊 6. Diagrama Entidade-Relacionamento (Mermaid), Donos e Regras RLS
+
+As **4 tabelas ativas** implementadas no Supabase (`supabase/schema.sql`) nesta fase são `users`, `rides`, `ride_requests` e `notifications`. As demais tabelas do domínio (`ride_searches`, `reviews`, `reports`) permanecem mapeadas no diagrama ER para as próximas User Stories (US04, US05 e US06), quando serão criadas com suas respectivas políticas RLS.
+
+> **Mapeamento `snake_case` ↔ `camelCase`:** no PostgreSQL, todas as tabelas e colunas utilizam `snake_case`. Os Services (`core/services/`) convertem entre os registros do banco e os models `camelCase` do Angular, preservando os componentes inalterados. A senha do usuário é gerenciada exclusivamente pelo `auth.users` do Supabase Auth e **não** é armazenada na tabela `users`.
 
 ```mermaid
 erDiagram
-    USER ||--o{ RIDE : "publishes as driver"
-    USER ||--o{ RIDE_REQUEST : "submits as passenger"
-    USER ||--o{ RIDE_SEARCH : "posts as passenger"
-    USER ||--o{ REVIEW : "writes or receives"
-    USER ||--o{ REPORT : "files or is reported"
-    USER ||--o{ NOTIFICATION : "receives"
+    USERS ||--o{ RIDES : "publishes as driver"
+    USERS ||--o{ RIDE_REQUESTS : "submits as passenger"
+    USERS ||--o{ RIDE_SEARCHES : "posts as passenger"
+    USERS ||--o{ REVIEWS : "writes or receives"
+    USERS ||--o{ REPORTS : "files or is reported"
+    USERS ||--o{ NOTIFICATIONS : "receives"
     
-    RIDE ||--o{ RIDE_REQUEST : "receives"
-    RIDE ||--o{ REVIEW : "evaluated in"
-    RIDE ||--o{ REPORT : "associated with"
-    RIDE ||--o{ NOTIFICATION : "generates on cancellation"
+    RIDES ||--o{ RIDE_REQUESTS : "receives"
+    RIDES ||--o{ REVIEWS : "evaluated in"
+    RIDES ||--o{ REPORTS : "associated with"
+    RIDES ||--o{ NOTIFICATIONS : "generates on cancellation"
 
-    USER {
-        string id PK
-        string name
-        string email
-        string registration_number
-        string whatsapp
-        string password
+    USERS {
+        uuid id PK "Dono - auth.uid"
+        text name
+        text email
+        text registration_number
+        text whatsapp
         boolean is_email_confirmed
-        string role
+        text role
         boolean is_blocked
-        number rating_average
-        datetime created_at
+        numeric rating_average
+        timestamptz created_at
     }
 
-    RIDE {
-        string id PK
-        string driver_id FK
-        string origin
-        string destination
-        datetime departure_time
-        number available_seats
-        number total_seats
-        number price_per_seat
-        string status
-        string notes
-        datetime created_at
+    RIDES {
+        uuid id PK
+        uuid driver_id FK "Dono - auth.uid"
+        text origin
+        text destination
+        timestamptz departure_time
+        integer available_seats
+        integer total_seats
+        numeric price_per_seat
+        text status
+        text notes
+        timestamptz created_at
     }
 
-    RIDE_REQUEST {
-        string id PK
-        string ride_id FK
-        string passenger_id FK
-        string status
-        datetime created_at
+    RIDE_REQUESTS {
+        uuid id PK
+        uuid ride_id FK
+        uuid passenger_id FK "Dono - auth.uid"
+        text status
+        timestamptz created_at
     }
 
-    RIDE_SEARCH {
-        string id PK
-        string passenger_id FK
-        string origin
-        string destination
-        datetime desired_time
-        string status
-        string contact_info
-        datetime created_at
+    NOTIFICATIONS {
+        uuid id PK
+        uuid recipient_id FK "Dono - auth.uid"
+        uuid ride_id FK
+        text message
+        timestamptz created_at
     }
 
-    REVIEW {
-        string id PK
-        string ride_id FK
-        string reviewer_id FK
-        string reviewed_id FK
-        number rating
-        string comment
-        datetime created_at
+    RIDE_SEARCHES {
+        uuid id PK
+        uuid passenger_id FK "Dono - US04 futura"
+        text origin
+        text destination
+        timestamptz desired_time
+        text status
+        text contact_info
+        timestamptz created_at
     }
 
-    REPORT {
-        string id PK
-        string reporter_id FK
-        string reported_user_id FK
-        string ride_id FK
-        string reason
-        string status
-        string resolution_notes
-        datetime created_at
+    REVIEWS {
+        uuid id PK
+        uuid ride_id FK
+        uuid reviewer_id FK "Dono - US05 futura"
+        uuid reviewed_id FK
+        integer rating
+        text comment
+        timestamptz created_at
     }
 
-    NOTIFICATION {
-        string id PK
-        string recipient_id FK
-        string ride_id FK
-        string message
-        datetime created_at
+    REPORTS {
+        uuid id PK
+        uuid reporter_id FK "Dono - US06 futura"
+        uuid reported_user_id FK
+        uuid ride_id FK
+        text reason
+        text status
+        text resolution_notes
+        timestamptz created_at
     }
 ```
+
+### 6.1 Coluna de Dono e Regras por Linha (RLS) em Português
+
+Todas as tabelas nascem com **Row Level Security (RLS) ativado** (`ENABLE ROW LEVEL SECURITY`). Visitantes sem login não leem nem alteram nenhuma linha de nenhuma tabela.
+
+| Tabela | Coluna de dono | Regras de acesso por operação (decisão da equipe) |
+| :--- | :--- | :--- |
+| **`users`** | `id` (`= auth.uid()`) | **Leitura (`SELECT`):** apenas o próprio aluno vê sua linha completa (protegendo `email`, matrícula e `whatsapp` contra leitura aberta por terceiros). Dados públicos mínimos do motorista (`id`, `name`, `rating_average`) e o `whatsapp` liberado após aceite são servidos por *views*/consultas seguras.<br>**Criação (`INSERT`):** apenas o próprio usuário autenticado (`id = auth.uid()`) pode criar seu perfil, obrigatoriamente com `role = 'student'` e `is_blocked = false`.<br>**Edição (`UPDATE`):** apenas o próprio usuário altera seus dados cadastrais, sem poder alterar `role` nem `is_blocked`.<br>**Exclusão (`DELETE`):** bloqueada pelo aplicativo. |
+| **`rides`** | `driver_id` (`= auth.uid()`) | **Leitura (`SELECT`):** qualquer pessoa autenticada pode consultar as caronas (visitantes sem login não veem nada).<br>**Criação (`INSERT`):** apenas alunos autenticados, não bloqueados e com `role <> 'support'` podem publicar uma oferta, e sempre com `driver_id = auth.uid()`.<br>**Edição (`UPDATE`):** apenas o motorista dono da carona (`driver_id = auth.uid()`) pode editar dados, ocupar vaga ou cancelar.<br>**Exclusão (`DELETE`):** apenas o motorista dono (`driver_id = auth.uid()`) pode apagar a própria carona. |
+| **`ride_requests`** | `passenger_id` (`= auth.uid()`) | **Leitura (`SELECT`):** o passageiro dono da solicitação (`passenger_id = auth.uid()`) **ou** o motorista dono da carona vinculada (`rides.driver_id = auth.uid()`).<br>**Criação (`INSERT`):** apenas o passageiro autenticado e não bloqueado (`passenger_id = auth.uid()`), desde que não seja o motorista da própria carona e que a carona não seja duplicada em estado ativo (`pending` ou `accepted`).<br>**Edição (`UPDATE`):** o passageiro dono pode cancelar a própria solicitação enquanto ela estiver `pending`; o motorista dono da carona vinculada pode aceitar, rejeitar ou cancelar solicitações recebidas.<br>**Exclusão (`DELETE`):** apenas o passageiro dono (`passenger_id = auth.uid()`). |
+| **`notifications`** | `recipient_id` (`= auth.uid()`) | **Leitura (`SELECT`):** apenas o destinatário da notificação (`recipient_id = auth.uid()`).<br>**Criação (`INSERT`):** apenas o motorista dono da carona referenciada (`rides.driver_id = auth.uid()`) pode criar avisos de cancelamento para os passageiros daquela viagem.<br>**Edição (`UPDATE`) e Exclusão (`DELETE`):** apenas o próprio destinatário (`recipient_id = auth.uid()`). |
+
+> **Consultas auxiliares seguras (substituindo rotas customizadas do antigo `json-server`):**
+> - `check_registration_exists(p_email, p_registration_number)` (função RPC `SECURITY DEFINER`): permite validar antes do `signUp` se o e-mail ou matrícula já existem em `users`, retornando apenas `boolean` sem expor dados pessoais a visitantes anônimos.
+> - `driver_summaries` (*view* `SECURITY DEFINER` com verificação `auth.uid() IS NOT NULL`): expõe apenas `id`, `name` e `rating_average` de motoristas para usuários autenticados.
+> - `passenger_trip_summaries` (*view* com `security_invoker = true` ou filtro por `auth.uid()`): retorna as viagens do passageiro autenticado e só inclui o `whatsapp` do motorista quando `ride_requests.status = 'accepted'` e `rides.status IN ('active', 'full')`.
 
 ---
 
