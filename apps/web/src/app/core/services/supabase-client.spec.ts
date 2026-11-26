@@ -45,10 +45,9 @@ describe('Ambientes e SupabaseClientService', () => {
     vi.restoreAllMocks();
   });
 
-  it('expõe apenas apiUrl, supabaseUrl e supabasePublishableKey nos ambientes sem chave secreta', () => {
+  it('expõe apenas supabaseUrl e supabasePublishableKey nos ambientes sem chave secreta', () => {
     for (const env of [prodEnvironment, devEnvironment]) {
-      expect(Object.keys(env).sort()).toEqual(['apiUrl', 'supabasePublishableKey', 'supabaseUrl']);
-      expect(env.apiUrl).toBe('http://localhost:3000');
+      expect(Object.keys(env).sort()).toEqual(['supabasePublishableKey', 'supabaseUrl']);
       expect(env.supabaseUrl).toBe('https://qeoenmfkfrhabznkekjp.supabase.co');
       expect(env.supabasePublishableKey).toMatch(/^sb_publishable_/);
 
