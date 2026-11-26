@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth-guard';
+import { rideDetailResolver } from './core/resolvers/ride-detail-resolver';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', loadComponent: () => import('./features/auth/landing/landing').then((m) => m.Landing) },
@@ -25,6 +26,7 @@ export const routes: Routes = [
       },
       {
         path: ':id',
+        resolve: { initialDetail: rideDetailResolver },
         loadComponent: () =>
           import('./features/rides/ride-detail/ride-detail').then((m) => m.RideDetail),
       },
@@ -32,4 +34,5 @@ export const routes: Routes = [
   },
   { path: 'driver/offer', canActivate: [authGuard], loadComponent: () => import('./features/driver/offer-ride/offer-ride').then((m) => m.OfferRide) },
   { path: 'driver/my-rides', canActivate: [authGuard], loadComponent: () => import('./features/driver/my-rides/my-rides').then((m) => m.MyRides) },
+  { path: '**', loadComponent: () => import('./features/not-found/not-found').then((m) => m.NotFound) },
 ];

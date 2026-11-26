@@ -72,6 +72,10 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+async function waitForResolver(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
 const listRidesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
 const requestsUrl = `${environment.supabaseUrl}/rest/v1/ride_requests`;
@@ -165,7 +169,7 @@ describe('Navegação aninhada de caronas (CA1 e CA4)', () => {
               return { ...child, loadComponent: () => MyTripsTestPage };
             }
             if (child.path === ':id') {
-              return { ...child, loadComponent: () => RideDetailTestPage };
+              return { ...child, resolve: undefined, loadComponent: () => RideDetailTestPage };
             }
             return child;
           }),
@@ -811,9 +815,7 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     expect(detailLink).not.toBeNull();
     expect(detailLink!.textContent).toContain('Ver detalhes');
     detailLink!.click();
-    await harness.fixture.whenStable();
-    expect(TestBed.inject(Router).url).toBe('/rides/007');
-    expect(harness.routeNativeElement).toBe(root);
+    await waitForResolver();
 
     http
       .expectOne((request) => request.url === ridesUrl && request.method === 'GET' && request.params.get('id') === 'eq.007')
@@ -824,6 +826,8 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     driverSummary.flush([driver]);
 
     await harness.fixture.whenStable();
+    expect(TestBed.inject(Router).url).toBe('/rides/007');
+    expect(harness.routeNativeElement).toBe(root);
     const details = root.querySelector('main')!;
     expect(details.textContent).toContain('Detalhes da Viagem');
     expect(details.textContent).toContain('Praça do Japão');
@@ -859,10 +863,8 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     expect(details.textContent).toContain('Aguardando aprovação do motorista');
     expect(details.textContent).not.toContain('Consultando sua solicitação');
 
-    await harness.navigateByUrl('/rides/full-ride');
-    expect(details.textContent).toContain('Carregando detalhes');
-    expect(details.textContent).not.toContain('Aguardando aprovação do motorista');
-    expect(details.textContent).not.toContain('Praça do Japão');
+    const fullRideNav = harness.navigateByUrl('/rides/full-ride');
+    await waitForResolver();
     http
       .expectOne((request) => request.url === ridesUrl && request.method === 'GET' && request.params.get('id') === 'eq.full-ride')
       .flush([
@@ -876,6 +878,9 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
         }),
       ]);
     http.expectOne((request) => request.url === driverSummariesUrl).flush([driver]);
+    await fullRideNav;
+    expect(details.textContent).not.toContain('Aguardando aprovação do motorista');
+    expect(details.textContent).not.toContain('Praça do Japão');
     http
       .expectOne((request) => request.url === requestsUrl)
       .error(new ProgressEvent('error'));
@@ -885,7 +890,8 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     expect(details.textContent).toContain('Não foi possível consultar sua solicitação');
     expect(details.textContent).not.toContain('Você ainda não solicitou');
 
-    await harness.navigateByUrl('/rides/another-ride');
+    const anotherRideNav = harness.navigateByUrl('/rides/another-ride');
+    await waitForResolver();
     http
       .expectOne((request) => request.url === ridesUrl && request.method === 'GET' && request.params.get('id') === 'eq.another-ride')
       .flush([
@@ -896,6 +902,7 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
         }),
       ]);
     http.expectOne((request) => request.url === driverSummariesUrl).flush([driver]);
+    await anotherRideNav;
     http.expectOne((request) => request.url === requestsUrl).flush([]);
     await harness.fixture.whenStable();
     expect(details.textContent).toContain('Você ainda não solicitou uma vaga');

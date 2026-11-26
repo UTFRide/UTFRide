@@ -1,5 +1,14 @@
 import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
-import { computed, DestroyRef, inject, Injectable, Injector, Signal, signal } from '@angular/core';
+import {
+  computed,
+  DestroyRef,
+  inject,
+  Injectable,
+  Injector,
+  linkedSignal,
+  Signal,
+  signal,
+} from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import {
   catchError,
@@ -55,6 +64,12 @@ export type UpdateRideResult =
   | { unauthorized: true }
   | { invalidState: true }
   | { invalidData: true }
+  | RideErrorResult;
+
+export type DeleteRideResult =
+  | { deletedRideId: string }
+  | { unauthorized: true }
+  | { invalidState: true }
   | RideErrorResult;
 
 export type DriverRidesResult = { rides: Ride[] } | { unauthorized: true } | RideErrorResult;
@@ -114,6 +129,8 @@ export class RideData {
   private readonly publishResets = new Subject<void>();
   private readonly updateSubmissions = new Subject<{ ride: Ride; draft: RideDraft }>();
   private readonly updateResets = new Subject<void>();
+  private readonly deleteSubmissions = new Subject<Ride>();
+  private readonly deleteResets = new Subject<void>();
   private readonly editRideLoads = new Subject<string>();
   private readonly editLoadResets = new Subject<void>();
   private readonly editLoadResults = new Subject<EditRideLoadResult>();
@@ -304,6 +321,48 @@ export class RideData {
     ),
   );
 
+  readonly deleteResult = toSignal<DeleteRideResult | undefined>(
+    this.deleteResets.pipe(
+      startWith(undefined),
+      switchMap(() =>
+        this.deleteSubmissions.pipe(
+          exhaustMap((ride) => {
+            if (!this.canManageRide(ride)) {
+              return of({ unauthorized: true as const });
+            }
+
+            if (ride.status !== 'cancelled') {
+              return of({ invalidState: true as const });
+            }
+
+            const driver = this.auth.currentUser();
+            return this.http
+              .delete<void>(supabaseRestUrl('rides'), {
+                params: { id: `eq.${ride.id}` },
+              })
+              .pipe(
+                // A sessão pode mudar antes de a resposta chegar.
+                filter(() => driver === this.auth.currentUser()),
+                tap(() => {
+                  this.driverRidesState.update((rides) =>
+                    rides.filter((item) => item.id !== ride.id),
+                  );
+                  if (this.editingRideState()?.id === ride.id) {
+                    this.editingRideState.set(null);
+                  }
+                }),
+                map(() => ({ deletedRideId: ride.id })),
+                catchError((error: unknown) =>
+                  driver === this.auth.currentUser() ? of(this.mapError(error)) : EMPTY,
+                ),
+              );
+          }),
+          startWith(undefined),
+        ),
+      ),
+    ),
+  );
+
   searchAvailableRides(
     filters: Signal<RideSearchFilters>,
     injector: Injector,
@@ -349,32 +408,98 @@ export class RideData {
     });
   }
 
+  resolveRideDetail(rideId: string | null): Observable<RideDetailResult> {
+    if (!rideId?.trim()) {
+      return of({ status: 'not-found' });
+    }
+
+    const passenger = this.auth.currentUser();
+    if (!passenger) {
+      return EMPTY;
+    }
+
+    return this.readRideDetailResult(rideId, () => passenger === this.auth.currentUser());
+  }
+
+  private readRideDetailResult(
+    rideId: string,
+    isCurrentSession: () => boolean,
+  ): Observable<RideDetailResult> {
+    return this.readPassengerRide(rideId).pipe(
+      switchMap((offer): Observable<RideDetailResult> => {
+        // A sessão ou seleção pode mudar antes de cancelar a leitura anterior.
+        if (!isCurrentSession()) return EMPTY;
+        if (!offer) return of({ status: 'not-found' });
+
+        return this.enrichWithDrivers([offer.ride]).pipe(
+          map(([ride]) => ({ status: 'loaded' as const, ride })),
+        );
+      }),
+      catchError((error: unknown) => of(passengerLoadError(error))),
+      filter(isCurrentSession),
+    );
+  }
+
   loadRideDetail(
     rideId: Signal<string>,
     injector: Injector,
     retry?: Signal<number>,
+    initialDetail?: Signal<RideDetailResult | undefined>,
   ): Signal<RideDetailResult> {
+    const resolved = initialDetail
+      ? linkedSignal<
+          { id: string; initial: RideDetailResult | undefined; passenger: AuthenticatedUser | null },
+          {
+            id: string | null;
+            initial: RideDetailResult | undefined;
+            passenger: AuthenticatedUser | null;
+          }
+        >({
+          source: () => ({
+            id: rideId(),
+            initial: initialDetail(),
+            passenger: this.auth.currentUser(),
+          }),
+          computation: (source, previous) => {
+            const prev = previous?.value;
+            if (!source.initial || !source.passenger) {
+              // Mantém o valor anterior de `initial` para evitar reuso após logout e novo login.
+              return { id: null, initial: source.initial, passenger: null };
+            }
+            if (prev && prev.initial === source.initial) {
+              return prev.id === source.id && prev.passenger === source.passenger
+                ? prev
+                : { id: null, initial: source.initial, passenger: null };
+            }
+            return {
+              id: source.id,
+              initial: source.initial,
+              passenger: source.passenger,
+            };
+          },
+        })
+      : undefined;
+
+    const getPreloaded = (passenger: AuthenticatedUser | null): RideDetailResult | null => {
+      if (!passenger || (retry?.() ?? 0) > 0) return null;
+      const preloaded = resolved?.();
+      return preloaded?.id === rideId() && preloaded.passenger === passenger && preloaded.initial
+        ? preloaded.initial
+        : null;
+    };
+
     const selection = computed(() => {
       const passenger = this.auth.currentUser();
-      return passenger ? { id: rideId(), passenger, attempt: retry?.() } : null;
+      if (!passenger || getPreloaded(passenger)) return null;
+      return { id: rideId(), passenger, attempt: retry?.() };
     });
+
     const emission = toSignal(
       toObservable(selection, { injector }).pipe(
         switchMap((current) => {
           if (!current || current !== selection()) return EMPTY;
 
-          return this.readPassengerRide(current.id).pipe(
-            switchMap((offer): Observable<RideDetailResult> => {
-              // A sessão pode mudar antes que toObservable cancele a leitura anterior.
-              if (current !== selection()) return EMPTY;
-              if (!offer) return of({ status: 'not-found' });
-
-              return this.enrichWithDrivers([offer.ride]).pipe(
-                map(([ride]) => ({ status: 'loaded', ride })),
-              );
-            }),
-            catchError((error: unknown) => of(passengerLoadError(error))),
-            filter(() => current === selection()),
+          return this.readRideDetailResult(current.id, () => current === selection()).pipe(
             startWith(detailLoading),
             map((result) => ({ selection: current, result })),
           );
@@ -384,6 +509,8 @@ export class RideData {
     );
 
     return computed(() => {
+      const preloaded = getPreloaded(this.auth.currentUser());
+      if (preloaded) return preloaded;
       const latest = emission();
       return latest?.selection === selection() ? latest.result : detailLoading;
     });
@@ -547,6 +674,19 @@ export class RideData {
       (ride.status === 'active' || ride.status === 'full') &&
       new Date(ride.departureTime).getTime() > Date.now()
     );
+  }
+
+  canDelete(ride: Ride): boolean {
+    return this.canManageRide(ride) && ride.status === 'cancelled';
+  }
+
+  deleteRide(ride: Ride): void {
+    this.notice.message.set('');
+    this.deleteSubmissions.next(ride);
+  }
+
+  resetDelete(): void {
+    this.deleteResets.next();
   }
 
   cancel$(ride: Ride): Observable<Ride> {

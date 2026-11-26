@@ -9,7 +9,7 @@ import { environment } from '../../../environments/environment';
 import { Ride } from '../models/ride.model';
 import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
-import { RideData } from './ride-data';
+import { RideData, RideDetailResult } from './ride-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
 const ridesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
@@ -160,6 +160,162 @@ describe('RideData', () => {
       .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-offline')
       .error(new ProgressEvent('error'));
     expect(detail()).toEqual({ status: 'error', connectionError: true });
+    http.verify();
+  });
+
+  it('resolveRideDetail pré-carrega oferta e resumo do motorista e trata ausência, 22P02, erro e troca de sessão', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const rideData = TestBed.inject(RideData);
+    const errorNotice = TestBed.inject(ErrorNotice);
+    const auth = TestBed.inject(AuthData);
+
+    await expect(firstValueFrom(rideData.resolveRideDetail(null))).resolves.toEqual({ status: 'not-found' });
+    await expect(firstValueFrom(rideData.resolveRideDetail('   '))).resolves.toEqual({ status: 'not-found' });
+    http.expectNone(ridesUrl);
+
+    await authenticateStudent(http);
+
+    const ride: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: '2026-01-01T08:00:00.000Z',
+      totalSeats: 2,
+      availableSeats: 1,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2025-12-30T10:00:00.000Z',
+    };
+
+    const loadedPromise = firstValueFrom(rideData.resolveRideDetail('ride-1'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(ride)]);
+    http
+      .expectOne((req) => req.url === driverSummariesRpcUrl && req.method === 'POST')
+      .flush([{ id: 'driver-1', name: 'Carlos Motorista', rating_average: 5 }]);
+    await expect(loadedPromise).resolves.toEqual({
+      status: 'loaded',
+      ride: { ...ride, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+
+    const emptyPromise = firstValueFrom(rideData.resolveRideDetail('missing'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.missing')
+      .flush([]);
+    await expect(emptyPromise).resolves.toEqual({ status: 'not-found' });
+
+    const invalidUuidPromise = firstValueFrom(rideData.resolveRideDetail('not-a-uuid'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.not-a-uuid')
+      .flush({ code: '22P02', message: 'invalid input syntax for type uuid' }, { status: 400, statusText: 'Bad Request' });
+    await expect(invalidUuidPromise).resolves.toEqual({ status: 'not-found' });
+
+    const offlinePromise = firstValueFrom(rideData.resolveRideDetail('ride-offline'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-offline')
+      .error(new ProgressEvent('error'));
+    await expect(offlinePromise).resolves.toEqual({ status: 'error', connectionError: true });
+
+    const serverErrorPromise = firstValueFrom(rideData.resolveRideDetail('ride-1'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(ride)]);
+    http
+      .expectOne((req) => req.url === driverSummariesRpcUrl && req.method === 'POST')
+      .flush(null, { status: 500, statusText: 'Server Error' });
+    await expect(serverErrorPromise).resolves.toEqual({ status: 'error' });
+    expect(errorNotice.message()).toBe('');
+
+    const emissions: RideDetailResult[] = [];
+    const sub = rideData.resolveRideDetail('ride-1').subscribe((value) => emissions.push(value));
+    const pendingOffer = http.expectOne(
+      (req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1',
+    );
+    auth.logout();
+    pendingOffer.flush([toRideRow(ride)]);
+    http.expectNone(driverSummariesRpcUrl);
+    expect(emissions).toEqual([]);
+    sub.unsubscribe();
+
+    http.verify();
+  });
+
+  it('loadRideDetail reutiliza initialDetail sem duplicar leitura e recarrega em retry, troca de id sem initialDetail ou mudança de sessão', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const auth = TestBed.inject(AuthData);
+    await authenticateStudent(http);
+
+    const ride: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: '2026-01-01T08:00:00.000Z',
+      totalSeats: 2,
+      availableSeats: 1,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2025-12-30T10:00:00.000Z',
+    };
+
+    const id = signal('ride-1');
+    const retry = signal(0);
+    const initialDetail = signal<RideDetailResult | undefined>({
+      status: 'loaded',
+      ride: { ...ride, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+
+    const detail = TestBed.inject(RideData).loadRideDetail(id, TestBed.inject(Injector), retry, initialDetail);
+    TestBed.tick();
+    http.expectNone(ridesUrl);
+    http.expectNone(driverSummariesRpcUrl);
+    expect(detail()).toEqual(initialDetail());
+
+    // Novo initialDetail ao trocar para outra oferta também não duplica leitura.
+    const otherRide: Ride = { ...ride, id: 'ride-2', origin: 'Centro' };
+    id.set('ride-2');
+    initialDetail.set({
+      status: 'loaded',
+      ride: { ...otherRide, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+    TestBed.tick();
+    http.expectNone(ridesUrl);
+    expect(detail()).toEqual(initialDetail());
+
+    // Retry força nova leitura HTTP.
+    retry.set(1);
+    expect(detail()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-2')
+      .flush([toRideRow(otherRide)]);
+    http
+      .expectOne((req) => req.url === driverSummariesRpcUrl && req.method === 'POST')
+      .flush([{ id: 'driver-1', name: 'Carlos Motorista', rating_average: 5 }]);
+    expect(detail()).toEqual({
+      status: 'loaded',
+      ride: { ...otherRide, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+
+    // Logout seguido de nova sessão não reutiliza initialDetail antigo.
+    retry.set(0);
+    auth.logout();
+    await authenticateStudent(http, { id: 'passenger-2', email: 'outro@alunos.utfpr.edu.br' });
+    expect(detail()).toEqual({ status: 'loading' });
+    TestBed.tick();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-2')
+      .flush([toRideRow({ ...otherRide, origin: 'Água Verde' })]);
+    http
+      .expectOne((req) => req.url === driverSummariesRpcUrl && req.method === 'POST')
+      .flush([{ id: 'driver-1', name: 'Carlos Motorista', rating_average: 5 }]);
+    expect(detail()).toEqual({
+      status: 'loaded',
+      ride: { ...otherRide, origin: 'Água Verde', driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    });
+
     http.verify();
   });
 
@@ -938,6 +1094,325 @@ describe('RideData', () => {
     expect(rideData.updateResult()).toEqual({ ride: updatedRide });
     expect(rideData.editingRide()).toEqual(updatedRide);
     expect(rideData.driverRides()[0]).toEqual(updatedRide);
+
+    http.verify();
+  });
+
+  it('permite excluir apenas oferta cancelada do motorista autor ativo via DELETE /rest/v1/rides?id=eq.<id> e atualiza driverRides e editingRide', async () => {
+    const rideData = TestBed.inject(RideData);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateStudent(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const cancelledRide: Ride = {
+      id: 'ride-cancelled',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'cancelled',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const activeRide: Ride = { ...cancelledRide, id: 'ride-active', status: 'active' };
+    const fullRide: Ride = { ...cancelledRide, id: 'ride-full', availableSeats: 0, status: 'full' };
+    const completedRide: Ride = { ...cancelledRide, id: 'ride-completed', status: 'completed' };
+
+    expect(rideData.canDelete(cancelledRide)).toBe(true);
+    expect(rideData.canDelete(activeRide)).toBe(false);
+    expect(rideData.canDelete(fullRide)).toBe(false);
+    expect(rideData.canDelete(completedRide)).toBe(false);
+    expect(rideData.deleteResult()).toBeUndefined();
+
+    rideData.loadDriverRides();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(cancelledRide), toRideRow(activeRide)]);
+
+    rideData.startEditing(cancelledRide);
+    expect(rideData.editingRide()).toEqual(cancelledRide);
+
+    rideData.deleteRide(cancelledRide);
+
+    const deleteReq = http.expectOne(
+      (req) =>
+        req.url === ridesUrl &&
+        req.method === 'DELETE' &&
+        req.params.get('id') === 'eq.ride-cancelled',
+    );
+    deleteReq.flush(null);
+
+    expect(rideData.deleteResult()).toEqual({ deletedRideId: 'ride-cancelled' });
+    expect(rideData.driverRides()).toEqual([activeRide]);
+    expect(rideData.editingRide()).toBeNull();
+
+    rideData.resetDelete();
+    expect(rideData.deleteResult()).toBeUndefined();
+
+    http.verify();
+  });
+
+  it('bloqueia exclusão sem requisição HTTP para ofertas active, full e completed', async () => {
+    const rideData = TestBed.inject(RideData);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateStudent(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const baseRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 2,
+      availableSeats: 1,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const activeRide: Ride = { ...baseRide, id: 'ride-active', status: 'active' };
+    const fullRide: Ride = { ...baseRide, id: 'ride-full', availableSeats: 0, status: 'full' };
+    const completedRide: Ride = { ...baseRide, id: 'ride-completed', status: 'completed' };
+
+    rideData.loadDriverRides();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(activeRide), toRideRow(fullRide), toRideRow(completedRide)]);
+
+    for (const ride of [activeRide, fullRide, completedRide]) {
+      expect(rideData.canDelete(ride)).toBe(false);
+      rideData.deleteRide(ride);
+      http.expectNone(ridesUrl);
+      expect(rideData.deleteResult()).toEqual({ invalidState: true });
+    }
+
+    expect(rideData.driverRides()).toEqual([activeRide, fullRide, completedRide]);
+    http.verify();
+  });
+
+  it('bloqueia exclusão sem requisição HTTP para usuário não autenticado ou outro autor', async () => {
+    const rideData = TestBed.inject(RideData);
+    const http = TestBed.inject(HttpTestingController);
+
+    const cancelledRideOfDriver1: Ride = {
+      id: 'ride-cancelled-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'cancelled',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    expect(rideData.canDelete(cancelledRideOfDriver1)).toBe(false);
+    rideData.deleteRide(cancelledRideOfDriver1);
+    http.expectNone(ridesUrl);
+    expect(rideData.deleteResult()).toEqual({ unauthorized: true });
+
+    await authenticateStudent(http, { id: 'driver-2', email: 'outro@alunos.utfpr.edu.br' });
+    expect(rideData.canDelete(cancelledRideOfDriver1)).toBe(false);
+    rideData.deleteRide(cancelledRideOfDriver1);
+    http.expectNone(ridesUrl);
+    expect(rideData.deleteResult()).toEqual({ unauthorized: true });
+
+    http.verify();
+  });
+
+  it('bloqueia exclusão sem requisição HTTP para conta bloqueada mesmo sendo o autor', async () => {
+    const rideData = TestBed.inject(RideData);
+    const authData = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateStudent(http);
+
+    const cancelledRideOfDriver1: Ride = {
+      id: 'ride-cancelled-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'cancelled',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    vi.spyOn(authData, 'currentUser').mockReturnValue({
+      id: 'driver-1',
+      name: 'Carlos Motorista',
+      email: 'motorista@alunos.utfpr.edu.br',
+      registrationNumber: '2020123',
+      whatsapp: '41999998888',
+      role: 'student',
+      isBlocked: true,
+      isEmailConfirmed: true,
+      ratingAverage: 5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(rideData.canDelete(cancelledRideOfDriver1)).toBe(false);
+    rideData.deleteRide(cancelledRideOfDriver1);
+    http.expectNone(ridesUrl);
+    expect(rideData.deleteResult()).toEqual({ unauthorized: true });
+
+    http.verify();
+  });
+
+  it('bloqueia exclusão sem requisição HTTP para perfil support', async () => {
+    const rideData = TestBed.inject(RideData);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateStudent(http, {
+      id: 'support-1',
+      email: 'suporte@alunos.utfpr.edu.br',
+      role: 'support',
+    });
+
+    const cancelledRideOfSupportId: Ride = {
+      id: 'ride-cancelled-support',
+      driverId: 'support-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'cancelled',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    expect(rideData.canDelete(cancelledRideOfSupportId)).toBe(false);
+    rideData.deleteRide(cancelledRideOfSupportId);
+    http.expectNone(ridesUrl);
+    expect(rideData.deleteResult()).toEqual({ unauthorized: true });
+
+    http.verify();
+  });
+
+  it('trata falha de conexão (status 0) e erro do servidor na exclusão preservando estado e permitindo nova tentativa', async () => {
+    const rideData = TestBed.inject(RideData);
+    const errorNotice = TestBed.inject(ErrorNotice);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateStudent(http);
+
+    const cancelledRide: Ride = {
+      id: 'ride-cancelled',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'cancelled',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    rideData.loadDriverRides();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(cancelledRide)]);
+    rideData.startEditing(cancelledRide);
+
+    rideData.deleteRide(cancelledRide);
+    http
+      .expectOne(
+        (req) =>
+          req.url === ridesUrl &&
+          req.method === 'DELETE' &&
+          req.params.get('id') === 'eq.ride-cancelled',
+      )
+      .error(new ProgressEvent('error'));
+
+    expect(rideData.deleteResult()).toEqual({ connectionError: true });
+    expect(errorNotice.message()).toContain('Falha de conexão');
+    expect(rideData.driverRides()).toEqual([cancelledRide]);
+    expect(rideData.editingRide()).toEqual(cancelledRide);
+
+    rideData.deleteRide(cancelledRide);
+    expect(errorNotice.message()).toBe('');
+    http
+      .expectOne(
+        (req) =>
+          req.url === ridesUrl &&
+          req.method === 'DELETE' &&
+          req.params.get('id') === 'eq.ride-cancelled',
+      )
+      .flush('Erro no servidor', { status: 500, statusText: 'Internal Server Error' });
+
+    expect(rideData.deleteResult()).toEqual({ requestError: true });
+    expect(rideData.driverRides()).toEqual([cancelledRide]);
+    expect(rideData.editingRide()).toEqual(cancelledRide);
+
+    rideData.deleteRide(cancelledRide);
+    http
+      .expectOne(
+        (req) =>
+          req.url === ridesUrl &&
+          req.method === 'DELETE' &&
+          req.params.get('id') === 'eq.ride-cancelled',
+      )
+      .flush(null);
+
+    expect(rideData.deleteResult()).toEqual({ deletedRideId: 'ride-cancelled' });
+    expect(rideData.driverRides()).toEqual([]);
+    expect(rideData.editingRide()).toBeNull();
+
+    http.verify();
+  });
+
+  it('cancela exclusão pendente em resetDelete e isola troca de sessão durante DELETE em andamento', async () => {
+    const rideData = TestBed.inject(RideData);
+    const authData = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateStudent(http);
+
+    const cancelledRide: Ride = {
+      id: 'ride-cancelled',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'cancelled',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    rideData.loadDriverRides();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(cancelledRide)]);
+
+    rideData.deleteRide(cancelledRide);
+    const firstDelete = http.expectOne(
+      (req) =>
+        req.url === ridesUrl &&
+        req.method === 'DELETE' &&
+        req.params.get('id') === 'eq.ride-cancelled',
+    );
+    rideData.resetDelete();
+    expect(firstDelete.cancelled).toBe(true);
+    expect(rideData.deleteResult()).toBeUndefined();
+    expect(rideData.driverRides()).toEqual([cancelledRide]);
+
+    rideData.deleteRide(cancelledRide);
+    const pendingDelete = http.expectOne(
+      (req) =>
+        req.url === ridesUrl &&
+        req.method === 'DELETE' &&
+        req.params.get('id') === 'eq.ride-cancelled',
+    );
+    authData.logout();
+    pendingDelete.flush(null);
+
+    expect(rideData.deleteResult()).toBeUndefined();
+    expect(rideData.driverRides()).toEqual([cancelledRide]);
 
     http.verify();
   });

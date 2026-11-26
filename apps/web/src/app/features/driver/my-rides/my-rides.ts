@@ -36,7 +36,10 @@ export class MyRides {
 
   private readonly cancelRideButton = viewChild<ElementRef<HTMLButtonElement>>('cancelRideButton');
   private readonly keepRideButton = viewChild<ElementRef<HTMLButtonElement>>('keepRideButton');
+  private readonly deleteRideButton = viewChild<ElementRef<HTMLButtonElement>>('deleteRideButton');
+  private readonly cancelDeleteButton = viewChild<ElementRef<HTMLButtonElement>>('cancelDeleteButton');
   private wasDialogOpen = false;
+  private wasDeleteDialogOpen = false;
 
   readonly notifications = this.notificationData.userNotifications;
   readonly notificationsError = this.notificationData.loadError;
@@ -47,9 +50,13 @@ export class MyRides {
   readonly requestsError = signal<string | null>(null);
   readonly decisionError = signal<string | null>(null);
   readonly cancelError = signal<string | null>(null);
+  readonly deleteError = signal<string | null>(null);
+  readonly deleteSuccessMessage = signal<string | null>(null);
   readonly selectedRideId = signal<string | null>(null);
   readonly cancelConfirming = signal(false);
   readonly isCancelling = signal(false);
+  readonly deleteConfirming = signal(false);
+  readonly isDeleting = signal(false);
   readonly loggingOut = signal(false);
   readonly rides = this.rideData.driverRides;
 
@@ -121,15 +128,56 @@ export class MyRides {
 
   readonly canCancelSelectedRide = computed<boolean>(() => this.canManageSelectedRide());
 
+  readonly canDeleteSelectedRide = computed<boolean>(() => {
+    const ride = this.selectedRide();
+    return !!ride && this.rideData.canDelete(ride);
+  });
+
   constructor() {
     this.rideData.resetDriverRides();
+    this.rideData.resetDelete();
     this.rideRequestData.reset();
     this.rideData.loadDriverRides();
     this.destroyRef.onDestroy(() => {
+      this.resetDeleteState();
       this.rideData.resetDriverRides();
       this.rideRequestData.reset();
     });
   }
+
+  private readonly handleDeleteResult = effect(() => {
+    const result = this.rideData.deleteResult();
+    if (!result) return;
+    this.isDeleting.set(false);
+    if ('deletedRideId' in result) {
+      this.deleteError.set(null);
+      this.deleteConfirming.set(false);
+      if (this.selectedRideId() === result.deletedRideId) {
+        this.selectedRideId.set(null);
+      }
+      if (!this.activeManagedRideId()) {
+        this.rideRequestData.reset();
+      }
+      this.deleteSuccessMessage.set('Oferta excluída definitivamente.');
+    } else if ('unauthorized' in result) {
+      this.deleteError.set(null);
+      this.deleteConfirming.set(false);
+      this.authorizationError.set(this.deleteUnauthorizedMessage());
+    } else if ('connectionError' in result) {
+      this.deleteError.set(
+        'Falha de conexão ao excluir a oferta. Verifique sua internet e tente novamente.',
+      );
+    } else if ('invalidState' in result) {
+      const message = 'Apenas ofertas canceladas podem ser excluídas definitivamente.';
+      if (this.deleteConfirming()) {
+        this.deleteError.set(message);
+      } else {
+        this.authorizationError.set(message);
+      }
+    } else if ('requestError' in result) {
+      this.deleteError.set('Não foi possível excluir a oferta. Tente novamente.');
+    }
+  });
 
   private readonly loadRequestsForActiveRide = effect(() => {
     const rideId = this.activeManagedRideId();
@@ -238,9 +286,29 @@ export class MyRides {
     }
   });
 
+  private readonly syncDeleteDialogFocus = effect(() => {
+    const isOpen = this.deleteConfirming();
+    const cancelButton = this.cancelDeleteButton();
+
+    if (isOpen && cancelButton) {
+      cancelButton.nativeElement.focus();
+      this.wasDeleteDialogOpen = true;
+      return;
+    }
+
+    if (!isOpen && this.wasDeleteDialogOpen) {
+      this.wasDeleteDialogOpen = false;
+      const trigger = this.deleteRideButton()?.nativeElement;
+      if (trigger && !trigger.disabled) {
+        trigger.focus();
+      }
+    }
+  });
+
   selectRide(rideId: string): void {
     this.cancelConfirming.set(false);
     this.cancelError.set(null);
+    this.resetDeleteState();
     this.requestsError.set(null);
     this.decisionError.set(null);
     this.authorizationError.set(null);
@@ -278,6 +346,7 @@ export class MyRides {
     const ride = this.selectedRide();
     if (!ride) return;
     this.authorizationError.set(null);
+    this.deleteSuccessMessage.set(null);
     if (!this.rideData.canManageRide(ride)) {
       this.authorizationError.set(
         'Apenas o motorista autor com conta ativa pode editar esta oferta.',
@@ -292,9 +361,10 @@ export class MyRides {
 
   openCancelConfirmation(): void {
     const ride = this.selectedRide();
-    if (!ride) return;
+    if (!ride || this.deleteConfirming()) return;
     this.authorizationError.set(null);
     this.cancelError.set(null);
+    this.deleteSuccessMessage.set(null);
     if (!this.rideData.canManageRide(ride)) {
       this.authorizationError.set(
         'Apenas o motorista autor com conta ativa pode cancelar esta oferta.',
@@ -324,6 +394,55 @@ export class MyRides {
     if (!this.canCancelSelectedRide()) return;
     this.isCancelling.set(true);
     this.rideRequestData.cancelRide(ride);
+  }
+
+  openDeleteConfirmation(): void {
+    const ride = this.selectedRide();
+    if (!ride || this.cancelConfirming()) return;
+    this.authorizationError.set(null);
+    this.deleteError.set(null);
+    this.deleteSuccessMessage.set(null);
+    if (!this.rideData.canManageRide(ride)) {
+      this.authorizationError.set(this.deleteUnauthorizedMessage());
+      return;
+    }
+    if (!this.canDeleteSelectedRide()) {
+      this.authorizationError.set(
+        'Apenas ofertas canceladas podem ser excluídas definitivamente.',
+      );
+      return;
+    }
+    this.deleteConfirming.set(true);
+  }
+
+  private resetDeleteState(): void {
+    this.deleteConfirming.set(false);
+    this.isDeleting.set(false);
+    this.deleteError.set(null);
+    this.deleteSuccessMessage.set(null);
+    this.rideData.resetDelete();
+  }
+
+  private deleteUnauthorizedMessage(): string {
+    return this.authData.isBlocked()
+      ? 'Sua conta está bloqueada e não pode excluir ofertas de carona.'
+      : 'Apenas o motorista autor com conta ativa pode excluir esta oferta.';
+  }
+
+  closeDeleteConfirmation(): void {
+    if (this.isDeleting()) return;
+    this.deleteError.set(null);
+    this.deleteConfirming.set(false);
+  }
+
+  confirmDeleteRide(): void {
+    const ride = this.selectedRide();
+    if (!ride || this.isDeleting()) return;
+    this.authorizationError.set(null);
+    this.deleteError.set(null);
+    this.deleteSuccessMessage.set(null);
+    this.isDeleting.set(true);
+    this.rideData.deleteRide(ride);
   }
 
   acceptRequest(request: RideRequest): void {

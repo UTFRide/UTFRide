@@ -1,0 +1,93 @@
+<main class="flex min-h-screen w-full items-center justify-center bg-fundo px-space-lg py-space-xl font-sans text-texto">
+  <div class="flex w-full max-w-xl flex-col items-center">
+    <div class="mb-space-xl flex items-center gap-space-md rounded-full bg-secundaria px-space-lg py-space-sm text-superficie shadow-sm">
+      <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-primaria text-texto">
+        <span class="material-symbols-outlined text-body-lg" aria-hidden="true">directions_car</span>
+      </div>
+      <div class="flex flex-col">
+        <div class="flex items-center gap-space-xs text-headline-sm leading-none tracking-tight text-superficie">
+          <span>UTF</span><span class="text-primaria">Ride</span>
+        </div>
+        <span class="text-label-pill tracking-widest uppercase text-superficie/75">Caronas UTFPR</span>
+      </div>
+      <div class="mx-space-xs h-4 w-px bg-texto-suave/40" aria-hidden="true"></div>
+      <div class="flex items-center gap-space-xs text-label-md text-primaria">
+        <span class="material-symbols-outlined text-body-md" aria-hidden="true">explore</span>
+        <span>Portal Acadêmico</span>
+      </div>
+    </div>
+
+    <section class="relative flex w-full flex-col items-center overflow-hidden rounded-2xl border border-borda bg-superficie p-space-xl text-center shadow-sm">
+      <div class="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primaria/20 blur-2xl" aria-hidden="true"></div>
+      <div class="pointer-events-none absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-pendente-fundo/60 blur-2xl" aria-hidden="true"></div>
+
+      <div class="relative mb-space-xl">
+        <div class="relative flex h-24 w-24 items-center justify-center rounded-full bg-fundo text-primaria-escura">
+          <span class="material-symbols-outlined text-display-currency" aria-hidden="true">wrong_location</span>
+        </div>
+        <span class="absolute -right-1 -bottom-1 rounded-full bg-secundaria px-space-md py-space-xs text-headline-md text-primaria shadow-sm">
+          404
+        </span>
+      </div>
+
+      <div class="mb-space-md inline-flex items-center gap-space-sm rounded-full bg-pendente-fundo px-space-md py-space-xs text-pendente">
+        <span class="material-symbols-outlined text-body-md" aria-hidden="true">route</span>
+        <span class="text-label-pill uppercase">Rota Inexistente • Erro 404</span>
+      </div>
+
+      <h1 class="mb-space-sm text-headline-lg tracking-tight text-texto">
+        Página não encontrada
+      </h1>
+      <p class="mb-space-xl max-w-md text-body-lg text-texto-suave">
+        O endereço acessado não existe ou foi removido. Retorne com segurança para continuar navegando no UTFRide.
+      </p>
+
+      <div class="mb-space-xl flex w-full items-start gap-space-md rounded-xl border border-borda bg-fundo p-space-lg text-left">
+        <span class="material-symbols-outlined shrink-0 text-body-lg text-primaria-escura" aria-hidden="true">alt_route</span>
+        <div class="flex flex-col gap-space-xs">
+          <span class="text-label-md text-texto">Navegação Segura</span>
+          <p class="text-body-sm text-texto-suave">
+            @if (isAuthenticated()) {
+              Sua sessão está ativa. Volte para a listagem de caronas para buscar trajetos disponíveis entre os campi.
+            } @else {
+              Volte para a página inicial institucional do UTFRide para conhecer a plataforma ou acessar sua conta.
+            }
+          </p>
+        </div>
+      </div>
+
+      <div class="flex w-full flex-col gap-space-md">
+        <a
+          [routerLink]="returnRoute()"
+          data-testid="not-found-return-link"
+          class="flex w-full items-center justify-center gap-space-sm rounded-xl bg-primaria px-space-lg py-space-lg text-label-lg text-texto transition-colors hover:bg-primaria-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2"
+        >
+          <span class="material-symbols-outlined text-body-lg" aria-hidden="true">
+            {{ isAuthenticated() ? 'directions_car' : 'home' }}
+          </span>
+          <span>{{ returnLabel() }}</span>
+        </a>
+      </div>
+
+      <div class="mt-space-xl flex w-full items-center justify-between border-t border-borda pt-space-lg text-label-md text-texto-suave">
+        <span class="inline-flex items-center gap-space-sm">
+          <span class="h-2 w-2 rounded-full bg-pendente" aria-hidden="true"></span>
+          {{ isAuthenticated() ? 'Sessão Discente Ativa' : 'Acesso Visitante' }}
+        </span>
+        <span class="font-mono text-body-sm">HTTP-404-UTF</span>
+      </div>
+    </section>
+
+    <footer class="mt-space-xl flex flex-col items-center gap-space-sm text-center text-texto-suave">
+      <div class="flex items-center gap-space-sm text-label-md">
+        <span>UTFRide</span>
+        <span aria-hidden="true">•</span>
+        <span>Universidade Tecnológica Federal do Paraná</span>
+      </div>
+      <div class="flex items-center gap-space-xs text-body-sm">
+        <span class="material-symbols-outlined text-body-md" aria-hidden="true">shield</span>
+        <span>Ambiente Acadêmico Seguro</span>
+      </div>
+    </footer>
+  </div>
+</main>

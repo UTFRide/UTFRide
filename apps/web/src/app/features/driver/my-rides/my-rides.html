@@ -1,4 +1,4 @@
-<div class="min-h-screen bg-fundo pb-24 font-sans text-texto" [inert]="cancelConfirming()">
+<div class="min-h-screen bg-fundo pb-24 font-sans text-texto" [inert]="cancelConfirming() || deleteConfirming()">
   <header class="sticky top-0 z-40 border-b border-borda bg-superficie/95 px-space-lg py-space-md backdrop-blur">
     <div class="mx-auto flex max-w-2xl items-center justify-between">
       <a routerLink="/rides" class="flex items-center gap-space-sm">
@@ -82,6 +82,18 @@
         >
           Tentar novamente
         </button>
+      </div>
+    }
+
+    @if (deleteSuccessMessage(); as successMessage) {
+      <div
+        role="status"
+        aria-live="polite"
+        data-testid="delete-ride-success"
+        class="flex items-start gap-space-sm rounded-xl bg-sucesso-fundo p-space-md text-sucesso"
+      >
+        <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">check_circle</span>
+        <p class="text-body-sm">{{ successMessage }}</p>
       </div>
     }
 
@@ -315,6 +327,18 @@
             <span>Cancelar</span>
           </button>
         </div>
+
+        <button
+          #deleteRideButton
+          type="button"
+          data-testid="delete-ride-button"
+          [disabled]="!canDeleteSelectedRide()"
+          (click)="openDeleteConfirmation()"
+          class="flex h-12 w-full items-center justify-center gap-space-xs rounded-xl bg-perigo-fundo px-space-lg text-label-lg text-perigo shadow-sm hover:bg-borda focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          <span class="material-symbols-outlined text-body-lg" aria-hidden="true">delete_forever</span>
+          <span>Excluir Oferta</span>
+        </button>
       </section>
     } @else if (!loadRidesError()) {
       <section class="flex flex-col items-center gap-space-md rounded-xl border border-borda bg-superficie p-space-xl text-center shadow-sm">
@@ -438,6 +462,74 @@
           class="flex h-12 w-full items-center justify-center rounded-xl border border-borda bg-fundo px-space-lg text-label-lg text-texto hover:bg-borda disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
         >
           Voltar e Manter Carona
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (deleteConfirming() && selectedRide(); as rideToDelete) {
+  <div class="fixed inset-0 z-50 flex flex-col justify-end bg-secundaria/50 backdrop-blur-sm">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-dialog-title"
+      tabindex="-1"
+      (keydown.escape)="closeDeleteConfirmation()"
+      class="mx-auto flex max-h-screen w-full max-w-2xl flex-col gap-space-md overflow-y-auto rounded-t-2xl bg-superficie p-space-lg shadow-lg"
+    >
+      <div class="mx-auto h-1 w-10 rounded-full bg-trilho"></div>
+      <div class="flex items-center gap-space-md pt-space-xs">
+        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-perigo-fundo text-perigo">
+          <span class="material-symbols-outlined text-headline-md" aria-hidden="true">delete_forever</span>
+        </div>
+        <div class="flex flex-col gap-space-xs">
+          <h2 id="delete-dialog-title" class="text-headline-sm text-texto">Excluir oferta definitivamente?</h2>
+          <p class="text-body-sm text-texto-suave">
+            {{ rideToDelete.origin }} → {{ rideToDelete.destination }} • Esta ação não poderá ser desfeita
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-start gap-space-sm rounded-xl bg-fundo p-space-md text-body-md text-texto">
+        <span class="material-symbols-outlined shrink-0 text-body-lg text-perigo" aria-hidden="true">info</span>
+        <p>
+          A oferta cancelada e seu histórico de solicitações e avisos associados serão removidos permanentemente.
+        </p>
+      </div>
+
+      @if (deleteError(); as error) {
+        <div
+          role="alert"
+          data-testid="delete-ride-error"
+          class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+        >
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <p class="text-body-sm">{{ error }}</p>
+        </div>
+      }
+
+      <div class="flex flex-col gap-space-sm pt-space-xs">
+        <button
+          type="button"
+          data-testid="confirm-delete-ride-button"
+          [disabled]="isDeleting()"
+          (click)="confirmDeleteRide()"
+          class="flex h-12 w-full items-center justify-center gap-space-sm rounded-xl bg-perigo px-space-lg text-label-lg text-superficie shadow-sm hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          <span class="material-symbols-outlined text-body-lg" aria-hidden="true">delete_forever</span>
+          <span>{{ isDeleting() ? 'Excluindo oferta...' : 'Sim, Excluir Oferta' }}</span>
+        </button>
+
+        <button
+          #cancelDeleteButton
+          type="button"
+          data-testid="cancel-delete-ride-button"
+          [disabled]="isDeleting()"
+          (click)="closeDeleteConfirmation()"
+          class="flex h-12 w-full items-center justify-center rounded-xl border border-borda bg-fundo px-space-lg text-label-lg text-texto hover:bg-borda focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          Voltar
         </button>
       </div>
     </div>

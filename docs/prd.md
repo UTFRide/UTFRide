@@ -80,6 +80,7 @@ A confirmação de e-mail é simulada automaticamente, sem envio de e-mail; cons
 - [ ] **Dado** que deixo campos obrigatórios vazios ou informo número de vagas menor que 1, **quando** tento publicar, **então** o formulário bloqueia o envio apontando os erros de validação.
 - [ ] **Dado** que tento cadastrar uma oferta com data ou horário no passado, **quando** clico em salvar, **então** o sistema rejeita a operação com aviso de data inválida.
 - [ ] **Dado** que cancelo uma oferta que continha passageiros já confirmados, **quando** confirmo o cancelamento, **então** a carona é cancelada e os passageiros são notificados.
+- [ ] **Dado** que sou o autor de uma Oferta de Carona já cancelada, **quando** confirmo sua exclusão definitiva, **então** a oferta é removida da minha listagem de ofertas.
 
 **Regras relacionadas:** RN02, RN03, RN05, RN07
 
@@ -176,6 +177,7 @@ A confirmação de e-mail é simulada automaticamente, sem envio de e-mail; cons
 - **RNF02 — Arquitetura PWA:** A aplicação deve contemplar os requisitos de Progressive Web App (`manifest.webmanifest`, tema, splash screen, modo *standalone* e tratamento de indisponibilidade de rede/offline) (atendendo ao ID3).
 - **RNF03 — Performance e Carregamento Rápido:** A listagem e filtros de caronas devem carregar de maneira ágil, utilizando estratégias modernas de carregamento sob demanda para não sobrecarregar planos de dados móveis.
 - **RNF04 — Segurança e Integridade:** Controle rigoroso de sessões (JWT), senhas cifradas e políticas de segurança na camada de dados impedindo que passageiros ou motoristas acessem dados não autorizados de outros usuários (atendendo aos IDs 21 e 23).
+- **RNF05 — Navegação Previsível e Rotas Inexistentes:** Ao acessar qualquer endereço desconhecido da plataforma, o visitante ou aluno autenticado deve visualizar uma página clara de erro `404` (página não encontrada) com opção segura de retorno às telas iniciais do aplicativo.
 
 ---
 
@@ -184,3 +186,4 @@ A confirmação de e-mail é simulada automaticamente, sem envio de e-mail; cons
 | Data | Versão | O que mudou |
 | :--- | :----- | :---------- |
 | 2026-09-18 | 1.0.0 | Versão inicial gerada a partir da entrevista guiada `/utf-prd` |
+| 2026-11-26 | 1.0.1 | Inclusão da exclusão definitiva de oferta cancelada na US02 e do RNF05 (página `404` em rotas inexistentes) |
