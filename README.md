@@ -17,8 +17,7 @@ UTFRide é um aplicativo de caronas universitárias, que conecta estudantes que 
 
 - **Frontend:** Angular, TypeScript e RxJS
 - **Framework CSS:** Tailwind CSS
-- **Dados locais (Entrega 2):** json-server e Lowdb
-- **BaaS previsto (Entrega 3):** Supabase
+- **Backend e Dados:** Supabase (Auth, API REST PostgREST e Row Level Security)
 - **Testes:** Vitest e Node.js Test Runner
 - **Qualidade de código:** ESLint e Prettier
 
@@ -46,31 +45,21 @@ npm install
 
 Os comandos abaixo devem ser executados na raiz do repositório. A instalação da raiz atende também ao frontend por meio dos npm workspaces.
 
-### Iniciar a API local
-
-Em um terminal, execute:
-
-```sh
-npm run api
-```
-
-Mantenha esse terminal aberto. A API fica disponível em `http://localhost:3000`, e os dados são persistidos em `apps/api/db.json`.
-
 ### Iniciar o frontend
 
-Em outro terminal, na raiz do mesmo clone, execute:
+Em um terminal, na raiz do repositório, execute:
 
 ```sh
 npm start
 ```
 
-Acesse `http://localhost:4200` no navegador. Mantenha a API e o frontend em execução durante o uso do aplicativo.
+Acesse `http://localhost:4200` no navegador. A aplicação se conecta diretamente ao projeto Supabase configurado em `apps/web/src/environments/`.
 
-A base inicial não contém alunos nem caronas. Cadastre uma conta com e-mail `@alunos.utfpr.edu.br` e faça login; a confirmação de e-mail é simulada no MVP. Publique uma oferta como motorista e use outra conta de aluno para pesquisar e solicitar uma vaga. Retorne à conta do motorista para gerenciar as solicitações. Os cadastros e envios alteram o arquivo de dados local.
+Cadastre uma conta com e-mail `@alunos.utfpr.edu.br`, confirme o cadastro conforme configurado no projeto e faça login. Publique uma oferta como motorista e use outra conta de aluno para pesquisar e solicitar uma vaga. Retorne à conta do motorista para gerenciar as solicitações.
 
 ### Executar testes e lint
 
-Em um terceiro terminal, na raiz do repositório:
+Em outro terminal, na raiz do repositório:
 
 ```sh
 npm test
@@ -78,12 +67,6 @@ npm run lint
 ```
 
 `npm test` executa os testes de layout e a suíte do frontend uma vez, sem modo de observação. `npm run lint` verifica o código do frontend com ESLint.
-
-Para executar também os testes HTTP da API com dados isolados:
-
-```sh
-node --test apps/api/server.test.mjs
-```
 
 ### Gerar o build
 

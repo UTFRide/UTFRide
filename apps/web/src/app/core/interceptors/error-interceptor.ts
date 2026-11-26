@@ -31,7 +31,9 @@ export const errorInterceptor: HttpInterceptorFn = (request, next) => {
         notice.message.set('Acesso proibido. Você não tem permissão para realizar esta ação.');
       } else if (error.status === 500) {
         notice.message.set('Falha no servidor. Tente novamente.');
-      } else if (error.status !== 0) {
+      } else if (error.status === 0) {
+        notice.message.set('Servidor fora do ar ou sem conexão. Verifique sua internet e tente novamente.');
+      } else {
         notice.message.set('Não foi possível concluir a solicitação. Tente novamente.');
       }
     }

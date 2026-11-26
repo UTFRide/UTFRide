@@ -4,24 +4,28 @@ import { environment } from '../../../environments/environment';
 import { AuthData } from '../services/auth-data';
 
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
-  const token = inject(AuthData).accessToken();
-  if (!token || !isApiUrl(request.url)) {
+  if (!isSupabaseUrl(request.url)) {
     return next(request);
   }
 
-  return next(
-    request.clone({
-      setHeaders: {
-        Authorization: `Bearer ${token}`,
-      },
-    }),
-  );
+  const headers: Record<string, string> = {
+    apikey: environment.supabasePublishableKey,
+  };
+
+  if (!request.headers.has('Authorization')) {
+    const token = inject(AuthData).accessToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+
+  return next(request.clone({ setHeaders: headers }));
 };
 
-function isApiUrl(url: string): boolean {
-  const apiUrl = environment.apiUrl.replace(/\/+$/, '');
-  if (!apiUrl) {
+function isSupabaseUrl(url: string): boolean {
+  const supabaseUrl = environment.supabaseUrl.replace(/\/+$/, '');
+  if (!supabaseUrl) {
     return false;
   }
-  return url === apiUrl || url.startsWith(`${apiUrl}/`) || url.startsWith(`${apiUrl}?`);
+  return url === supabaseUrl || url.startsWith(`${supabaseUrl}/`) || url.startsWith(`${supabaseUrl}?`);
 }

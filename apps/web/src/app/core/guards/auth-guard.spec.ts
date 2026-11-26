@@ -28,6 +28,19 @@ const fakeSession: Session = {
   user: fakeSupabaseUser,
 };
 
+const activeUserRow = {
+  id: 'supabase-user-1',
+  name: 'Ana',
+  email: 'ana@alunos.utfpr.edu.br',
+  registration_number: '123',
+  whatsapp: '41987654321',
+  role: 'student' as const,
+  is_blocked: false,
+  is_email_confirmed: true,
+  rating_average: 4.5,
+  created_at: '2026-01-01T00:00:00.000Z',
+};
+
 const activeUser = {
   id: 'supabase-user-1',
   name: 'Ana',
@@ -65,9 +78,9 @@ async function waitForUsersRequest(http: HttpTestingController) {
     method: string;
     params: { get(name: string): string | null };
   }) =>
-    request.url === `${environment.apiUrl}/users` &&
+    request.url === `${environment.supabaseUrl}/rest/v1/users` &&
     request.method === 'GET' &&
-    request.params.get('email') === 'ana@alunos.utfpr.edu.br';
+    request.params.get('id') === 'eq.supabase-user-1';
 
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const [match] = http.match(isUsersGet);
@@ -100,7 +113,7 @@ describe('authGuard', () => {
 
     auth.login('ana@alunos.utfpr.edu.br', 'senha123');
     await flushMicrotasks();
-    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([activeUser]);
+    http.expectOne((request) => request.url === `${environment.supabaseUrl}/rest/v1/users`).flush([activeUserRow]);
     await flushMicrotasks();
 
     const result = await TestBed.runInInjectionContext(() =>
@@ -143,7 +156,7 @@ describe('authGuard', () => {
 
     resolveSession({ data: { session: fakeSession }, error: null });
     const usersRequest = await waitForUsersRequest(http);
-    usersRequest.flush([activeUser]);
+    usersRequest.flush([activeUserRow]);
 
     await expect(Promise.all([firstGuard, secondGuard])).resolves.toEqual([true, true]);
     expect(fakeAuth.getSession).toHaveBeenCalledTimes(1);
@@ -171,7 +184,7 @@ describe('authGuard', () => {
 
       const navigation = RouterTestingHarness.create(protectedRoute);
       const usersRequest = await waitForUsersRequest(http);
-      usersRequest.flush([activeUser]);
+      usersRequest.flush([activeUserRow]);
 
       await navigation;
 
@@ -218,7 +231,7 @@ describe('authGuard', () => {
 
     const navigation = RouterTestingHarness.create('/rides');
     const usersRequest = await waitForUsersRequest(http);
-    usersRequest.flush([{ ...activeUser, isBlocked: true }]);
+    usersRequest.flush([{ ...activeUserRow, is_blocked: true }]);
 
     await navigation;
 

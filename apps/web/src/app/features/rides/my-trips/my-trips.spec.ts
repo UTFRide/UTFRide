@@ -10,8 +10,9 @@ import { User } from '../../../core/models/user.model';
 import { AuthData } from '../../../core/services/auth-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 
-const summariesUrl = `${environment.apiUrl}/passenger-trip-summaries`;
-const requestsUrl = `${environment.apiUrl}/ride_requests`;
+const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
+const summariesUrl = `${environment.supabaseUrl}/rest/v1/rpc/get_passenger_trip_summaries`;
+const requestsUrl = `${environment.supabaseUrl}/rest/v1/ride_requests`;
 const date = new Date(2030, 4, 10, 8, 15).toISOString();
 const driver = { name: 'Camila Rocha', ratingAverage: 4.9 };
 const ride = {
@@ -28,6 +29,13 @@ const pending: RideRequest = {
   status: 'pending',
   createdAt: date,
 };
+const pendingRow = {
+  id: pending.id,
+  ride_id: pending.rideId,
+  passenger_id: pending.passengerId,
+  status: pending.status,
+  created_at: pending.createdAt,
+};
 const pendingTrip = { id: pending.id, status: pending.status, driver, ride };
 
 function findButton(root: HTMLElement, label: string): HTMLButtonElement {
@@ -40,9 +48,12 @@ function findButton(root: HTMLElement, label: string): HTMLButtonElement {
 
 function expectCancellationPatch(http: HttpTestingController) {
   const patch = http.expectOne(
-    (request) => request.method === 'PATCH' && request.url === `${requestsUrl}/${pending.id}`,
+    (request) =>
+      request.method === 'PATCH' &&
+      request.url === requestsUrl &&
+      request.params.get('id') === `eq.${pending.id}`,
   );
-  expect(patch.request.params.get('passengerId')).toBe(pending.passengerId);
+  expect(patch.request.params.get('passenger_id')).toBe(`eq.${pending.passengerId}`);
   return patch;
 }
 
@@ -90,19 +101,19 @@ async function authenticate(http: HttpTestingController, role: User['role'] = 's
   auth.login('passageiro@alunos.utfpr.edu.br', 'senha123');
   await flushMicrotasks();
   http
-    .expectOne((request) => request.url === `${environment.apiUrl}/users`)
+    .expectOne((request) => request.url === usersUrl)
     .flush([
       {
         id,
         name: 'Ana Passageira',
         email: 'passageiro@alunos.utfpr.edu.br',
-        registrationNumber: '123',
+        registration_number: '123',
         whatsapp: '',
         role,
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 0,
-        createdAt: date,
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 0,
+        created_at: date,
       },
     ]);
   await flushMicrotasks();
@@ -131,9 +142,7 @@ describe('Minhas Viagens (CA9)', () => {
   async function openTrips() {
     const harness = await RouterTestingHarness.create('/rides/my-trips');
     const root = harness.routeNativeElement!.querySelector('main')!;
-    const read = http.expectOne((request) => request.url === summariesUrl);
-    expect(read.request.method).toBe('GET');
-    expect(read.request.params.get('passengerId')).toBe('007');
+    const read = http.expectOne((request) => request.url === summariesUrl && request.method === 'POST');
     return { root, read, harness };
   }
 
@@ -205,21 +214,23 @@ describe('Minhas Viagens (CA9)', () => {
     const cancel = findButton(root, 'Cancelar solicitação de vaga');
     cancel.click();
     expect(confirm).toHaveBeenCalledOnce();
-    http.expectNone((request) => request.url.startsWith(requestsUrl));
+    http.expectNone(requestsUrl);
     confirm.mockReturnValue(true);
     cancel.click();
     cancel.click();
-    http.expectOne({ method: 'GET', url: `${requestsUrl}/009` }).flush(pending);
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === 'eq.009')
+      .flush([pendingRow]);
     const patch = expectCancellationPatch(http);
     expect(patch.request.body).toEqual({ status: 'cancelled' });
-    http.expectNone((request) => request.url.startsWith(requestsUrl));
+    http.expectNone(requestsUrl);
 
     harness.detectChanges();
     expect(root.querySelectorAll('article')).toHaveLength(2);
     expect(cancel.disabled).toBe(true);
     expect(root.textContent).toContain('Aguardando resposta do motorista');
 
-    patch.flush({ ...pending, status: 'cancelled' });
+    patch.flush({ ...pendingRow, status: 'cancelled' });
     http.expectOne((request) => request.url === summariesUrl).flush([
       { ...pendingTrip, status: 'cancelled' },
       { ...pendingTrip, id: '010', ride: { ...ride, origin: 'Portão' } },
@@ -242,7 +253,9 @@ describe('Minhas Viagens (CA9)', () => {
     read.flush([pendingTrip]);
     harness.detectChanges();
     findButton(root, 'Cancelar solicitação de vaga').click();
-    http.expectOne({ method: 'GET', url: `${requestsUrl}/009` }).flush(pending);
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === 'eq.009')
+      .flush([pendingRow]);
     expectCancellationPatch(http).error(new ProgressEvent('error'));
     harness.detectChanges();
 
@@ -262,11 +275,13 @@ describe('Minhas Viagens (CA9)', () => {
     read.flush([pendingTrip]);
     await harness.fixture.whenStable();
     findButton(root, 'Cancelar solicitação de vaga').click();
-    const validation = http.expectOne({ method: 'GET', url: `${requestsUrl}/009` });
+    const validation = http.expectOne(
+      (req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === 'eq.009',
+    );
 
     await harness.navigateByUrl('/rides');
     expect(validation.cancelled).toBe(false);
-    validation.flush(pending);
+    validation.flush([pendingRow]);
     const patch = expectCancellationPatch(http);
 
     await harness.navigateByUrl('/rides/my-trips');
@@ -277,8 +292,8 @@ describe('Minhas Viagens (CA9)', () => {
     findButton(root, 'Cancelando').click();
     expect(confirm).toHaveBeenCalledOnce();
 
-    patch.flush({ ...pending, status: 'cancelled' });
-    http.expectNone((request) => request.url.startsWith(requestsUrl));
+    patch.flush({ ...pendingRow, status: 'cancelled' });
+    http.expectNone(requestsUrl);
     http
       .expectOne((request) => request.url === summariesUrl)
       .flush([{ ...pendingTrip, status: 'cancelled' }]);
@@ -298,7 +313,9 @@ describe('Minhas Viagens (CA9)', () => {
     read.flush([pendingTrip]);
     await harness.fixture.whenStable();
     findButton(root, 'Cancelar solicitação de vaga').click();
-    http.expectOne({ method: 'GET', url: `${requestsUrl}/009` }).flush(pending);
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === 'eq.009')
+      .flush([pendingRow]);
     expectCancellationPatch(http).flush(null, { status: 409, statusText: 'Conflict' });
     http.expectOne((request) => request.url === summariesUrl).flush([
       { ...pendingTrip, status: 'accepted', whatsapp: '41987651122' },
@@ -323,14 +340,16 @@ describe('Minhas Viagens (CA9)', () => {
     read.flush([pendingTrip]);
     harness.detectChanges();
     findButton(root, 'Cancelar solicitação de vaga').click();
-    http.expectOne({ method: 'GET', url: `${requestsUrl}/009` }).flush(pending);
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === 'eq.009')
+      .flush([pendingRow]);
     const patch = expectCancellationPatch(http);
 
     auth.logout();
     await authenticate(http);
     harness.detectChanges();
     http.expectOne((request) => request.url === summariesUrl).flush([pendingTrip]);
-    patch.flush({ ...pending, status: 'cancelled' });
+    patch.flush({ ...pendingRow, status: 'cancelled' });
     harness.detectChanges();
 
     expect(root.querySelector('article')?.textContent).toContain(
@@ -364,7 +383,7 @@ describe('Minhas Viagens (CA9)', () => {
       expect(root.textContent).toContain(message);
       cancel.click();
       expect(confirm).not.toHaveBeenCalled();
-      http.expectNone((request) => request.url.startsWith(requestsUrl));
+      http.expectNone(requestsUrl);
     },
   );
 
@@ -382,9 +401,7 @@ describe('Minhas Viagens (CA9)', () => {
     await authenticate(http, 'student', '7');
     harness.detectChanges();
     http
-      .expectOne(
-        (request) => request.url === summariesUrl && request.params.get('passengerId') === '7',
-      )
+      .expectOne((request) => request.url === summariesUrl && request.method === 'POST')
       .flush([]);
     harness.detectChanges();
     expect(root.textContent).toContain('Nenhuma viagem encontrada');
@@ -411,11 +428,11 @@ describe('Minhas Viagens (CA9)', () => {
     harness.detectChanges();
     expect(root.textContent).toContain('Carregando suas viagens');
     expect(root.querySelector('[role="alert"]')).toBeNull();
-    const retried = http.expectOne({ method: 'GET', url: `${summariesUrl}?passengerId=007` });
+    const retried = http.expectOne({ method: 'POST', url: summariesUrl });
     retried.flush([pendingTrip]);
     harness.detectChanges();
     expect(root.querySelector('article')?.textContent).toContain('Aguardando resposta do motorista');
-    http.expectNone((request) => request.method !== 'GET');
+    http.expectNone(requestsUrl);
   });
 
   it.each([
@@ -428,7 +445,9 @@ describe('Minhas Viagens (CA9)', () => {
     read.flush([pendingTrip]);
     harness.detectChanges();
     findButton(root, 'Cancelar solicitação de vaga').click();
-    http.expectOne({ method: 'GET', url: `${requestsUrl}/009` }).flush(pending);
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === 'eq.009')
+      .flush([pendingRow]);
     const patch = expectCancellationPatch(http);
     if (status === 0) patch.error(new ProgressEvent('error'));
     else patch.flush(null, { status, statusText: 'Not Found' });
@@ -439,8 +458,8 @@ describe('Minhas Viagens (CA9)', () => {
     const refresh = findButton(root, 'Atualizar viagens');
     refresh.click();
     refresh.click();
-    http.expectNone((request) => request.url.startsWith(requestsUrl));
-    http.expectOne({ method: 'GET', url: `${summariesUrl}?passengerId=007` })
+    http.expectNone(requestsUrl);
+    http.expectOne({ method: 'POST', url: summariesUrl })
       .flush([{ ...pendingTrip, status: actual }]);
     harness.detectChanges();
     expect(root.querySelector('[role="alert"]')).toBeNull();
@@ -449,13 +468,15 @@ describe('Minhas Viagens (CA9)', () => {
       harness.detectChanges();
       expect(root.querySelector('article')?.textContent).toContain('Solicitação cancelada');
       expect(confirm).toHaveBeenCalledOnce();
-      http.expectNone((request) => request.url.startsWith(requestsUrl));
+      http.expectNone(requestsUrl);
     } else {
       findButton(root, 'Cancelar solicitação de vaga').click();
       http.expectNone((request) => request.method === 'PATCH');
-      http.expectOne({ method: 'GET', url: `${requestsUrl}/009` }).flush(pending);
-      expectCancellationPatch(http).flush({ ...pending, status: 'cancelled' });
-      http.expectOne({ method: 'GET', url: `${summariesUrl}?passengerId=007` })
+      http
+        .expectOne((req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === 'eq.009')
+        .flush([pendingRow]);
+      expectCancellationPatch(http).flush({ ...pendingRow, status: 'cancelled' });
+      http.expectOne({ method: 'POST', url: summariesUrl })
         .flush([{ ...pendingTrip, status: 'cancelled' }]);
       expect(confirm).toHaveBeenCalledTimes(2);
     }

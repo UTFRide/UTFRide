@@ -17,7 +17,38 @@ import { RideData } from './ride-data';
 import { RideRequestData } from './ride-request-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
-const requestsUrl = `${environment.apiUrl}/ride_requests`;
+const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
+const ridesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
+const requestsUrl = `${environment.supabaseUrl}/rest/v1/ride_requests`;
+const notificationsUrl = `${environment.supabaseUrl}/rest/v1/notifications`;
+const passengerTripsRpcUrl = `${environment.supabaseUrl}/rest/v1/rpc/get_passenger_trip_summaries`;
+
+function toRideRow(ride: Ride) {
+  return {
+    id: ride.id,
+    driver_id: ride.driverId,
+    origin: ride.origin,
+    destination: ride.destination,
+    departure_time: ride.departureTime,
+    total_seats: ride.totalSeats,
+    available_seats: ride.availableSeats,
+    price_per_seat: ride.pricePerSeat,
+    status: ride.status,
+    ...(ride.notes !== undefined ? { notes: ride.notes } : {}),
+    created_at: ride.createdAt,
+  };
+}
+
+function toRequestRow(request: RideRequest) {
+  return {
+    id: request.id,
+    ride_id: request.rideId,
+    passenger_id: request.passengerId,
+    status: request.status,
+    created_at: request.createdAt,
+  };
+}
+
 const pendingPassengerRequest: RideRequest = {
   id: '007',
   rideId: '008',
@@ -69,18 +100,18 @@ async function authenticate(http: HttpTestingController, id = 'driver-1', role: 
   const auth = TestBed.inject(AuthData);
   auth.login('motorista@alunos.utfpr.edu.br', 'senha123');
   await flushMicrotasks();
-  http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+  http.expectOne((request) => request.url === usersUrl).flush([
     {
       id,
       name: 'Carlos Motorista',
       email: 'motorista@alunos.utfpr.edu.br',
-      registrationNumber: '2020123',
+      registration_number: '2020123',
       whatsapp: '41999998888',
       role,
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 5,
-      createdAt: '2026-01-01T00:00:00.000Z',
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 5,
+      created_at: '2026-01-01T00:00:00.000Z',
     },
   ]);
   await flushMicrotasks();
@@ -100,9 +131,10 @@ describe('RideRequestData', () => {
   describe('operações de passageiro', () => {
     let data: RideRequestData;
     const requestId = pendingPassengerRequest.id;
-    const requestUrl = `${requestsUrl}/${requestId}`;
     const isCancellationPatch = (request: HttpRequest<unknown>) =>
-      request.method === 'PATCH' && request.url === requestUrl;
+      request.method === 'PATCH' &&
+      request.url === requestsUrl &&
+      request.params.get('id') === `eq.${requestId}`;
     const restrictedAccounts = [
       { account: 'conta bloqueada', reason: 'blocked-account', role: 'student', isBlocked: true },
       { account: 'perfil de suporte', reason: 'support-profile', role: 'support', isBlocked: false },
@@ -117,7 +149,6 @@ describe('RideRequestData', () => {
       await authenticate(http, pendingPassengerRequest.passengerId, role);
       if (isBlocked) {
         const auth = TestBed.inject(AuthData);
-        // Login recusa contas bloqueadas. Simula uma sessão corrente já bloqueada.
         vi.spyOn(auth, 'currentUser').mockReturnValue({ ...auth.currentUser()!, isBlocked });
       }
       return http;
@@ -127,8 +158,7 @@ describe('RideRequestData', () => {
       const http = await authenticateRestricted(account);
       const result = firstValueFrom(data.createRequest(pendingPassengerRequest.rideId));
 
-      http.expectNone((request) => request.method === 'GET' && request.url === requestsUrl);
-      http.expectNone({ method: 'POST', url: requestsUrl });
+      http.expectNone(requestsUrl);
       await expect(result).resolves.toEqual({ status: 'restricted', reason: account.reason });
       http.verify();
     });
@@ -137,23 +167,26 @@ describe('RideRequestData', () => {
       const http = await authenticateRestricted(account);
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
 
-      http.expectNone({ method: 'GET', url: requestUrl });
-      http.expectNone(isCancellationPatch);
+      http.expectNone(requestsUrl);
       await expect(result).resolves.toEqual({ status: 'restricted', reason: account.reason });
       http.verify();
     });
 
-    it('cancela uma solicitação pendente do aluno atual preservando o ID textual', async () => {
+    it('cancela uma solicitação pendente do aluno atual via /rest/v1/ride_requests', async () => {
       const http = TestBed.inject(HttpTestingController);
       await authenticate(http, pendingPassengerRequest.passengerId);
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
-      http.expectOne({ method: 'GET', url: requestUrl }).flush(pendingPassengerRequest);
+      http
+        .expectOne((req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === `eq.${requestId}`)
+        .flush([toRequestRow(pendingPassengerRequest)]);
 
       const patch = http.expectOne(isCancellationPatch);
+      expect(patch.request.headers.get('Prefer')).toBe('return=representation');
+      expect(patch.request.headers.get('Accept')).toBe('application/vnd.pgrst.object+json');
       expect(patch.request.body).toEqual({ status: 'cancelled' });
-      expect(patch.request.params.get('passengerId')).toBe(pendingPassengerRequest.passengerId);
-      const cancelled = { ...pendingPassengerRequest, status: 'cancelled' };
-      patch.flush(cancelled);
+      expect(patch.request.params.get('passenger_id')).toBe(`eq.${pendingPassengerRequest.passengerId}`);
+      const cancelled: RideRequest = { ...pendingPassengerRequest, status: 'cancelled' };
+      patch.flush(toRequestRow(cancelled));
 
       await expect(result).resolves.toEqual({ status: 'cancelled', request: cancelled });
       http.verify();
@@ -163,7 +196,9 @@ describe('RideRequestData', () => {
       const http = TestBed.inject(HttpTestingController);
       await authenticate(http, '9');
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
-      http.expectOne({ method: 'GET', url: requestUrl }).flush(pendingPassengerRequest);
+      http
+        .expectOne((req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === `eq.${requestId}`)
+        .flush([toRequestRow(pendingPassengerRequest)]);
 
       http.expectNone(isCancellationPatch);
       await expect(result).resolves.toEqual({ status: 'not-owned' });
@@ -176,10 +211,9 @@ describe('RideRequestData', () => {
         const http = TestBed.inject(HttpTestingController);
         await authenticate(http, pendingPassengerRequest.passengerId);
         const result = firstValueFrom(data.cancelPassengerRequest(requestId));
-        http.expectOne({ method: 'GET', url: requestUrl }).flush({
-          ...pendingPassengerRequest,
-          status,
-        });
+        http
+          .expectOne((req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === `eq.${requestId}`)
+          .flush([toRequestRow({ ...pendingPassengerRequest, status })]);
 
         http.expectNone(isCancellationPatch);
         await expect(result).resolves.toEqual({ status: 'invalid-state' });
@@ -202,11 +236,13 @@ describe('RideRequestData', () => {
       const http = TestBed.inject(HttpTestingController);
       await authenticate(http, pendingPassengerRequest.passengerId);
       const result = firstValueFrom(data.cancelPassengerRequest(requestId));
-      const read = http.expectOne({ method: 'GET', url: requestUrl });
+      const read = http.expectOne(
+        (req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === `eq.${requestId}`,
+      );
 
       TestBed.inject(AuthData).logout();
       await authenticate(http, pendingPassengerRequest.passengerId);
-      read.flush(pendingPassengerRequest);
+      read.flush([toRequestRow(pendingPassengerRequest)]);
 
       http.expectNone(isCancellationPatch);
       await expect(result).resolves.toEqual({ status: 'unauthenticated' });
@@ -217,46 +253,47 @@ describe('RideRequestData', () => {
       const http = TestBed.inject(HttpTestingController);
       await authenticate(http, pendingPassengerRequest.passengerId);
       const first = data.cancelPassengerRequest(requestId).subscribe();
-      const read = http.expectOne({ method: 'GET', url: requestUrl });
+      const read = http.expectOne(
+        (req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === `eq.${requestId}`,
+      );
       const duplicate = firstValueFrom(data.cancelPassengerRequest(requestId));
-      http.expectNone({ method: 'GET', url: requestUrl });
+      http.expectNone(
+        (req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === `eq.${requestId}`,
+      );
 
       first.unsubscribe();
-      read.flush(pendingPassengerRequest);
+      read.flush([toRequestRow(pendingPassengerRequest)]);
       const patch = http.expectOne(isCancellationPatch);
-      expect(patch.request.params.get('passengerId')).toBe(pendingPassengerRequest.passengerId);
-      const cancelled = { ...pendingPassengerRequest, status: 'cancelled' };
-      patch.flush(cancelled);
+      expect(patch.request.params.get('passenger_id')).toBe(`eq.${pendingPassengerRequest.passengerId}`);
+      const cancelled: RideRequest = { ...pendingPassengerRequest, status: 'cancelled' };
+      patch.flush(toRequestRow(cancelled));
 
       await expect(duplicate).resolves.toEqual({ status: 'cancelled', request: cancelled });
       http.verify();
     });
   });
 
-  it('consulta somente o resumo das viagens da sessão e descarta respostas de sessões anteriores', async () => {
+  it('consulta somente o resumo das viagens via RPC get_passenger_trip_summaries e descarta respostas de sessões anteriores', async () => {
     const http = TestBed.inject(HttpTestingController);
     const data = TestBed.inject(RideRequestData);
     const auth = TestBed.inject(AuthData);
-    const url = `${environment.apiUrl}/passenger-trip-summaries`;
     const result = data.loadPassengerTrips(TestBed.inject(Injector));
     TestBed.tick();
-    http.expectNone(url);
+    http.expectNone(passengerTripsRpcUrl);
 
     await authenticate(http, '007');
     TestBed.tick();
-    const previous = http.expectOne((request) => request.url === url && request.method === 'GET');
-    expect(previous.request.params.keys()).toEqual(['passengerId']);
-    expect(previous.request.params.get('passengerId')).toBe('007');
+    const previous = http.expectOne((request) => request.url === passengerTripsRpcUrl && request.method === 'POST');
+    expect(previous.request.body).toEqual({});
     expect(result()).toEqual({ status: 'loading' });
 
-    // A autenticação nova com o mesmo ID também invalida a resposta anterior.
     auth.logout();
     await authenticate(http, '007');
     expect(result()).toEqual({ status: 'loading' });
     TestBed.tick();
     expect(previous.cancelled).toBe(true);
     const trip = { id: '008', status: 'accepted', ride: null, driver: null };
-    http.expectOne((request) => request.url === url).flush([trip]);
+    http.expectOne((request) => request.url === passengerTripsRpcUrl).flush([trip]);
     expect(result()).toEqual({ status: 'loaded', trips: [trip] });
 
     auth.logout();
@@ -264,36 +301,32 @@ describe('RideRequestData', () => {
     await authenticate(http, '7');
     expect(result()).toEqual({ status: 'loading' });
     TestBed.tick();
-    const failure = http.expectOne((request) => request.url === url && request.method === 'GET');
-    expect(failure.request.params.get('passengerId')).toBe('7');
+    const failure = http.expectOne((request) => request.url === passengerTripsRpcUrl && request.method === 'POST');
     failure.error(new ProgressEvent('error'));
     expect(result()).toEqual({ status: 'error', connectionError: true });
     http.verify();
   });
 
-  it('consulta só o par oferta e passageiro da sessão, preservando ids textuais e isolando o resultado', async () => {
+  it('consulta só o par oferta e passageiro via PostgREST em /rest/v1/ride_requests', async () => {
     const http = TestBed.inject(HttpTestingController);
     const requestData = TestBed.inject(RideRequestData);
     const auth = TestBed.inject(AuthData);
-    const url = `${environment.apiUrl}/ride_requests`;
     const rideId = signal('008');
     const result = requestData.loadPassengerRequest(rideId, TestBed.inject(Injector));
     TestBed.tick();
-    http.expectNone(url);
+    http.expectNone(requestsUrl);
 
     await authenticate(http, '007');
     TestBed.tick();
-    const oldRead = http.expectOne((request) => request.url === url);
+    const oldRead = http.expectOne((request) => request.url === requestsUrl);
     rideId.set('007');
     TestBed.tick();
     expect(oldRead.cancelled).toBe(true);
     expect(result()).toEqual({ status: 'loading' });
-    const read = http.expectOne((request) => request.url === url);
+    const read = http.expectOne((request) => request.url === requestsUrl);
     expect(read.request.method).toBe('GET');
-    expect(JSON.parse(read.request.params.get('_where')!)).toEqual({
-      rideId: { eq: '007' },
-      passengerId: { eq: '007' },
-    });
+    expect(read.request.params.get('ride_id')).toBe('eq.007');
+    expect(read.request.params.get('passenger_id')).toBe('eq.007');
 
     const latest: RideRequest = {
       id: 'own-latest',
@@ -303,27 +336,25 @@ describe('RideRequestData', () => {
       createdAt: '2026-01-03T08:00:00.000Z',
     };
     read.flush([
-      { ...latest, id: 'other-passenger', passengerId: '7', createdAt: '2026-01-05T08:00:00.000Z' },
-      latest,
-      { ...latest, id: 'other-ride', rideId: '7', createdAt: '2026-01-06T08:00:00.000Z' },
-      { ...latest, id: 'own-older', status: 'cancelled', createdAt: '2026-01-02T08:00:00.000Z' },
-      { ...latest, id: 'own-newer', status: 'rejected', createdAt: '2026-01-04T08:00:00.000Z' },
+      toRequestRow({ ...latest, id: 'other-passenger', passengerId: '7', createdAt: '2026-01-05T08:00:00.000Z' }),
+      toRequestRow(latest),
+      toRequestRow({ ...latest, id: 'other-ride', rideId: '7', createdAt: '2026-01-06T08:00:00.000Z' }),
+      toRequestRow({ ...latest, id: 'own-older', status: 'cancelled', createdAt: '2026-01-02T08:00:00.000Z' }),
+      toRequestRow({ ...latest, id: 'own-newer', status: 'rejected', createdAt: '2026-01-04T08:00:00.000Z' }),
     ]);
     expect(result()).toEqual({ status: 'loaded', request: latest });
     expect(requestData.requests()).toEqual([]);
 
     auth.logout();
     TestBed.tick();
-    http.expectNone(url);
+    http.expectNone(requestsUrl);
     await authenticate(http, 'different-passenger');
     expect(result()).toEqual({ status: 'loading' });
     TestBed.tick();
-    const newRead = http.expectOne((request) => request.url === url);
-    expect(JSON.parse(newRead.request.params.get('_where')!)).toEqual({
-      rideId: { eq: '007' },
-      passengerId: { eq: 'different-passenger' },
-    });
-    newRead.flush([latest]);
+    const newRead = http.expectOne((request) => request.url === requestsUrl);
+    expect(newRead.request.params.get('ride_id')).toBe('eq.007');
+    expect(newRead.request.params.get('passenger_id')).toBe('eq.different-passenger');
+    newRead.flush([toRequestRow(latest)]);
     expect(result()).toEqual({ status: 'loaded', request: null });
     http.verify();
   });
@@ -342,16 +373,16 @@ describe('RideRequestData', () => {
       status: 'cancelled',
       createdAt: '2026-02-02T08:00:00.000Z',
     };
-    http.expectOne((request) => request.url === `${environment.apiUrl}/ride_requests`).flush([
-      { ...latest, id: 'request-1', status: 'rejected', createdAt: '2026-02-01T08:00:00.000Z' },
-      latest,
+    http.expectOne((request) => request.url === requestsUrl).flush([
+      toRequestRow({ ...latest, id: 'request-1', status: 'rejected', createdAt: '2026-02-01T08:00:00.000Z' }),
+      toRequestRow(latest),
     ]);
 
     expect(result()).toEqual({ status: 'loaded', request: latest });
     http.verify();
   });
 
-  it('aceita e rejeita solicitações individualmente antes da viagem, ocupa vagas, esgota a oferta na última vaga mantendo pendentes e bloqueia novos aceites', async () => {
+  it('aceita e rejeita solicitações individualmente antes da viagem, ocupa vagas e bloqueia novos aceites', async () => {
     const rideData = TestBed.inject(RideData);
     const requestData = TestBed.inject(RideRequestData);
     const http = TestBed.inject(HttpTestingController);
@@ -373,8 +404,8 @@ describe('RideRequestData', () => {
 
     rideData.loadDriverRides();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([initialRide]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(initialRide)]);
 
     const sampleRequests: RideRequest[] = [
       {
@@ -409,18 +440,17 @@ describe('RideRequestData', () => {
 
     requestData.loadForRide('ride-1');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1')
-      .flush(sampleRequests);
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush(sampleRequests.map(toRequestRow));
 
     expect(requestData.requests()).toEqual(sampleRequests);
 
-    // 1. Rejeitar individualmente req-pending-1 sem alterar vagas nem demais pendentes
     requestData.reject(sampleRequests[1], initialRide);
     const rejectReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/ride_requests/req-pending-1` && req.method === 'PATCH',
+      (req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-pending-1',
     );
     expect(rejectReq.request.body).toEqual({ status: 'rejected' });
-    rejectReq.flush({ ...sampleRequests[1], status: 'rejected' });
+    rejectReq.flush(toRequestRow({ ...sampleRequests[1], status: 'rejected' }));
 
     expect(requestData.requests().find((item) => item.id === 'req-pending-1')?.status).toBe('rejected');
     expect(requestData.requests().find((item) => item.id === 'req-pending-2')?.status).toBe('pending');
@@ -428,30 +458,27 @@ describe('RideRequestData', () => {
     expect(rideData.driverRides()[0].availableSeats).toBe(1);
     expect(rideData.driverRides()[0].status).toBe('active');
 
-    // 2. Aceitar req-pending-2 (última vaga disponível) -> ocupa vaga e muda oferta para full (esgotada)
     requestData.accept(sampleRequests[2], rideData.driverRides()[0]);
     const acceptReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/ride_requests/req-pending-2` && req.method === 'PATCH',
+      (req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-pending-2',
     );
     expect(acceptReq.request.body).toEqual({ status: 'accepted' });
-    acceptReq.flush({ ...sampleRequests[2], status: 'accepted' });
+    acceptReq.flush(toRequestRow({ ...sampleRequests[2], status: 'accepted' }));
 
     const patchRideReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
-    expect(patchRideReq.request.body).toEqual({ availableSeats: 0, status: 'full' });
+    expect(patchRideReq.request.body).toEqual({ available_seats: 0, status: 'full' });
     const fullRide: Ride = { ...initialRide, availableSeats: 0, status: 'full' };
-    patchRideReq.flush(fullRide);
+    patchRideReq.flush(toRideRow(fullRide));
 
     expect(rideData.driverRides()[0]).toEqual(fullRide);
     expect(requestData.requests().find((item) => item.id === 'req-pending-2')?.status).toBe('accepted');
-    // Solicitação ainda pendente permanece pendente
     expect(requestData.requests().find((item) => item.id === 'req-pending-3')?.status).toBe('pending');
 
-    // 3. Tentar aceitar req-pending-3 sem vagas disponíveis deve ser impedido
     requestData.accept(sampleRequests[3], rideData.driverRides()[0]);
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-pending-3`);
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(requestsUrl);
+    http.expectNone(ridesUrl);
     expect(requestData.decisionResult()).toEqual({ noAvailableSeats: true });
     expect(requestData.requests().find((item) => item.id === 'req-pending-3')?.status).toBe('pending');
 
@@ -478,15 +505,70 @@ describe('RideRequestData', () => {
 
     const result = firstValueFrom(requestData.createRequest(exhaustedRide.id));
     http
-      .expectOne((request) => request.method === 'GET' && request.url === `${environment.apiUrl}/ride_requests`)
+      .expectOne((request) => request.method === 'GET' && request.url === requestsUrl)
       .flush([]);
-    http.expectOne({ method: 'GET', url: `${environment.apiUrl}/rides/ride-full` }).flush(exhaustedRide);
-    http.expectNone({ method: 'POST', url: `${environment.apiUrl}/ride_requests` });
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === ridesUrl && req.params.get('id') === 'eq.ride-full')
+      .flush([toRideRow(exhaustedRide)]);
+    http.expectNone({ method: 'POST', url: requestsUrl });
     expect(await result).toEqual({ status: 'unavailable', reason: 'full', ride: exhaustedRide });
     http.verify();
   });
 
-  it('cancela a oferta antes da viagem, altera apenas pedidos pendentes para cancelados e registra um aviso interno para cada passageiro confirmado ou anteriormente pendente', async () => {
+  it('recupera solicitação existente quando POST /rest/v1/ride_requests retorna conflito 409 (23505)', async () => {
+    const requestData = TestBed.inject(RideRequestData);
+    const http = TestBed.inject(HttpTestingController);
+    await authenticate(http, 'passenger-1');
+
+    const futureRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const existing: RideRequest = {
+      id: 'req-dup',
+      rideId: 'ride-1',
+      passengerId: 'passenger-1',
+      status: 'pending',
+      createdAt: '2026-01-01T09:00:00.000Z',
+    };
+
+    const result = firstValueFrom(requestData.createRequest('ride-1'));
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === requestsUrl)
+      .flush([]);
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === ridesUrl && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(futureRide)]);
+
+    const postReq = http.expectOne((req) => req.method === 'POST' && req.url === requestsUrl);
+    expect(postReq.request.body).toEqual({
+      ride_id: 'ride-1',
+      passenger_id: 'passenger-1',
+      status: 'pending',
+      created_at: expect.any(String),
+    });
+    postReq.flush({ code: '23505', message: 'duplicate key value' }, { status: 409, statusText: 'Conflict' });
+
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === requestsUrl)
+      .flush([toRequestRow(existing)]);
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === ridesUrl && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(futureRide)]);
+
+    expect(await result).toEqual({ status: 'duplicate', request: existing, ride: futureRide });
+    http.verify();
+  });
+
+  it('cancela a oferta antes da viagem, altera apenas pedidos pendentes para cancelados e registra avisos internos', async () => {
     const rideData = TestBed.inject(RideData);
     const requestData = TestBed.inject(RideRequestData);
     const notificationData = TestBed.inject(NotificationData);
@@ -509,8 +591,8 @@ describe('RideRequestData', () => {
 
     rideData.loadDriverRides();
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1')
-      .flush([ride]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ride)]);
 
     const rideRequests: RideRequest[] = [
       {
@@ -552,60 +634,67 @@ describe('RideRequestData', () => {
 
     requestData.cancelRide(ride);
 
-    // 1. Oferta é cancelada
     const patchRideReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
     expect(patchRideReq.request.body).toEqual({ status: 'cancelled' });
     const cancelledRide: Ride = { ...ride, status: 'cancelled' };
-    patchRideReq.flush(cancelledRide);
+    patchRideReq.flush(toRideRow(cancelledRide));
 
-    // 2. Busca solicitações da oferta
     const getRequestsReq = http.expectOne(
       (req) =>
-        req.url === `${environment.apiUrl}/ride_requests` &&
+        req.url === requestsUrl &&
         req.method === 'GET' &&
-        req.params.get('rideId') === 'ride-1',
+        req.params.get('ride_id') === 'eq.ride-1',
     );
-    getRequestsReq.flush(rideRequests);
+    getRequestsReq.flush(rideRequests.map(toRequestRow));
 
-    // 3. Apenas pendentes passam para cancelled (accepted, rejected e já cancelled não mudam)
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-accepted`);
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-rejected`);
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-already-cancelled`);
+    http.expectNone((req) => req.method === 'PATCH' && req.params.get('id') === 'eq.req-accepted');
+    http.expectNone((req) => req.method === 'PATCH' && req.params.get('id') === 'eq.req-rejected');
+    http.expectNone((req) => req.method === 'PATCH' && req.params.get('id') === 'eq.req-already-cancelled');
 
     const patchPending1 = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/ride_requests/req-pending-1` && req.method === 'PATCH',
+      (req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-pending-1',
     );
     expect(patchPending1.request.body).toEqual({ status: 'cancelled' });
     const cancelledPending1: RideRequest = { ...rideRequests[1], status: 'cancelled' };
-    patchPending1.flush(cancelledPending1);
+    patchPending1.flush(toRequestRow(cancelledPending1));
 
     const patchPending2 = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/ride_requests/req-pending-2` && req.method === 'PATCH',
+      (req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-pending-2',
     );
     expect(patchPending2.request.body).toEqual({ status: 'cancelled' });
     const cancelledPending2: RideRequest = { ...rideRequests[2], status: 'cancelled' };
-    patchPending2.flush(cancelledPending2);
+    patchPending2.flush(toRequestRow(cancelledPending2));
 
-    // 4. Um aviso interno em /notifications para cada confirmado ou anteriormente pendente
     const notifRequests = http.match(
-      (req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'POST',
+      (req) => req.url === notificationsUrl && req.method === 'POST',
     );
-    expect(notifRequests.map((req) => (req.request.body as { recipientId: string }).recipientId)).toEqual([
+    expect(notifRequests.map((req) => (req.request.body as { recipient_id: string }).recipient_id)).toEqual([
       'Mariana Silva',
       'Lucas Andrade',
       'Pedro Henrique',
     ]);
 
     const createdNotifications: Notification[] = notifRequests.map((req, index) => {
-      const body = req.request.body as Omit<Notification, 'id'>;
-      expect(body.rideId).toBe('ride-1');
+      const body = req.request.body as {
+        recipient_id: string;
+        ride_id: string;
+        message: string;
+        created_at: string;
+      };
+      expect(body.ride_id).toBe('ride-1');
       expect(body.message).toContain('Batel');
       expect(body.message).toContain('UTFPR Neoville');
-      const saved: Notification = { id: `notif-${index + 1}`, ...body };
-      req.flush(saved);
-      return saved;
+      const id = `notif-${index + 1}`;
+      req.flush({ id, ...body });
+      return {
+        id,
+        recipientId: body.recipient_id,
+        rideId: body.ride_id,
+        message: body.message,
+        createdAt: body.created_at,
+      };
     });
 
     expect(requestData.cancelResult()).toEqual({
@@ -642,9 +731,9 @@ describe('RideRequestData', () => {
     };
 
     requestData.cancelRide(pastRide);
-    http.expectNone(`${environment.apiUrl}/rides/ride-past`);
-    http.expectNone(`${environment.apiUrl}/ride_requests`);
-    http.expectNone(`${environment.apiUrl}/notifications`);
+    http.expectNone(ridesUrl);
+    http.expectNone(requestsUrl);
+    http.expectNone(notificationsUrl);
     expect(requestData.cancelResult()).toEqual({ invalidState: true });
 
     const alreadyCancelled: Ride = {
@@ -655,7 +744,7 @@ describe('RideRequestData', () => {
     };
 
     requestData.cancelRide(alreadyCancelled);
-    http.expectNone(`${environment.apiUrl}/rides/ride-cancelled`);
+    http.expectNone(ridesUrl);
     expect(requestData.cancelResult()).toEqual({ invalidState: true });
 
     http.verify();
@@ -691,21 +780,21 @@ describe('RideRequestData', () => {
     requestData.cancelRide(ride);
 
     const patchRideReq = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-no-active` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-no-active',
     );
     const cancelledRide: Ride = { ...ride, status: 'cancelled' };
-    patchRideReq.flush(cancelledRide);
+    patchRideReq.flush(toRideRow(cancelledRide));
 
     http
       .expectOne(
         (req) =>
-          req.url === `${environment.apiUrl}/ride_requests` &&
-          req.params.get('rideId') === 'ride-no-active',
+          req.url === requestsUrl &&
+          req.params.get('ride_id') === 'eq.ride-no-active',
       )
-      .flush([rejectedOnly]);
+      .flush([toRequestRow(rejectedOnly)]);
 
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-rejected-only`);
-    http.expectNone(`${environment.apiUrl}/notifications`);
+    http.expectNone((req) => req.method === 'PATCH' && req.url === requestsUrl);
+    http.expectNone(notificationsUrl);
 
     expect(requestData.cancelResult()).toEqual({
       ride: cancelledRide,
@@ -722,21 +811,20 @@ describe('RideRequestData', () => {
     const authData = TestBed.inject(AuthData);
     const http = TestBed.inject(HttpTestingController);
 
-    // Autentica outro aluno (driver-2)
     authData.login('outro@alunos.utfpr.edu.br', 'senha123');
     await flushMicrotasks();
-    http.expectOne((request) => request.url === `${environment.apiUrl}/users`).flush([
+    http.expectOne((request) => request.url === usersUrl).flush([
       {
         id: 'driver-2',
         name: 'Outro Motorista',
         email: 'outro@alunos.utfpr.edu.br',
-        registrationNumber: '2020999',
+        registration_number: '2020999',
         whatsapp: '41988887777',
         role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 5,
-        createdAt: '2026-01-01T00:00:00.000Z',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 5,
+        created_at: '2026-01-01T00:00:00.000Z',
       },
     ]);
     await flushMicrotasks();
@@ -762,30 +850,27 @@ describe('RideRequestData', () => {
       createdAt: '2026-01-01T08:00:00.000Z',
     };
 
-    // 1. Outro aluno não pode carregar solicitações de oferta alheia
     requestData.loadForRide('ride-1');
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'GET')
-      .flush(rideFromDriver1);
-    http.expectNone(`${environment.apiUrl}/ride_requests`);
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-1')
+      .flush([toRideRow(rideFromDriver1)]);
+    http.expectNone(requestsUrl);
     expect(requestData.requests()).toEqual([]);
     expect(requestData.loadResult()).toEqual({ unauthorized: true });
 
-    // 2. Outro aluno não pode aceitar nem rejeitar solicitação
     requestData.accept(pendingRequest, rideFromDriver1);
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-1`);
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(requestsUrl);
+    http.expectNone(ridesUrl);
     expect(requestData.decisionResult()).toEqual({ unauthorized: true });
 
     requestData.reject(pendingRequest, rideFromDriver1);
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-1`);
+    http.expectNone(requestsUrl);
     expect(requestData.decisionResult()).toEqual({ unauthorized: true });
 
-    // 3. Outro aluno não pode cancelar oferta alheia
     requestData.cancelRide(rideFromDriver1);
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
-    http.expectNone(`${environment.apiUrl}/ride_requests`);
-    http.expectNone(`${environment.apiUrl}/notifications`);
+    http.expectNone(ridesUrl);
+    http.expectNone(requestsUrl);
+    http.expectNone(notificationsUrl);
     expect(requestData.cancelResult()).toEqual({ unauthorized: true });
 
     http.verify();
@@ -831,20 +916,20 @@ describe('RideRequestData', () => {
     });
 
     requestData.loadForRide('ride-1');
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
-    http.expectNone(`${environment.apiUrl}/ride_requests`);
+    http.expectNone(ridesUrl);
+    http.expectNone(requestsUrl);
     expect(requestData.loadResult()).toEqual({ unauthorized: true });
 
     requestData.accept(pendingRequest, rideFromDriver1);
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-1`);
+    http.expectNone(requestsUrl);
     expect(requestData.decisionResult()).toEqual({ unauthorized: true });
 
     requestData.reject(pendingRequest, rideFromDriver1);
-    http.expectNone(`${environment.apiUrl}/ride_requests/req-1`);
+    http.expectNone(requestsUrl);
     expect(requestData.decisionResult()).toEqual({ unauthorized: true });
 
     requestData.cancelRide(rideFromDriver1);
-    http.expectNone(`${environment.apiUrl}/rides/ride-1`);
+    http.expectNone(ridesUrl);
     expect(requestData.cancelResult()).toEqual({ unauthorized: true });
 
     http.verify();
@@ -880,19 +965,12 @@ describe('RideRequestData', () => {
 
     rideData.loadDriverRides();
     http
-      .expectOne(
-        (req) =>
-          req.url === `${environment.apiUrl}/rides` && req.params.get('driverId') === 'driver-1',
-      )
-      .flush([ride]);
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ride)]);
 
-    // 1. Falha de conexão ao carregar solicitações + nova tentativa
     requestData.loadForRide('ride-1');
     http
-      .expectOne(
-        (req) =>
-          req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1',
-      )
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
       .error(new ProgressEvent('error'));
 
     expect(requestData.loadResult()).toEqual({ connectionError: true });
@@ -901,20 +979,14 @@ describe('RideRequestData', () => {
     requestData.loadForRide('ride-1');
     expect(errorNotice.message()).toBe('');
     http
-      .expectOne(
-        (req) =>
-          req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1',
-      )
-      .flush([pendingRequest]);
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush([toRequestRow(pendingRequest)]);
     expect(requestData.loadResult()).toEqual({ requests: [pendingRequest] });
     expect(requestData.requests()).toEqual([pendingRequest]);
 
-    // 2. Falha de conexão ao aceitar solicitação + preservação do estado + nova tentativa
     requestData.accept(pendingRequest, ride);
     http
-      .expectOne(
-        (req) => req.url === `${environment.apiUrl}/ride_requests/req-1` && req.method === 'PATCH',
-      )
+      .expectOne((req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-1')
       .error(new ProgressEvent('error'));
 
     expect(requestData.decisionResult()).toEqual({ connectionError: true });
@@ -922,44 +994,38 @@ describe('RideRequestData', () => {
     expect(requestData.requests()[0].status).toBe('pending');
     expect(rideData.driverRides()[0].availableSeats).toBe(2);
 
-    // 3. Falha de conexão ao cancelar oferta + preservação do estado + nova tentativa
     requestData.cancelRide(ride);
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH')
+      .expectOne((req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1')
       .error(new ProgressEvent('error'));
 
     expect(requestData.cancelResult()).toEqual({ connectionError: true });
     expect(errorNotice.message()).toContain('Falha de conexão');
     expect(rideData.driverRides()[0].status).toBe('active');
-    http.expectNone(`${environment.apiUrl}/ride_requests`);
-    http.expectNone(`${environment.apiUrl}/notifications`);
+    http.expectNone(requestsUrl);
+    http.expectNone(notificationsUrl);
 
     requestData.cancelRide(ride);
     expect(errorNotice.message()).toBe('');
     const retryCancelPatch = http.expectOne(
-      (req) => req.url === `${environment.apiUrl}/rides/ride-1` && req.method === 'PATCH',
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-1',
     );
     const cancelledRide: Ride = { ...ride, status: 'cancelled' };
-    retryCancelPatch.flush(cancelledRide);
+    retryCancelPatch.flush(toRideRow(cancelledRide));
     http
-      .expectOne(
-        (req) =>
-          req.url === `${environment.apiUrl}/ride_requests` && req.params.get('rideId') === 'ride-1',
-      )
-      .flush([pendingRequest]);
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush([toRequestRow(pendingRequest)]);
     http
-      .expectOne(
-        (req) => req.url === `${environment.apiUrl}/ride_requests/req-1` && req.method === 'PATCH',
-      )
-      .flush({ ...pendingRequest, status: 'cancelled' });
+      .expectOne((req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-1')
+      .flush(toRequestRow({ ...pendingRequest, status: 'cancelled' }));
     http
-      .expectOne((req) => req.url === `${environment.apiUrl}/notifications` && req.method === 'POST')
+      .expectOne((req) => req.url === notificationsUrl && req.method === 'POST')
       .flush({
         id: 'notif-1',
-        recipientId: 'Lucas Andrade',
-        rideId: 'ride-1',
+        recipient_id: 'Lucas Andrade',
+        ride_id: 'ride-1',
         message: 'A carona Batel → UTFPR Neoville foi cancelada pelo motorista.',
-        createdAt: '2026-01-01T09:00:00.000Z',
+        created_at: '2026-01-01T09:00:00.000Z',
       });
 
     expect(rideData.driverRides()[0].status).toBe('cancelled');

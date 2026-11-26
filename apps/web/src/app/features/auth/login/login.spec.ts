@@ -4,11 +4,14 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
 import { errorInterceptor } from '../../../core/interceptors/error-interceptor';
 import { AuthData } from '../../../core/services/auth-data';
 import { ErrorNotice } from '../../../core/services/error-notice';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
+
+const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
 
 const fakeSupabaseUser: SupabaseUser = {
   id: 'supabase-user-1',
@@ -87,7 +90,7 @@ function fillCredentials(root: HTMLElement, emailValue: string, passwordValue: s
 }
 
 describe('Autenticação institucional', () => {
-  it('informa mensagem amigável em português para credenciais inválidas sem vazar inglês ou consultar /users', async () => {
+  it('informa mensagem amigável em português para credenciais inválidas sem vazar inglês ou consultar /rest/v1/users', async () => {
     const fakeAuth = createFakeAuthClient();
     setupLoginTesting(fakeAuth);
     const harness = await RouterTestingHarness.create('/login');
@@ -119,7 +122,7 @@ describe('Autenticação institucional', () => {
       expect(TestBed.inject(AuthData).accessToken()).toBeNull();
       expect(TestBed.inject(Router).url).toBe('/login');
     }
-    http.expectNone((req) => req.url.endsWith('/users'));
+    http.expectNone(usersUrl);
     http.verify();
   });
 
@@ -134,18 +137,18 @@ describe('Autenticação institucional', () => {
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await flushMicrotasks();
 
-    http.expectOne((req) => req.url === 'http://localhost:3000/users').flush([
+    http.expectOne((req) => req.url === usersUrl).flush([
       {
         id: 'blocked-1',
         name: 'Aluno Bloqueado',
         email: 'bloqueado@alunos.utfpr.edu.br',
-        registrationNumber: '999',
+        registration_number: '999',
         whatsapp: '',
         role: 'student',
-        isBlocked: true,
-        isEmailConfirmed: true,
-        ratingAverage: 0,
-        createdAt: '2026-01-01',
+        is_blocked: true,
+        is_email_confirmed: true,
+        rating_average: 0,
+        created_at: '2026-01-01',
       },
     ]);
     await flushMicrotasks();
@@ -201,19 +204,19 @@ describe('Autenticação institucional', () => {
     });
 
     const http = TestBed.inject(HttpTestingController);
-    const request = http.expectOne((req) => req.url === 'http://localhost:3000/users' && req.method === 'GET');
+    const request = http.expectOne((req) => req.url === usersUrl && req.method === 'GET');
     request.flush([
       {
         id: '1',
         name: 'Ana',
         email: 'ana@alunos.utfpr.edu.br',
-        registrationNumber: '123',
+        registration_number: '123',
         whatsapp: '',
         role: 'student',
-        isBlocked: false,
-        isEmailConfirmed: true,
-        ratingAverage: 0,
-        createdAt: '2026-01-01',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 0,
+        created_at: '2026-01-01',
       },
     ]);
     await flushMicrotasks();
@@ -255,18 +258,18 @@ it('informa falha de conexão quando signInWithPassword falha por rede sem trava
 
   submit();
   await flushMicrotasks();
-  http.expectOne((request) => request.url === 'http://localhost:3000/users').flush([
+  http.expectOne((request) => request.url === usersUrl).flush([
     {
       id: '1',
       name: 'Ana',
       email: 'ana@alunos.utfpr.edu.br',
-      registrationNumber: '123',
+      registration_number: '123',
       whatsapp: '',
       role: 'student',
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 0,
-      createdAt: '2026-01-01',
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 0,
+      created_at: '2026-01-01',
     },
   ]);
   await flushMicrotasks();
@@ -299,18 +302,18 @@ it('informa falha inesperada do Supabase Auth sem travar loading e permite tenta
 
   submit();
   await flushMicrotasks();
-  http.expectOne((request) => request.url === 'http://localhost:3000/users').flush([
+  http.expectOne((request) => request.url === usersUrl).flush([
     {
       id: '1',
       name: 'Ana',
       email: 'ana@alunos.utfpr.edu.br',
-      registrationNumber: '123',
+      registration_number: '123',
       whatsapp: '',
       role: 'student',
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 0,
-      createdAt: '2026-01-01',
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 0,
+      created_at: '2026-01-01',
     },
   ]);
   await flushMicrotasks();
@@ -332,7 +335,7 @@ it.each([401, 500])('informa erro %i no login e remove o aviso ao entrar após n
 
   submit();
   await flushMicrotasks();
-  http.expectOne((request) => request.url.endsWith('/users')).flush('', { status, statusText: 'Erro' });
+  http.expectOne((request) => request.url === usersUrl).flush('', { status, statusText: 'Erro' });
   await flushMicrotasks();
   await harness.fixture.whenStable();
 
@@ -342,18 +345,18 @@ it.each([401, 500])('informa erro %i no login e remove o aviso ao entrar após n
 
   submit();
   await flushMicrotasks();
-  http.expectOne((request) => request.url.endsWith('/users')).flush([
+  http.expectOne((request) => request.url === usersUrl).flush([
     {
       id: '1',
       name: 'Ana',
       email: 'ana@alunos.utfpr.edu.br',
-      registrationNumber: '123',
+      registration_number: '123',
       whatsapp: '',
       role: 'student',
-      isBlocked: false,
-      isEmailConfirmed: true,
-      ratingAverage: 0,
-      createdAt: '2026-01-01',
+      is_blocked: false,
+      is_email_confirmed: true,
+      rating_average: 0,
+      created_at: '2026-01-01',
     },
   ]);
   await flushMicrotasks();

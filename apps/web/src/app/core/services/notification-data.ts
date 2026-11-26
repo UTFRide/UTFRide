@@ -12,11 +12,16 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { environment } from '../../../environments/environment';
 import { Notification } from '../models/notification.model';
 import { Ride } from '../models/ride.model';
 import { AuthData, AuthenticatedUser } from './auth-data';
 import { ErrorNotice } from './error-notice';
+import {
+  mapNotificationRow,
+  NotificationRow,
+  SUPABASE_SINGLE_OBJECT_HEADERS,
+  supabaseRestUrl,
+} from './supabase-rest';
 
 export type LoadNotificationsResult =
   | { notifications: Notification[] }
@@ -59,10 +64,14 @@ export class NotificationData {
             }
 
             return this.http
-              .get<Notification[]>(`${environment.apiUrl}/notifications`)
+              .get<NotificationRow[]>(supabaseRestUrl('notifications'), {
+                params: { recipient_id: `eq.${user.id}` },
+              })
               .pipe(
                 map((items) =>
-                  items.filter((notification) => this.isRecipient(notification, user)),
+                  items
+                    .map(mapNotificationRow)
+                    .filter((notification) => this.isRecipient(notification, user)),
                 ),
                 tap((items) => this.notificationsState.set(items)),
                 map((notifications) => ({ notifications })),
@@ -121,12 +130,18 @@ export class NotificationData {
 
     return forkJoin(
       uniqueRecipients.map((recipientId) =>
-        this.http.post<Notification>(`${environment.apiUrl}/notifications`, {
-          recipientId,
-          rideId: ride.id,
-          message,
-          createdAt,
-        }),
+        this.http
+          .post<NotificationRow>(
+            supabaseRestUrl('notifications'),
+            {
+              recipient_id: recipientId,
+              ride_id: ride.id,
+              message,
+              created_at: createdAt,
+            },
+            { headers: SUPABASE_SINGLE_OBJECT_HEADERS },
+          )
+          .pipe(map(mapNotificationRow)),
       ),
     ).pipe(
       tap((created) => this.notificationsState.update((items) => [...items, ...created])),
