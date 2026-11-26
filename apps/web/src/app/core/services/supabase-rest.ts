@@ -1,4 +1,5 @@
 import { environment } from '../../../environments/environment';
+import { Notification } from '../models/notification.model';
 import { User } from '../models/user.model';
 
 /** Cabeçalhos PostgREST para receber a linha única criada ou atualizada como objeto JSON. */
@@ -17,6 +18,14 @@ export interface UserRow {
   is_blocked: boolean;
   is_email_confirmed: boolean;
   rating_average: number | string;
+  created_at: string;
+}
+
+export interface NotificationRow {
+  id: string;
+  recipient_id: string;
+  ride_id: string;
+  message: string;
   created_at: string;
 }
 
@@ -46,5 +55,16 @@ export function mapUserRow(row: Partial<UserRow>): User {
     isEmailConfirmed: row.is_email_confirmed !== false,
     ratingAverage: Number(row.rating_average ?? 0),
     createdAt: row.created_at ?? '',
+  };
+}
+
+/** Converte um registro `notifications` (snake_case) do PostgreSQL para `Notification` (camelCase). */
+export function mapNotificationRow(row: NotificationRow): Notification {
+  return {
+    id: row.id,
+    recipientId: row.recipient_id,
+    rideId: row.ride_id,
+    message: row.message,
+    createdAt: row.created_at,
   };
 }
