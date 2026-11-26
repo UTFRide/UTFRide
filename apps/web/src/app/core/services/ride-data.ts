@@ -18,7 +18,6 @@ import {
   tap,
   throwError,
 } from 'rxjs';
-import { environment } from '../../../environments/environment';
 import { HANDLE_SESSION_EXPIRATION_ONLY } from '../interceptors/error-interceptor';
 import {
   Ride,
@@ -30,6 +29,15 @@ import {
 } from '../models/ride.model';
 import { AuthData, AuthenticatedUser } from './auth-data';
 import { ErrorNotice } from './error-notice';
+import {
+  DriverSummaryRow,
+  isInvalidUuidError,
+  mapRideRow,
+  RideRow,
+  SUPABASE_SINGLE_OBJECT_HEADERS,
+  supabaseRestUrl,
+  supabaseRpcUrl,
+} from './supabase-rest';
 
 export class RideUnauthorizedError extends Error {
   constructor() {
@@ -130,20 +138,28 @@ export class RideData {
                 return of({ unauthorized: true as const });
               }
 
-              return this.http.get<Ride>(`${environment.apiUrl}/rides/${rideId}`).pipe(
-                map((ride) => {
-                  if (!this.canManageRide(ride)) {
+              return this.http
+                .get<RideRow[]>(supabaseRestUrl('rides'), { params: { id: `eq.${rideId}` } })
+                .pipe(
+                  map((rows) => {
+                    const row = rows[0];
+                    if (!row) {
+                      this.editingRideState.set(null);
+                      return { requestError: true as const };
+                    }
+                    const ride = mapRideRow(row);
+                    if (!this.canManageRide(ride)) {
+                      this.editingRideState.set(null);
+                      return { unauthorized: true as const };
+                    }
+                    this.editingRideState.set(ride);
+                    return { ride };
+                  }),
+                  catchError((error: unknown) => {
                     this.editingRideState.set(null);
-                    return { unauthorized: true as const };
-                  }
-                  this.editingRideState.set(ride);
-                  return { ride };
-                }),
-                catchError((error: unknown) => {
-                  this.editingRideState.set(null);
-                  return of(this.mapError(error));
-                }),
-              );
+                    return of(this.mapError(error));
+                  }),
+                );
             }),
           ),
           this.editLoadResults,
@@ -165,9 +181,9 @@ export class RideData {
             }
 
             return this.http
-              .get<Ride[]>(`${environment.apiUrl}/rides`, { params: { driverId: driver.id } })
+              .get<RideRow[]>(supabaseRestUrl('rides'), { params: { driver_id: `eq.${driver.id}` } })
               .pipe(
-                map((rides) => rides.filter((ride) => ride.driverId === driver.id)),
+                map((rows) => rows.map(mapRideRow).filter((ride) => ride.driverId === driver.id)),
                 tap((rides) => this.driverRidesState.set(rides)),
                 map((rides) => ({ rides })),
                 catchError((error: unknown) => of(this.mapError(error))),
@@ -192,22 +208,26 @@ export class RideData {
 
             const notes = draft.notes?.trim();
             const body = {
-              driverId: driver.id,
+              driver_id: driver.id,
               origin: draft.origin.trim(),
               destination: draft.destination.trim(),
-              departureTime: draft.departureTime,
-              totalSeats: draft.totalSeats,
-              availableSeats: draft.totalSeats,
-              pricePerSeat: draft.pricePerSeat,
+              departure_time: draft.departureTime,
+              total_seats: draft.totalSeats,
+              available_seats: draft.totalSeats,
+              price_per_seat: draft.pricePerSeat,
               status: 'active' as const,
-              createdAt: new Date().toISOString(),
+              created_at: new Date().toISOString(),
               ...(notes ? { notes } : {}),
             };
 
-            return this.http.post<Ride>(`${environment.apiUrl}/rides`, body).pipe(
-              map((ride) => ({ ride })),
-              catchError((error: unknown) => of(this.mapError(error))),
-            );
+            return this.http
+              .post<RideRow>(supabaseRestUrl('rides'), body, {
+                headers: SUPABASE_SINGLE_OBJECT_HEADERS,
+              })
+              .pipe(
+                map((row) => ({ ride: mapRideRow(row) })),
+                catchError((error: unknown) => of(this.mapError(error))),
+              );
           }),
           startWith(undefined),
         ),
@@ -247,10 +267,10 @@ export class RideData {
             const body = {
               origin: draft.origin.trim(),
               destination: draft.destination.trim(),
-              departureTime: draft.departureTime,
-              totalSeats: draft.totalSeats,
-              availableSeats,
-              pricePerSeat: draft.pricePerSeat,
+              departure_time: draft.departureTime,
+              total_seats: draft.totalSeats,
+              available_seats: availableSeats,
+              price_per_seat: draft.pricePerSeat,
               status,
               ...(notes
                 ? { notes }
@@ -261,16 +281,22 @@ export class RideData {
                     : {}),
             };
 
-            return this.http.patch<Ride>(`${environment.apiUrl}/rides/${ride.id}`, body).pipe(
-              tap((updated) => {
-                this.driverRidesState.update((rides) =>
-                  rides.map((item) => (item.id === updated.id ? updated : item)),
-                );
-                this.editingRideState.set(updated);
-              }),
-              map((updated) => ({ ride: updated })),
-              catchError((error: unknown) => of(this.mapError(error))),
-            );
+            return this.http
+              .patch<RideRow>(supabaseRestUrl('rides'), body, {
+                params: { id: `eq.${ride.id}` },
+                headers: SUPABASE_SINGLE_OBJECT_HEADERS,
+              })
+              .pipe(
+                map(mapRideRow),
+                tap((updated) => {
+                  this.driverRidesState.update((rides) =>
+                    rides.map((item) => (item.id === updated.id ? updated : item)),
+                  );
+                  this.editingRideState.set(updated);
+                }),
+                map((updated) => ({ ride: updated })),
+                catchError((error: unknown) => of(this.mapError(error))),
+              );
           }),
           startWith(undefined),
         ),
@@ -365,13 +391,14 @@ export class RideData {
 
   readPassengerRide(rideId: string): Observable<{ ride: Ride } | null> {
     return this.http
-      .get<Ride>(`${environment.apiUrl}/rides/${encodeURIComponent(rideId)}`, {
+      .get<RideRow[]>(supabaseRestUrl('rides'), {
+        params: { id: `eq.${rideId}` },
         context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
       })
       .pipe(
-        map((ride) => ({ ride })),
+        map((rows) => (rows[0] ? { ride: mapRideRow(rows[0]) } : null)),
         catchError((error: unknown) =>
-          error instanceof HttpErrorResponse && error.status === 404
+          error instanceof HttpErrorResponse && (error.status === 404 || isInvalidUuidError(error))
             ? of(null)
             : throwError(() => error),
         ),
@@ -380,30 +407,32 @@ export class RideData {
 
   private loadAvailableRides(query: RideSearchQuery): Observable<RideSearchResult> {
     const { passenger, origin, destination, date } = query;
-    const where = {
-      status: { eq: 'active' },
-      availableSeats: { gt: 0 },
-      driverId: { ne: passenger.id },
-      ...(origin ? { origin: { contains: origin } } : {}),
-      ...(destination ? { destination: { contains: destination } } : {}),
+    const params: Record<string, string> = {
+      status: 'eq.active',
+      available_seats: 'gt.0',
+      driver_id: `neq.${passenger.id}`,
+      ...(origin ? { origin: `ilike.*${origin}*` } : {}),
+      ...(destination ? { destination: `ilike.*${destination}*` } : {}),
     };
     const localDay = date ? new Date(`${date}T00:00:00`).toDateString() : '';
 
     return this.http
-      .get<Ride[]>(`${environment.apiUrl}/rides`, {
-        params: { _where: JSON.stringify(where) },
+      .get<RideRow[]>(supabaseRestUrl('rides'), {
+        params,
         context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
       })
       .pipe(
-        map((rides) =>
-          rides.filter(
-            (ride) =>
-              this.canAcceptNewRequests(ride) &&
-              ride.driverId !== passenger.id &&
-              normalizeSearchText(ride.origin).includes(origin) &&
-              normalizeSearchText(ride.destination).includes(destination) &&
-              (!localDay || new Date(ride.departureTime).toDateString() === localDay),
-          ),
+        map((rows) =>
+          rows
+            .map(mapRideRow)
+            .filter(
+              (ride) =>
+                this.canAcceptNewRequests(ride) &&
+                ride.driverId !== passenger.id &&
+                normalizeSearchText(ride.origin).includes(origin) &&
+                normalizeSearchText(ride.destination).includes(destination) &&
+                (!localDay || new Date(ride.departureTime).toDateString() === localDay),
+            ),
         ),
         switchMap((rides) =>
           passenger === this.auth.currentUser() ? this.enrichWithDrivers(rides) : EMPTY,
@@ -418,14 +447,18 @@ export class RideData {
 
     const ids = [...new Set(rides.map((ride) => ride.driverId))];
     return this.http
-      .get<(RideDriverSummary & { id: string })[]>(`${environment.apiUrl}/driver-summaries`, {
-        params: { id: ids },
-        context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
-      })
+      .post<DriverSummaryRow[]>(
+        supabaseRpcUrl('get_driver_summaries'),
+        { p_driver_ids: ids },
+        { context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true) },
+      )
       .pipe(
         map((summaries) => {
-          const drivers = new Map(
-            summaries.map(({ id, name, ratingAverage }) => [id, { name, ratingAverage }]),
+          const drivers = new Map<string, RideDriverSummary>(
+            summaries.map(({ id, name, rating_average }) => [
+              id,
+              { name, ratingAverage: Number(rating_average ?? 0) },
+            ]),
           );
           return rides.map((ride) => ({ ...ride, driver: drivers.get(ride.driverId) ?? null }));
         }),
@@ -522,8 +555,13 @@ export class RideData {
     }
 
     return this.http
-      .patch<Ride>(`${environment.apiUrl}/rides/${ride.id}`, { status: 'cancelled' })
+      .patch<RideRow>(
+        supabaseRestUrl('rides'),
+        { status: 'cancelled' },
+        { params: { id: `eq.${ride.id}` }, headers: SUPABASE_SINGLE_OBJECT_HEADERS },
+      )
       .pipe(
+        map(mapRideRow),
         tap((updated) => {
           this.driverRidesState.update((rides) =>
             rides.map((item) => (item.id === updated.id ? updated : item)),
@@ -543,8 +581,13 @@ export class RideData {
     const availableSeats = Math.max(0, ride.availableSeats - 1);
     const status: RideStatus = availableSeats === 0 ? 'full' : 'active';
     return this.http
-      .patch<Ride>(`${environment.apiUrl}/rides/${ride.id}`, { availableSeats, status })
+      .patch<RideRow>(
+        supabaseRestUrl('rides'),
+        { available_seats: availableSeats, status },
+        { params: { id: `eq.${ride.id}` }, headers: SUPABASE_SINGLE_OBJECT_HEADERS },
+      )
       .pipe(
+        map(mapRideRow),
         tap((updated) =>
           this.driverRidesState.update((rides) =>
             rides.map((item) => (item.id === updated.id ? updated : item)),
