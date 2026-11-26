@@ -1,6 +1,6 @@
 ---
 issue: 31
-status: rascunho   # rascunho | aprovada
+status: aprovada # rascunho | aprovada
 ---
 
 # US02 / US03 — Exclusão de Oferta Cancelada (DELETE), Resolver em /rides/:id e Rota 404
@@ -26,11 +26,11 @@ Base de negócio no `docs/prd.md`: US02 (Publicação e Gestão de Oferta de Car
 
 ## Telas do protótipo
 
-| Tela | Arquivo em `docs/prototipo/` |
-| --- | --- |
-| Minhas Ofertas e Gerenciar Solicitações | `models/7._minhas_ofertas_e_gerenciar_solicita_es.html` |
-| Detalhe da Oferta e Solicitar Vaga | `models/5._detalhe_da_oferta_e_solicitar_vaga.html` |
-| Página Não Encontrada (404) — adaptada do cartão 403 conforme alinhamento prévio com o usuário | `models/14._acesso_negado_403_forbidden.html` |
+| Tela                                                                                           | Arquivo em `docs/prototipo/`                            |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Minhas Ofertas e Gerenciar Solicitações                                                        | `models/7._minhas_ofertas_e_gerenciar_solicita_es.html` |
+| Detalhe da Oferta e Solicitar Vaga                                                             | `models/5._detalhe_da_oferta_e_solicitar_vaga.html`     |
+| Página Não Encontrada (404) — adaptada do cartão 403 conforme alinhamento prévio com o usuário | `models/14._acesso_negado_403_forbidden.html`           |
 
 ## Fora de escopo
 
@@ -45,9 +45,9 @@ Se o motorista abrir o modal de confirmação de exclusão em `/driver/my-rides`
 
 ## Assume que
 
-| Premissa | Issue que fecha |
-| --- | --- |
-| Nenhuma premissa provisória pendente (persistência e RLS já ativas no Supabase) | — |
+| Premissa                                                                        | Issue que fecha |
+| ------------------------------------------------------------------------------- | --------------- |
+| Nenhuma premissa provisória pendente (persistência e RLS já ativas no Supabase) | —               |
 
 ## Depende de
 
@@ -55,5 +55,5 @@ Se o motorista abrir o modal de confirmação de exclusão em `/driver/my-rides`
 
 ## Dúvidas em aberto
 
-| # | Dúvida | Quem responde |
+| #   | Dúvida | Quem responde |
 | --- | ------ | ------------- |
