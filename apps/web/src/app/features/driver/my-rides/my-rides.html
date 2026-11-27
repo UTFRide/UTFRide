@@ -12,6 +12,8 @@
         <app-notification-bell
           [notifications]="notifications()"
           [loadError]="notificationsError()"
+          [isOffline]="network.isOffline()"
+          [offlineNotice]="offlineMessage"
           (opened)="loadNotifications()"
         />
         <div
@@ -77,11 +79,23 @@
         <button
           type="button"
           data-testid="retry-load-rides-button"
+          [disabled]="network.isOffline()"
+          [attr.aria-describedby]="network.isOffline() ? 'my-rides-load-offline-hint' : null"
           (click)="retryLoadRides()"
-          class="self-start rounded-lg bg-superficie px-space-md py-space-xs text-label-md text-perigo shadow-sm hover:bg-fundo"
+          class="self-start rounded-lg bg-superficie px-space-md py-space-xs text-label-md text-perigo shadow-sm hover:bg-fundo disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
         >
           Tentar novamente
         </button>
+        @if (network.isOffline()) {
+          <p
+            id="my-rides-load-offline-hint"
+            role="status"
+            class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+            <span>{{ offlineMessage }}</span>
+          </p>
+        }
       </div>
     }
 
@@ -263,11 +277,23 @@
             <button
               type="button"
               data-testid="retry-load-requests-button"
+              [disabled]="network.isOffline()"
+              [attr.aria-describedby]="network.isOffline() ? 'my-rides-requests-retry-offline-hint' : null"
               (click)="retryLoadRequests()"
-              class="self-start rounded-lg bg-superficie px-space-md py-space-xs text-label-md text-perigo shadow-sm hover:bg-fundo"
+              class="self-start rounded-lg bg-superficie px-space-md py-space-xs text-label-md text-perigo shadow-sm hover:bg-fundo disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
             >
               Tentar novamente
             </button>
+            @if (network.isOffline()) {
+              <p
+                id="my-rides-requests-retry-offline-hint"
+                role="status"
+                class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+              >
+                <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+                <span>{{ offlineMessage }}</span>
+              </p>
+            }
           </div>
         }
 
@@ -299,6 +325,17 @@
               />
             }
           </div>
+          @if (network.isOffline()) {
+            <p
+              id="my-rides-requests-offline-hint"
+              role="status"
+              data-testid="my-rides-requests-offline-hint"
+              class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+            >
+              <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+              <span>{{ offlineMessage }}</span>
+            </p>
+          }
         }
       </section>
 
@@ -308,6 +345,7 @@
             type="button"
             data-testid="edit-ride-button"
             [disabled]="!canEditSelectedRide()"
+            [attr.aria-describedby]="network.isOffline() ? 'my-rides-actions-offline-hint' : null"
             (click)="editSelectedRide()"
             class="flex h-12 w-full items-center justify-center gap-space-xs rounded-xl border border-borda bg-superficie px-space-lg text-label-lg text-texto shadow-sm hover:bg-fundo disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
           >
@@ -320,6 +358,7 @@
             type="button"
             data-testid="cancel-ride-button"
             [disabled]="!canCancelSelectedRide()"
+            [attr.aria-describedby]="network.isOffline() ? 'my-rides-actions-offline-hint' : null"
             (click)="openCancelConfirmation()"
             class="flex h-12 w-full items-center justify-center gap-space-xs rounded-xl bg-perigo-fundo px-space-lg text-label-lg text-perigo shadow-sm hover:bg-borda disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
           >
@@ -333,12 +372,25 @@
           type="button"
           data-testid="delete-ride-button"
           [disabled]="!canDeleteSelectedRide()"
+          [attr.aria-describedby]="network.isOffline() ? 'my-rides-actions-offline-hint' : null"
           (click)="openDeleteConfirmation()"
           class="flex h-12 w-full items-center justify-center gap-space-xs rounded-xl bg-perigo-fundo px-space-lg text-label-lg text-perigo shadow-sm hover:bg-borda focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
         >
           <span class="material-symbols-outlined text-body-lg" aria-hidden="true">delete_forever</span>
           <span>Excluir Oferta</span>
         </button>
+
+        @if (network.isOffline()) {
+          <p
+            id="my-rides-actions-offline-hint"
+            role="status"
+            data-testid="my-rides-actions-offline-hint"
+            class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+            <span>{{ offlineMessage }}</span>
+          </p>
+        }
       </section>
     } @else if (!loadRidesError()) {
       <section class="flex flex-col items-center gap-space-md rounded-xl border border-borda bg-superficie p-space-xl text-center shadow-sm">
@@ -445,13 +497,25 @@
         <button
           type="button"
           data-testid="confirm-cancel-ride-button"
-          [disabled]="isCancelling()"
+          [disabled]="isCancelling() || network.isOffline()"
+          [attr.aria-describedby]="network.isOffline() ? 'cancel-dialog-offline-hint' : null"
           (click)="confirmCancelRide()"
           class="flex h-12 w-full items-center justify-center gap-space-sm rounded-xl bg-perigo px-space-lg text-label-lg text-superficie shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
         >
           <span class="material-symbols-outlined text-body-lg" aria-hidden="true">delete_forever</span>
           <span>{{ isCancelling() ? 'Cancelando oferta...' : 'Sim, Cancelar Carona' }}</span>
         </button>
+
+        @if (network.isOffline()) {
+          <p
+            id="cancel-dialog-offline-hint"
+            role="status"
+            class="flex items-start gap-space-xs rounded-xl border border-borda bg-fundo p-space-sm text-body-sm text-texto-suave"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+            <span>{{ offlineMessage }}</span>
+          </p>
+        }
 
         <button
           #keepRideButton
@@ -513,13 +577,25 @@
         <button
           type="button"
           data-testid="confirm-delete-ride-button"
-          [disabled]="isDeleting()"
+          [disabled]="isDeleting() || network.isOffline()"
+          [attr.aria-describedby]="network.isOffline() ? 'delete-dialog-offline-hint' : null"
           (click)="confirmDeleteRide()"
           class="flex h-12 w-full items-center justify-center gap-space-sm rounded-xl bg-perigo px-space-lg text-label-lg text-superficie shadow-sm hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
         >
           <span class="material-symbols-outlined text-body-lg" aria-hidden="true">delete_forever</span>
           <span>{{ isDeleting() ? 'Excluindo oferta...' : 'Sim, Excluir Oferta' }}</span>
         </button>
+
+        @if (network.isOffline()) {
+          <p
+            id="delete-dialog-offline-hint"
+            role="status"
+            class="flex items-start gap-space-xs rounded-xl border border-borda bg-fundo p-space-sm text-body-sm text-texto-suave"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+            <span>{{ offlineMessage }}</span>
+          </p>
+        }
 
         <button
           #cancelDeleteButton

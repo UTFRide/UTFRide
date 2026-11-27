@@ -13,6 +13,7 @@ import { Router, RouterLink } from '@angular/router';
 import { Ride } from '../../../core/models/ride.model';
 import { RideRequest } from '../../../core/models/ride-request.model';
 import { AuthData } from '../../../core/services/auth-data';
+import { NetworkStatus, OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
 import { NotificationData } from '../../../core/services/notification-data';
 import { RideData } from '../../../core/services/ride-data';
 import { RideRequestData } from '../../../core/services/ride-request-data';
@@ -33,6 +34,8 @@ export class MyRides {
   private readonly rideRequestData = inject(RideRequestData);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  protected readonly network = inject(NetworkStatus);
+  protected readonly offlineMessage = OFFLINE_ACTION_MESSAGE;
 
   private readonly cancelRideButton = viewChild<ElementRef<HTMLButtonElement>>('cancelRideButton');
   private readonly keepRideButton = viewChild<ElementRef<HTMLButtonElement>>('keepRideButton');
@@ -109,12 +112,14 @@ export class MyRides {
   });
 
   readonly canAcceptRequests = computed<boolean>(() => {
+    if (this.network.isOffline()) return false;
     const ride = this.selectedRide();
     if (!ride) return false;
     return this.rideData.canManageRide(ride) && this.rideData.canAcceptNewRequests(ride);
   });
 
   readonly canManageSelectedRide = computed<boolean>(() => {
+    if (this.network.isOffline()) return false;
     const ride = this.selectedRide();
     return !!ride && this.rideData.canCancel(ride);
   });
@@ -129,6 +134,7 @@ export class MyRides {
   readonly canCancelSelectedRide = computed<boolean>(() => this.canManageSelectedRide());
 
   readonly canDeleteSelectedRide = computed<boolean>(() => {
+    if (this.network.isOffline()) return false;
     const ride = this.selectedRide();
     return !!ride && this.rideData.canDelete(ride);
   });
@@ -316,11 +322,13 @@ export class MyRides {
   }
 
   retryLoadRides(): void {
+    if (this.network.isOffline()) return;
     this.loadRidesError.set(null);
     this.rideData.loadDriverRides();
   }
 
   retryLoadRequests(): void {
+    if (this.network.isOffline()) return;
     const rideId = this.activeManagedRideId();
     if (!rideId) return;
     this.requestsError.set(null);
@@ -344,7 +352,7 @@ export class MyRides {
 
   editSelectedRide(): void {
     const ride = this.selectedRide();
-    if (!ride) return;
+    if (!ride || this.network.isOffline()) return;
     this.authorizationError.set(null);
     this.deleteSuccessMessage.set(null);
     if (!this.rideData.canManageRide(ride)) {
@@ -361,7 +369,7 @@ export class MyRides {
 
   openCancelConfirmation(): void {
     const ride = this.selectedRide();
-    if (!ride || this.deleteConfirming()) return;
+    if (!ride || this.deleteConfirming() || this.network.isOffline()) return;
     this.authorizationError.set(null);
     this.cancelError.set(null);
     this.deleteSuccessMessage.set(null);
@@ -383,7 +391,7 @@ export class MyRides {
 
   confirmCancelRide(): void {
     const ride = this.selectedRide();
-    if (!ride || this.isCancelling()) return;
+    if (!ride || this.isCancelling() || this.network.isOffline()) return;
     this.authorizationError.set(null);
     this.cancelError.set(null);
     if (!this.rideData.canManageRide(ride)) {
@@ -398,7 +406,7 @@ export class MyRides {
 
   openDeleteConfirmation(): void {
     const ride = this.selectedRide();
-    if (!ride || this.cancelConfirming()) return;
+    if (!ride || this.cancelConfirming() || this.network.isOffline()) return;
     this.authorizationError.set(null);
     this.deleteError.set(null);
     this.deleteSuccessMessage.set(null);
@@ -437,7 +445,7 @@ export class MyRides {
 
   confirmDeleteRide(): void {
     const ride = this.selectedRide();
-    if (!ride || this.isDeleting()) return;
+    if (!ride || this.isDeleting() || this.network.isOffline()) return;
     this.authorizationError.set(null);
     this.deleteError.set(null);
     this.deleteSuccessMessage.set(null);
@@ -447,7 +455,7 @@ export class MyRides {
 
   acceptRequest(request: RideRequest): void {
     const ride = this.selectedRide();
-    if (!ride) return;
+    if (!ride || this.network.isOffline()) return;
     this.authorizationError.set(null);
     this.decisionError.set(null);
     if (!this.rideData.canManageRide(ride)) {
@@ -460,7 +468,7 @@ export class MyRides {
 
   rejectRequest(request: RideRequest): void {
     const ride = this.selectedRide();
-    if (!ride) return;
+    if (!ride || this.network.isOffline()) return;
     this.authorizationError.set(null);
     this.decisionError.set(null);
     if (!this.rideData.canManageRide(ride)) {

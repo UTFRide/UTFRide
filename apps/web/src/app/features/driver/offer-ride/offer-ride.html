@@ -10,6 +10,8 @@
         <app-notification-bell
           [notifications]="notifications()"
           [loadError]="notificationsError()"
+          [isOffline]="network.isOffline()"
+          [offlineNotice]="offlineMessage"
           (opened)="loadNotifications()"
         />
         <div
@@ -86,11 +88,23 @@
         <button
           type="button"
           data-testid="retry-edit-load-button"
+          [disabled]="network.isOffline()"
+          [attr.aria-describedby]="network.isOffline() ? 'offer-edit-load-offline-hint' : null"
           (click)="retryLoadEdit()"
-          class="self-start rounded-lg bg-superficie px-space-md py-space-xs text-label-md text-perigo shadow-sm hover:bg-fundo"
+          class="self-start rounded-lg bg-superficie px-space-md py-space-xs text-label-md text-perigo shadow-sm hover:bg-fundo disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
         >
           Tentar novamente
         </button>
+        @if (network.isOffline()) {
+          <p
+            id="offer-edit-load-offline-hint"
+            role="status"
+            class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+            <span>{{ offlineMessage }}</span>
+          </p>
+        }
       </div>
     }
 
@@ -333,6 +347,7 @@
       <button
         type="submit"
         [disabled]="form.invalid || loading() || submitBlocked()"
+        [attr.aria-describedby]="network.isOffline() ? 'offer-ride-offline-hint' : null"
         class="flex h-13 w-full items-center justify-center gap-space-sm rounded-2xl bg-primaria px-space-lg text-label-lg text-texto shadow-sm hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
       >
         <span class="material-symbols-outlined" aria-hidden="true">{{ isEditMode() ? 'save' : 'add_circle' }}</span>
@@ -346,6 +361,18 @@
               : 'Publicar Oferta de Carona'
         }}
       </button>
+
+      @if (network.isOffline()) {
+        <p
+          id="offer-ride-offline-hint"
+          role="status"
+          data-testid="offer-ride-offline-hint"
+          class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+        >
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <span>{{ offlineMessage }}</span>
+        </p>
+      }
     </form>
   </main>
 
