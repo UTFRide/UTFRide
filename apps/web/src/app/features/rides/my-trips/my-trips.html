@@ -23,11 +23,25 @@
         @if (uncertainRequestId) {
           <button
             type="button"
-            class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+            [disabled]="network.isOffline()"
+            [attr.aria-describedby]="network.isOffline() ? 'my-trips-refresh-offline-hint' : null"
+            class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
             (click)="refreshTrips()"
           >
             Atualizar viagens
           </button>
+          @if (network.isOffline()) {
+            <p
+              id="my-trips-refresh-offline-hint"
+              role="status"
+              class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+            >
+              <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">
+                wifi_off
+              </span>
+              <span>{{ offlineMessage }}</span>
+            </p>
+          }
         }
       </div>
     }
@@ -48,7 +62,9 @@
         <div class="flex flex-wrap items-center gap-space-md">
           <button
             type="button"
-            class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+            [disabled]="network.isOffline()"
+            [attr.aria-describedby]="network.isOffline() ? 'my-trips-error-offline-hint' : null"
+            class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
             (click)="refreshTrips()"
           >
             Tentar novamente
@@ -60,6 +76,18 @@
             Voltar para a busca
           </a>
         </div>
+        @if (network.isOffline()) {
+          <p
+            id="my-trips-error-offline-hint"
+            role="status"
+            class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">
+              wifi_off
+            </span>
+            <span>{{ offlineMessage }}</span>
+          </p>
+        }
       </div>
     }
     @case ('loaded') {
@@ -221,7 +249,15 @@
               <div class="flex flex-col gap-space-sm">
                 <button
                   type="button"
-                  [disabled]="cancelling() || uncertainRequestId === trip.id || passengerRestriction() !== null"
+                  [disabled]="
+                    cancelling() ||
+                    uncertainRequestId === trip.id ||
+                    passengerRestriction() !== null ||
+                    network.isOffline()
+                  "
+                  [attr.aria-describedby]="
+                    network.isOffline() ? 'my-trips-cancel-offline-hint-' + trip.id : null
+                  "
                   (click)="cancelTrip(trip)"
                   class="w-full cursor-pointer rounded-lg bg-fundo p-space-md text-label-lg text-perigo hover:bg-perigo-fundo focus-visible:ring-2 focus-visible:ring-secundaria disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
                 >
@@ -231,7 +267,18 @@
                     Cancelar solicitação de vaga
                   }
                 </button>
-                @if (!passengerRestriction()) {
+                @if (network.isOffline()) {
+                  <p
+                    [id]="'my-trips-cancel-offline-hint-' + trip.id"
+                    role="status"
+                    class="flex items-start gap-space-xs rounded-xl border border-borda bg-fundo p-space-sm text-body-sm text-texto-suave"
+                  >
+                    <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">
+                      wifi_off
+                    </span>
+                    <span>{{ offlineMessage }}</span>
+                  </p>
+                } @else if (!passengerRestriction()) {
                   <p class="text-center text-body-sm text-texto-suave">
                     Você pode cancelar até a confirmação do motorista.
                   </p>

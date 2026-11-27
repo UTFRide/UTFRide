@@ -5,6 +5,7 @@ import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment';
 import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
+import { OfflineCache } from './offline-cache';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
 const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
@@ -51,6 +52,15 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 describe('AuthData', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
   it('cadastra no Supabase Auth com metadados, grava perfil em /rest/v1/users sem senha e encerra sessão automática', async () => {
     const fakeAuth = createFakeAuthClient();
     TestBed.configureTestingModule({
@@ -465,6 +475,7 @@ describe('classificação de falhas de autenticação', () => {
   let fakeAuth: SupabaseAuthClient;
 
   beforeEach(() => {
+    localStorage.clear();
     fakeAuth = createFakeAuthClient();
     TestBed.configureTestingModule({
       providers: [
@@ -473,6 +484,11 @@ describe('classificação de falhas de autenticação', () => {
         { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
       ],
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
   });
 
   it.each([401, 403, 500])('permite nova tentativa após erro HTTP %i no login e limpa sessão do Supabase', async (status) => {
@@ -795,6 +811,7 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
   let fakeAuth: SupabaseAuthClient;
 
   beforeEach(() => {
+    localStorage.clear();
     fakeAuth = createFakeAuthClient();
     TestBed.configureTestingModule({
       providers: [
@@ -803,6 +820,11 @@ describe('restauração de sessão persistida (ensureSessionRestored)', () => {
         { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
       ],
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
   });
 
   it('restaura currentUser e accessToken a partir de getSession() e perfil em /rest/v1/users', async () => {
@@ -1066,6 +1088,7 @@ describe('logout()', () => {
   let fakeAuth: SupabaseAuthClient;
 
   beforeEach(() => {
+    localStorage.clear();
     fakeAuth = createFakeAuthClient();
     TestBed.configureTestingModule({
       providers: [
@@ -1074,6 +1097,11 @@ describe('logout()', () => {
         { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
       ],
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
   });
 
   async function authenticate(service: AuthData, http: HttpTestingController): Promise<void> {
@@ -1136,6 +1164,295 @@ describe('logout()', () => {
     expect(service.isAuthenticated()).toBe(false);
     expect(service.currentUser()).toBeNull();
     expect(service.accessToken()).toBeNull();
+    http.verify();
+  });
+});
+
+describe('persistência e restauração offline de sessão (CA3, CA7)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  function setupModule(fakeAuth: SupabaseAuthClient): void {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
+      ],
+    });
+  }
+
+  it('salva o perfil autenticado sem senha em OfflineCache e restaura sessão somente-leitura offline sem HTTP', async () => {
+    const fakeAuth = createFakeAuthClient();
+    setupModule(fakeAuth);
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    service.login('ana@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
+    http.expectOne((request) => request.url === usersUrl).flush([
+      {
+        id: 'supabase-user-1',
+        name: 'Ana',
+        email: 'ana@alunos.utfpr.edu.br',
+        registration_number: '123',
+        whatsapp: '41987654321',
+        role: 'student',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 4.5,
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    await flushMicrotasks();
+    http.verify();
+
+    const cache = TestBed.inject(OfflineCache);
+    const cachedProfile = cache.getUserItem<Record<string, unknown>>('supabase-user-1', 'profile');
+    expect(cachedProfile).toEqual({
+      id: 'supabase-user-1',
+      name: 'Ana',
+      email: 'ana@alunos.utfpr.edu.br',
+      registrationNumber: '123',
+      whatsapp: '41987654321',
+      role: 'student',
+      isBlocked: false,
+      isEmailConfirmed: true,
+      ratingAverage: 4.5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(cachedProfile).not.toHaveProperty('password');
+    expect(JSON.stringify(localStorage)).not.toContain('senha123');
+
+    TestBed.resetTestingModule();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const offlineAuth = createFakeAuthClient();
+    vi.mocked(offlineAuth.getSession).mockResolvedValueOnce({
+      data: { session: fakeSession },
+      error: null,
+    });
+    setupModule(offlineAuth);
+
+    const restoredService = TestBed.inject(AuthData);
+    const offlineHttp = TestBed.inject(HttpTestingController);
+
+    await expect(restoredService.ensureSessionRestored()).resolves.toBe(true);
+    offlineHttp.expectNone(usersUrl);
+    offlineHttp.verify();
+
+    expect(restoredService.isAuthenticated()).toBe(true);
+    expect(restoredService.accessToken()).toBe('jwt-token');
+    expect(restoredService.currentUser()).toEqual({
+      id: 'supabase-user-1',
+      name: 'Ana',
+      email: 'ana@alunos.utfpr.edu.br',
+      registrationNumber: '123',
+      whatsapp: '41987654321',
+      role: 'student',
+      isBlocked: false,
+      isEmailConfirmed: true,
+      ratingAverage: 4.5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+  });
+
+  it('limpa o cache privado do usuário no logout para impedir restauração offline posterior', async () => {
+    const fakeAuth = createFakeAuthClient();
+    setupModule(fakeAuth);
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    const cache = TestBed.inject(OfflineCache);
+
+    service.login('ana@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
+    http.expectOne((request) => request.url === usersUrl).flush([
+      {
+        id: 'supabase-user-1',
+        name: 'Ana',
+        email: 'ana@alunos.utfpr.edu.br',
+        registration_number: '123',
+        whatsapp: '41987654321',
+        role: 'student',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 4.5,
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    await flushMicrotasks();
+
+    cache.setUserItem('supabase-user-1', 'rides', [{ id: 'ride-1' }]);
+    await service.logout();
+
+    expect(cache.getUserItem('supabase-user-1', 'profile')).toBeNull();
+    expect(cache.getUserItem('supabase-user-1', 'rides')).toBeNull();
+    http.verify();
+
+    TestBed.resetTestingModule();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const offlineAuth = createFakeAuthClient();
+    vi.mocked(offlineAuth.getSession).mockResolvedValueOnce({
+      data: { session: fakeSession },
+      error: null,
+    });
+    setupModule(offlineAuth);
+
+    const restoredService = TestBed.inject(AuthData);
+    const offlineHttp = TestBed.inject(HttpTestingController);
+    await expect(restoredService.ensureSessionRestored()).resolves.toBe(false);
+    expect(restoredService.isAuthenticated()).toBe(false);
+    expect(restoredService.currentUser()).toBeNull();
+    offlineHttp.expectNone(usersUrl);
+    offlineHttp.verify();
+  });
+
+  it('impede vazamento de cache entre contas na troca de usuário e na restauração offline com sessão de outro aluno', async () => {
+    const fakeAuth = createFakeAuthClient();
+    setupModule(fakeAuth);
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    const cache = TestBed.inject(OfflineCache);
+
+    service.login('ana@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
+    http.expectOne((request) => request.url === usersUrl).flush([
+      {
+        id: 'supabase-user-1',
+        name: 'Ana',
+        email: 'ana@alunos.utfpr.edu.br',
+        registration_number: '123',
+        whatsapp: '41987654321',
+        role: 'student',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 4.5,
+        created_at: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+    await flushMicrotasks();
+    cache.setUserItem('supabase-user-1', 'rides', [{ id: 'ride-ana' }]);
+
+    const secondSupabaseUser: SupabaseUser = {
+      ...fakeSupabaseUser,
+      id: 'supabase-user-2',
+      email: 'bruno@alunos.utfpr.edu.br',
+    };
+    vi.mocked(fakeAuth.signInWithPassword).mockResolvedValueOnce({
+      data: { user: secondSupabaseUser, session: { ...fakeSession, access_token: 'jwt-2', user: secondSupabaseUser } },
+      error: null,
+    });
+
+    service.login('bruno@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
+    http.expectOne((request) => request.url === usersUrl && request.params.get('id') === 'eq.supabase-user-2').flush([
+      {
+        id: 'supabase-user-2',
+        name: 'Bruno',
+        email: 'bruno@alunos.utfpr.edu.br',
+        registration_number: '456',
+        whatsapp: '41999998888',
+        role: 'student',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 5,
+        created_at: '2026-01-02T00:00:00.000Z',
+      },
+    ]);
+    await flushMicrotasks();
+    http.verify();
+
+    expect(cache.getUserItem('supabase-user-1', 'profile')).toBeNull();
+    expect(cache.getUserItem('supabase-user-1', 'rides')).toBeNull();
+    expect(cache.getUserItem<{ id: string }>('supabase-user-2', 'profile')?.id).toBe('supabase-user-2');
+
+    TestBed.resetTestingModule();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const offlineAuth = createFakeAuthClient();
+    const thirdUser: SupabaseUser = {
+      ...fakeSupabaseUser,
+      id: 'supabase-user-3',
+      email: 'carla@alunos.utfpr.edu.br',
+    };
+    vi.mocked(offlineAuth.getSession).mockResolvedValueOnce({
+      data: { session: { ...fakeSession, user: thirdUser } },
+      error: null,
+    });
+    setupModule(offlineAuth);
+
+    const restoredService = TestBed.inject(AuthData);
+    const offlineHttp = TestBed.inject(HttpTestingController);
+    await expect(restoredService.ensureSessionRestored()).resolves.toBe(false);
+    expect(restoredService.isAuthenticated()).toBe(false);
+    expect(restoredService.currentUser()).toBeNull();
+    expect(TestBed.inject(OfflineCache).getUserItem('supabase-user-2', 'profile')).toBeNull();
+    offlineHttp.expectNone(usersUrl);
+    offlineHttp.verify();
+  });
+
+  it('retorna false offline sem HTTP quando getSession não possui sessão ou o perfil em cache está bloqueado', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const fakeAuth = createFakeAuthClient();
+    vi.mocked(fakeAuth.getSession)
+      .mockResolvedValueOnce({ data: { session: null }, error: null })
+      .mockResolvedValueOnce({ data: { session: fakeSession }, error: null });
+    setupModule(fakeAuth);
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+    const cache = TestBed.inject(OfflineCache);
+
+    await expect(service.ensureSessionRestored()).resolves.toBe(false);
+
+    cache.setUserItem('supabase-user-1', 'profile', {
+      id: 'supabase-user-1',
+      name: 'Ana Bloqueada',
+      email: 'ana@alunos.utfpr.edu.br',
+      registrationNumber: '123',
+      whatsapp: '',
+      role: 'student',
+      isBlocked: true,
+      isEmailConfirmed: true,
+      ratingAverage: 4,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    await expect(service.ensureSessionRestored()).resolves.toBe(false);
+    expect(service.isAuthenticated()).toBe(false);
+    expect(cache.getUserItem('supabase-user-1', 'profile')).toBeNull();
+    http.expectNone(usersUrl);
+    http.verify();
+  });
+
+  it('bloqueia login() e register() offline antes de chamar Supabase Auth ou HTTP', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const fakeAuth = createFakeAuthClient();
+    setupModule(fakeAuth);
+    const service = TestBed.inject(AuthData);
+    const http = TestBed.inject(HttpTestingController);
+
+    service.login('ana@alunos.utfpr.edu.br', 'senha123');
+    await flushMicrotasks();
+    expect(service.loginResult()).toEqual({ connectionError: true });
+    expect(fakeAuth.signInWithPassword).not.toHaveBeenCalled();
+
+    service.register({
+      name: 'Ana',
+      email: 'ana@alunos.utfpr.edu.br',
+      registrationNumber: '123',
+      password: 'senha123',
+      whatsapp: '41987654321',
+    });
+    await flushMicrotasks();
+    expect(service.result()).toEqual({ connectionError: true });
+    expect(fakeAuth.signUp).not.toHaveBeenCalled();
+
+    http.expectNone(registrationExistsRpcUrl);
+    http.expectNone(usersUrl);
     http.verify();
   });
 });

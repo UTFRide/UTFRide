@@ -10,6 +10,7 @@ import {
 import { RouterLink } from '@angular/router';
 import { RideRequestStatus } from '../../../core/models/ride-request.model';
 import { AuthData } from '../../../core/services/auth-data';
+import { NetworkStatus, OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
 import { PassengerTripSummary, RideRequestData } from '../../../core/services/ride-request-data';
 import { CurrencyBrlPipe } from '../../../shared/pipes/currency-brl-pipe';
 import { InitialsPipe } from '../../../shared/pipes/initials-pipe';
@@ -47,6 +48,8 @@ function tripStatus(trip: PassengerTripSummary): TripCardStatus {
 export class MyTrips {
   private readonly auth = inject(AuthData);
   private readonly requests = inject(RideRequestData);
+  protected readonly network = inject(NetworkStatus);
+  protected readonly offlineMessage = OFFLINE_ACTION_MESSAGE;
   protected readonly loadResult = this.requests.loadPassengerTrips(inject(Injector));
   private readonly trips = computed(() => {
     const result = this.loadResult();
@@ -129,7 +132,7 @@ export class MyTrips {
   });
 
   protected refreshTrips(): void {
-    if (this.loadResult().status === 'loading') return;
+    if (this.loadResult().status === 'loading' || this.network.isOffline()) return;
     if (this.cancellationToRefresh()) this.cancellationRefreshed.set(true);
     this.requests.refreshPassengerTrips();
   }
@@ -137,6 +140,7 @@ export class MyTrips {
   protected cancelTrip(trip: PassengerTripSummary): void {
     if (
       !this.auth.currentUser() ||
+      this.network.isOffline() ||
       this.passengerRestriction() ||
       this.cancelling() ||
       this.cancellationToRefresh() === trip.id ||

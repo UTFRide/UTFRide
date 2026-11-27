@@ -4,6 +4,8 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { AuthError, isAuthRetryableFetchError, User as SupabaseUser } from '@supabase/supabase-js';
 import { catchError, exhaustMap, firstValueFrom, from, map, Observable, of, startWith, Subject, switchMap, throwError } from 'rxjs';
 import { ErrorNotice } from './error-notice';
+import { NetworkStatus } from './network-status';
+import { OfflineCache } from './offline-cache';
 import { Registration, User } from '../models/user.model';
 import { SupabaseClientService } from './supabase-client';
 import {
@@ -61,6 +63,8 @@ function isConnectionFailure(error: unknown): boolean {
 }
 
 const DEFAULT_REGISTER_ERROR = 'Não foi possível concluir o cadastro. Tente novamente.';
+const ACTIVE_USER_CACHE_KEY = 'active-user-id';
+const PROFILE_CACHE_KEY = 'profile';
 
 function mapSignUpErrorMessage(error: AuthError): string {
   const message = error.message ?? '';
@@ -80,6 +84,8 @@ function mapSignUpErrorMessage(error: AuthError): string {
 export class AuthData {
   private readonly http = inject(HttpClient);
   private readonly notice = inject(ErrorNotice);
+  private readonly network = inject(NetworkStatus);
+  private readonly cache = inject(OfflineCache);
   private readonly supabase = inject(SupabaseClientService);
   private readonly submissions = new Subject<Registration>();
   private readonly resets = new Subject<void>();
@@ -91,19 +97,7 @@ export class AuthData {
   readonly accessToken = this.sessionAccessToken.asReadonly();
   readonly currentUser = computed<AuthenticatedUser | null>(() => {
     const user = this.authenticatedUser();
-    if (!user) return null;
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      registrationNumber: user.registrationNumber,
-      whatsapp: user.whatsapp,
-      role: user.role,
-      isBlocked: user.isBlocked,
-      isEmailConfirmed: user.isEmailConfirmed,
-      ratingAverage: user.ratingAverage,
-      createdAt: user.createdAt,
-    };
+    return user ? this.toAuthenticatedUser(user) : null;
   });
   readonly isAuthenticated = computed(() => this.authenticatedUser() !== null);
   readonly isBlocked = computed(() => this.currentUser()?.isBlocked === true);
@@ -131,8 +125,11 @@ export class AuthData {
   readonly result = toSignal(this.resets.pipe(
     startWith(undefined),
     switchMap(() => this.submissions.pipe(
-      exhaustMap((registration) =>
-        this.http
+      exhaustMap((registration) => {
+        if (this.network.isOffline()) {
+          return of({ connectionError: true as const });
+        }
+        return this.http
           .post<boolean>(supabaseRpcUrl('check_registration_exists'), {
             p_email: registration.email,
             p_registration_number: registration.registrationNumber,
@@ -140,8 +137,8 @@ export class AuthData {
           .pipe(
             switchMap((exists) => (exists ? of({ duplicate: true as const }) : this.registerWithSupabase(registration))),
             catchError((error: unknown) => of(this.classifyUnexpectedFailure(error))),
-          ),
-      ),
+          );
+      }),
       startWith(undefined),
     )),
   ));
@@ -157,6 +154,9 @@ export class AuthData {
   }
 
   private loginWithSupabase(email: string, password: string): Observable<LoginResult> {
+    if (this.network.isOffline()) {
+      return of({ connectionError: true as const });
+    }
     return from(this.supabase.signInWithPassword({ email, password })).pipe(
       switchMap(({ data, error }) => {
         if (error) {
@@ -223,8 +223,7 @@ export class AuthData {
               map(() => ({ user: null, blocked: true as const })),
             );
           }
-          this.authenticatedUser.set(user);
-          this.sessionAccessToken.set(accessToken);
+          this.saveAuthenticatedSession(user, accessToken);
           return of({ user });
         }),
       );
@@ -331,9 +330,44 @@ export class AuthData {
     );
   }
 
+  private toAuthenticatedUser(user: User | AuthenticatedUser): AuthenticatedUser {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      registrationNumber: user.registrationNumber,
+      whatsapp: user.whatsapp,
+      role: user.role,
+      isBlocked: user.isBlocked,
+      isEmailConfirmed: user.isEmailConfirmed,
+      ratingAverage: user.ratingAverage,
+      createdAt: user.createdAt,
+    };
+  }
+
+  private saveAuthenticatedSession(user: User, accessToken: string): void {
+    const previousUserId = this.authenticatedUser()?.id ?? this.cache.get<string>(ACTIVE_USER_CACHE_KEY);
+    if (previousUserId && previousUserId !== user.id) {
+      this.cache.clearUser(previousUserId);
+    }
+    this.authenticatedUser.set(user);
+    this.sessionAccessToken.set(accessToken);
+    if (user.id) {
+      this.cache.set(ACTIVE_USER_CACHE_KEY, user.id);
+      this.cache.setUserItem(user.id, PROFILE_CACHE_KEY, this.toAuthenticatedUser(user));
+    }
+  }
+
   private clearLocalSession(): void {
+    const currentUserId = this.authenticatedUser()?.id ?? this.cache.get<string>(ACTIVE_USER_CACHE_KEY);
     this.authenticatedUser.set(null);
     this.sessionAccessToken.set(null);
+    if (currentUserId) {
+      this.cache.clearUser(currentUserId);
+    } else {
+      this.cache.clearAllUsers();
+    }
+    this.cache.remove(ACTIVE_USER_CACHE_KEY);
   }
 
   private async clearAutoSession(): Promise<void> {
@@ -359,6 +393,9 @@ export class AuthData {
         this.clearLocalSession();
         return false;
       }
+      if (this.network.isOffline()) {
+        return this.restoreOfflineSession(data.session.user.id, data.session.access_token);
+      }
       const result = await firstValueFrom(
         this.loadOrMirrorProfile(data.session.user, data.session.access_token),
       );
@@ -375,11 +412,26 @@ export class AuthData {
     }
   }
 
+  private restoreOfflineSession(userId: string, accessToken: string): boolean {
+    const cached = this.cache.getUserItem<AuthenticatedUser>(userId, PROFILE_CACHE_KEY);
+    if (!cached || cached.id !== userId || cached.isBlocked || !cached.email) {
+      this.clearLocalSession();
+      return false;
+    }
+    this.authenticatedUser.set({
+      ...this.toAuthenticatedUser(cached),
+      password: '',
+    });
+    this.sessionAccessToken.set(accessToken);
+    return true;
+  }
+
   async logout(): Promise<void> {
+    const offline = this.network.isOffline();
     this.clearLocalSession();
     this.sessionRestorePromise = null;
     try {
-      await this.supabase.signOut();
+      await (offline ? this.supabase.signOut({ scope: 'local' }) : this.supabase.signOut());
     } catch {
       // A sessão local já foi encerrada; falha de rede no signOut não deve travar a saída.
     }

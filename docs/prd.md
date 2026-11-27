@@ -153,7 +153,7 @@ A confirmação de e-mail é simulada automaticamente, sem envio de e-mail; cons
 
 ---
 
-### US07 — Aviso e Comportamento Offline (PWA) · `Must Have` · `M` · Status: `Ready`
+### US07 — Aviso e Comportamento Offline (PWA) · `Must Have` · `M` · Status: `Live`
 
 **Como** aluno ou visitante acessando o aplicativo, **eu quero** visualizar um aviso claro quando o dispositivo estiver sem conexão com a internet, consultar os últimos dados salvos localmente e ver as ações que dependem do servidor desabilitadas com explicação, **para que** eu saiba imediatamente por que operações remotas estão bloqueadas e possa acompanhar minhas informações já carregadas mesmo sem rede.
 
@@ -209,3 +209,4 @@ A confirmação de e-mail é simulada automaticamente, sem envio de e-mail; cons
 | 2026-09-18 | 1.0.0  | Versão inicial gerada a partir da entrevista guiada `/utf-prd`                                              |
 | 2026-11-26 | 1.0.1  | Inclusão da exclusão definitiva de oferta cancelada na US02 e do RNF05 (página `404` em rotas inexistentes) |
 | 2026-11-27 | 1.0.2  | Inclusão da US07 (Aviso e Comportamento Offline PWA) como `Draft`                                           |
+| 2026-11-27 | 1.0.3  | Implementação da US07 concluída e promovida para `Live`                                                     |

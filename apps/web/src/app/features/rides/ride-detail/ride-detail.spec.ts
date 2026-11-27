@@ -12,6 +12,8 @@ import { RideRequest } from '../../../core/models/ride-request.model';
 import { User } from '../../../core/models/user.model';
 import { AuthData } from '../../../core/services/auth-data';
 import { ErrorNotice } from '../../../core/services/error-notice';
+import { OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
+import { OfflineCache } from '../../../core/services/offline-cache';
 import { RideRequestData } from '../../../core/services/ride-request-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 
@@ -1270,5 +1272,194 @@ describe('Solicitação de vaga em RideDetail', () => {
     http.expectNone((request) => request.url === ridesUrl);
     http.expectNone((request) => request.url === driverSummariesUrl);
     expectNoPost(http);
+  });
+});
+
+describe('Comportamento offline e reconexão em RideDetail (CA4, CA5, CA7)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [
+        ...appConfig.providers,
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+      deferBlockBehavior: DeferBlockBehavior.Playthrough,
+    });
+  });
+
+  afterEach(() => {
+    TestBed.inject(HttpTestingController).verify();
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('exibe oferta e solicitação em cache offline, fecha painel aberto, desabilita Solicitar vaga com OFFLINE_ACTION_MESSAGE e reabilita ao voltar online', async () => {
+    const ride = makeRide();
+    const { http, harness, root } = await enterDetail(ride);
+
+    const requestButton = button(root, openLabel);
+    expect(requestButton.disabled).toBe(false);
+    requestButton.click();
+    await harness.fixture.whenStable();
+    expect(root.querySelector(panelSelector)).not.toBeNull();
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    expect(root.textContent).toContain('Batel');
+    expect(root.textContent).toContain('UTFPR Neoville');
+    expect(root.textContent).toContain('Você ainda não solicitou uma vaga.');
+    expect(root.querySelector(panelSelector)).toBeNull();
+
+    const disabledButton = button(root, openLabel);
+    expect(disabledButton.disabled).toBe(true);
+    const describedById = disabledButton.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(root.querySelector(`#${describedById}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    disabledButton.click();
+    await harness.fixture.whenStable();
+    expect(root.querySelector(panelSelector)).toBeNull();
+    expectNoPost(http);
+
+    // Reabrir /rides/007 offline usa o cache sem chamadas HTTP
+    await harness.navigateByUrl('/rides/my-trips');
+    const reopenNav = harness.navigateByUrl('/rides/007');
+    await waitForResolver();
+    await reopenNav;
+    await harness.fixture.whenStable();
+    http.expectNone(ridesUrl);
+    http.expectNone(driverSummariesUrl);
+    http.expectNone(requestsUrl);
+
+    const reopenedRoot = harness.routeNativeElement!.querySelector('main')!;
+    expect(reopenedRoot.textContent).toContain('Batel');
+    expect(button(reopenedRoot, openLabel).disabled).toBe(true);
+    expect(reopenedRoot.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    // Reconexão reabilita automaticamente
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    const reenabledButton = button(reopenedRoot, openLabel);
+    expect(reenabledButton.disabled).toBe(false);
+    expect(reopenedRoot.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+
+    reenabledButton.click();
+    await harness.fixture.whenStable();
+    expect(reopenedRoot.querySelector(panelSelector)).not.toBeNull();
+    expectNoPost(http);
+  });
+
+  it('exibe aviso específico de indisponibilidade sem internet com retorno a /rides quando oferta não está em cache e reabilita Tentar novamente ao reconectar', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    await authenticate(http);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    const navigation = RouterTestingHarness.create('/rides/nao-em-cache');
+    await waitForResolver();
+    const harness = await navigation;
+    await harness.fixture.whenStable();
+
+    http.expectNone(ridesUrl);
+    http.expectNone(requestsUrl);
+    const root = harness.routeNativeElement!.querySelector('main')!;
+
+    const alertText = root.querySelector('[role="alert"]')?.textContent ?? '';
+    expect(alertText).toContain('cache');
+    expect(alertText).toContain('sem internet');
+    expect(alertText).not.toContain('Oferta de carona não encontrada');
+
+    const backLink = [...root.querySelectorAll('a[href="/rides"]')].find(
+      (link) => link.textContent?.trim() === 'Voltar para a busca',
+    );
+    expect(backLink).toBeDefined();
+
+    const retryButton = button(root, 'Tentar novamente');
+    expect(retryButton.disabled).toBe(true);
+    const describedById = retryButton.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(root.querySelector(`#${describedById}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    retryButton.click();
+    await harness.fixture.whenStable();
+    http.expectNone(ridesUrl);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(retryButton.disabled).toBe(false);
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+
+    retryButton.click();
+    await harness.fixture.whenStable();
+    const loadedRide = makeRide({ id: 'nao-em-cache', origin: 'Água Verde' });
+    flushRide(http, loadedRide);
+    await harness.fixture.whenStable();
+    http.expectNone(requestsUrl);
+
+    expect(root.textContent).toContain('Água Verde');
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain(
+      'Não foi possível consultar sua solicitação',
+    );
+
+    button(root, 'Tentar novamente').click();
+    await harness.fixture.whenStable();
+    expectRequestRead(http, 'nao-em-cache').flush([]);
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('desabilita Tentar novamente na consulta da solicitação em cache parcial offline e reabilita ao voltar online', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    await authenticate(http);
+    const ride = makeRide({ id: 'ride-partial', origin: 'Cabral' });
+    TestBed.inject(OfflineCache).setUserItem('008', 'ride-details', {
+      'ride-partial': { ...ride, driver: { name: 'Camila Rocha', ratingAverage: 4.9 } },
+    });
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    const navigation = RouterTestingHarness.create('/rides/ride-partial');
+    await waitForResolver();
+    const harness = await navigation;
+    await harness.fixture.whenStable();
+
+    http.expectNone(ridesUrl);
+    http.expectNone(requestsUrl);
+    const root = harness.routeNativeElement!.querySelector('main')!;
+    expect(root.textContent).toContain('Cabral');
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain(
+      'Não foi possível consultar sua solicitação',
+    );
+
+    const retryButton = button(root, 'Tentar novamente');
+    expect(retryButton.disabled).toBe(true);
+    const describedById = retryButton.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(root.querySelector(`#${describedById}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(retryButton.disabled).toBe(false);
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+
+    retryButton.click();
+    await harness.fixture.whenStable();
+    expectRequestRead(http, 'ride-partial').flush([]);
+    await harness.fixture.whenStable();
+
+    expect(root.textContent).toContain('Você ainda não solicitou uma vaga.');
+    expect(button(root, openLabel).disabled).toBe(false);
   });
 });

@@ -13,8 +13,9 @@ import { User } from '../models/user.model';
 import { AuthData } from './auth-data';
 import { ErrorNotice } from './error-notice';
 import { NotificationData } from './notification-data';
+import { OfflineCache } from './offline-cache';
 import { RideData } from './ride-data';
-import { RideRequestData } from './ride-request-data';
+import { PassengerTripSummary, RideRequestData } from './ride-request-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from './supabase-client';
 
 const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
@@ -119,6 +120,7 @@ async function authenticate(http: HttpTestingController, id = 'driver-1', role: 
 
 describe('RideRequestData', () => {
   beforeEach(() => {
+    localStorage.clear();
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
@@ -126,6 +128,11 @@ describe('RideRequestData', () => {
         { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
       ],
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
   });
 
   describe('operações de passageiro', () => {
@@ -1045,5 +1052,348 @@ describe('RideRequestData', () => {
     });
 
     http.verify();
+  });
+
+  describe('cache local e bloqueio offline (CA4, CA5, CA7)', () => {
+    it('persiste passengerTrips e solicitação por oferta escopados por userId, lê offline sem HTTP e limpa no logout', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      const requestData = TestBed.inject(RideRequestData);
+
+      await authenticate(http, 'passenger-1');
+
+      const trip: PassengerTripSummary = {
+        id: 'req-trip-1',
+        status: 'accepted',
+        ride: {
+          origin: 'Batel',
+          destination: 'UTFPR Neoville',
+          departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+          pricePerSeat: 10,
+          status: 'active',
+        },
+        driver: { name: 'Carlos Motorista', ratingAverage: 5 },
+        whatsapp: '41999998888',
+      };
+      const tripsSignal = requestData.loadPassengerTrips(TestBed.inject(Injector));
+      TestBed.tick();
+      http
+        .expectOne((req) => req.url === passengerTripsRpcUrl && req.method === 'POST')
+        .flush([trip]);
+      expect(tripsSignal()).toEqual({ status: 'loaded', trips: [trip] });
+
+      const cachedRequest: RideRequest = {
+        id: 'req-detail-1',
+        rideId: 'ride-1',
+        passengerId: 'passenger-1',
+        status: 'pending',
+        createdAt: '2026-01-01T08:00:00.000Z',
+      };
+      const rideId = signal('ride-1');
+      const passengerRequestSignal = requestData.loadPassengerRequest(rideId, TestBed.inject(Injector));
+      TestBed.tick();
+      http
+        .expectOne(
+          (req) =>
+            req.url === requestsUrl &&
+            req.method === 'GET' &&
+            req.params.get('ride_id') === 'eq.ride-1' &&
+            req.params.get('passenger_id') === 'eq.passenger-1',
+        )
+        .flush([toRequestRow(cachedRequest)]);
+      expect(passengerRequestSignal()).toEqual({ status: 'loaded', request: cachedRequest });
+
+      rideId.set('ride-sem-pedido');
+      TestBed.tick();
+      http
+        .expectOne(
+          (req) =>
+            req.url === requestsUrl &&
+            req.method === 'GET' &&
+            req.params.get('ride_id') === 'eq.ride-sem-pedido' &&
+            req.params.get('passenger_id') === 'eq.passenger-1',
+        )
+        .flush([]);
+      expect(passengerRequestSignal()).toEqual({ status: 'loaded', request: null });
+      http.verify();
+
+      // Reabre o aplicativo offline com sessão em cache da mesma usuária.
+      TestBed.resetTestingModule();
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      const passengerSupabaseUser: SupabaseUser = {
+        ...fakeSupabaseUser,
+        id: 'passenger-1',
+        email: 'motorista@alunos.utfpr.edu.br',
+      };
+      const offlineAuthClient = createFakeAuthClient();
+      vi.mocked(offlineAuthClient.getSession).mockResolvedValue({
+        data: { session: { ...fakeSession, user: passengerSupabaseUser } },
+        error: null,
+      });
+      TestBed.configureTestingModule({
+        providers: [
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          { provide: SUPABASE_AUTH_CLIENT, useValue: offlineAuthClient },
+        ],
+      });
+
+      const offlineAuth = TestBed.inject(AuthData);
+      const offlineRequestData = TestBed.inject(RideRequestData);
+      const offlineHttp = TestBed.inject(HttpTestingController);
+      await expect(offlineAuth.ensureSessionRestored()).resolves.toBe(true);
+
+      const offlineTrips = offlineRequestData.loadPassengerTrips(TestBed.inject(Injector));
+      TestBed.tick();
+      offlineHttp.expectNone(passengerTripsRpcUrl);
+      expect(offlineTrips()).toEqual({ status: 'loaded', trips: [trip] });
+
+      const offlineRideId = signal('ride-1');
+      const offlinePassengerReq = offlineRequestData.loadPassengerRequest(
+        offlineRideId,
+        TestBed.inject(Injector),
+      );
+      TestBed.tick();
+      offlineHttp.expectNone(requestsUrl);
+      expect(offlinePassengerReq()).toEqual({ status: 'loaded', request: cachedRequest });
+
+      offlineRideId.set('ride-sem-pedido');
+      TestBed.tick();
+      offlineHttp.expectNone(requestsUrl);
+      expect(offlinePassengerReq()).toEqual({ status: 'loaded', request: null });
+
+      offlineRideId.set('ride-nao-consultada');
+      TestBed.tick();
+      offlineHttp.expectNone(requestsUrl);
+      expect(offlinePassengerReq()).toEqual({ status: 'error', connectionError: true });
+
+      // Logout limpa caches privados e outra conta não lê dados da anterior offline.
+      await offlineAuth.logout();
+      const offlineCache = TestBed.inject(OfflineCache);
+      expect(offlineCache.getUserItem('passenger-1', 'passenger-trips')).toBeNull();
+      expect(offlineCache.getUserItem('passenger-1', 'passenger-requests-by-ride')).toBeNull();
+
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+      window.dispatchEvent(new Event('online'));
+      await authenticate(offlineHttp, 'passenger-2');
+      TestBed.tick();
+      offlineHttp
+        .expectOne((req) => req.url === passengerTripsRpcUrl && req.method === 'POST')
+        .error(new ProgressEvent('error'));
+      offlineHttp
+        .expectOne(
+          (req) =>
+            req.url === requestsUrl &&
+            req.method === 'GET' &&
+            req.params.get('ride_id') === 'eq.ride-nao-consultada' &&
+            req.params.get('passenger_id') === 'eq.passenger-2',
+        )
+        .error(new ProgressEvent('error'));
+
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      window.dispatchEvent(new Event('offline'));
+      offlineRequestData.refreshPassengerTrips();
+      TestBed.tick();
+      offlineHttp.expectNone(passengerTripsRpcUrl);
+      expect(offlineTrips()).toEqual({ status: 'error', connectionError: true });
+
+      offlineRideId.set('ride-1');
+      TestBed.tick();
+      offlineHttp.expectNone(requestsUrl);
+      expect(offlinePassengerReq()).toEqual({ status: 'error', connectionError: true });
+      offlineHttp.verify();
+    });
+
+    it('persiste solicitações por oferta do motorista e lê do cache sem HTTP quando offline, isolando contas', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      const auth = TestBed.inject(AuthData);
+      const rideData = TestBed.inject(RideData);
+      const requestData = TestBed.inject(RideRequestData);
+      const cache = TestBed.inject(OfflineCache);
+
+      await authenticate(http, 'driver-1');
+
+      const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+      const ride: Ride = {
+        id: 'ride-driver-1',
+        driverId: 'driver-1',
+        origin: 'Batel',
+        destination: 'UTFPR Neoville',
+        departureTime: futureDeparture,
+        totalSeats: 3,
+        availableSeats: 2,
+        pricePerSeat: 9,
+        status: 'active',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      };
+      const requests: RideRequest[] = [
+        {
+          id: 'req-1',
+          rideId: 'ride-driver-1',
+          passengerId: 'passenger-1',
+          status: 'pending',
+          createdAt: '2026-01-01T08:00:00.000Z',
+        },
+      ];
+
+      rideData.loadDriverRides();
+      http
+        .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+        .flush([toRideRow(ride)]);
+
+      requestData.loadForRide('ride-driver-1');
+      http
+        .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-driver-1')
+        .flush(requests.map(toRequestRow));
+      expect(requestData.requests()).toEqual(requests);
+
+      requestData.reset();
+      expect(requestData.requests()).toEqual([]);
+
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      window.dispatchEvent(new Event('offline'));
+
+      requestData.loadForRide('ride-driver-1');
+      http.expectNone(ridesUrl);
+      http.expectNone(requestsUrl);
+      expect(requestData.requests()).toEqual(requests);
+      expect(requestData.loadResult()).toEqual({ requests });
+
+      requestData.loadForRide('ride-sem-cache');
+      http.expectNone(ridesUrl);
+      http.expectNone(requestsUrl);
+      expect(requestData.requests()).toEqual([]);
+      expect(requestData.loadResult()).toEqual({ connectionError: true });
+
+      // Logout limpa cache de driver-1 e driver-2 offline não herda solicitações de driver-1.
+      rideData.resetDriverRides();
+      await auth.logout();
+      expect(cache.getUserItem('driver-1', 'ride-requests-by-ride')).toBeNull();
+
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+      window.dispatchEvent(new Event('online'));
+      await authenticate(http, 'driver-2');
+
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      window.dispatchEvent(new Event('offline'));
+      requestData.loadForRide('ride-driver-1');
+      http.expectNone(ridesUrl);
+      http.expectNone(requestsUrl);
+      expect(requestData.requests()).toEqual([]);
+      expect(requestData.loadResult()).toEqual({ connectionError: true });
+      http.verify();
+    });
+
+    it('bloqueia createRequest e cancelPassengerRequest sem HTTP quando offline e reabilita quando online', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      const requestData = TestBed.inject(RideRequestData);
+      await authenticate(http, 'passenger-1');
+
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      window.dispatchEvent(new Event('offline'));
+
+      await expect(firstValueFrom(requestData.createRequest('ride-1'))).resolves.toEqual({
+        status: 'connection-error',
+      });
+      await expect(firstValueFrom(requestData.cancelPassengerRequest('req-1'))).resolves.toEqual({
+        status: 'connection-error',
+      });
+      http.expectNone(requestsUrl);
+      http.expectNone(ridesUrl);
+
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+      window.dispatchEvent(new Event('online'));
+
+      const futureRide: Ride = {
+        id: 'ride-1',
+        driverId: 'driver-1',
+        origin: 'Batel',
+        destination: 'UTFPR Neoville',
+        departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        totalSeats: 3,
+        availableSeats: 2,
+        pricePerSeat: 9,
+        status: 'active',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      };
+      const createdRequest: RideRequest = {
+        id: 'req-created',
+        rideId: 'ride-1',
+        passengerId: 'passenger-1',
+        status: 'pending',
+        createdAt: '2026-01-01T09:00:00.000Z',
+      };
+
+      const createdPromise = firstValueFrom(requestData.createRequest('ride-1'));
+      http
+        .expectOne((req) => req.method === 'GET' && req.url === requestsUrl)
+        .flush([]);
+      http
+        .expectOne((req) => req.method === 'GET' && req.url === ridesUrl && req.params.get('id') === 'eq.ride-1')
+        .flush([toRideRow(futureRide)]);
+      http
+        .expectOne((req) => req.method === 'POST' && req.url === requestsUrl)
+        .flush(toRequestRow(createdRequest));
+
+      await expect(createdPromise).resolves.toEqual({
+        status: 'created',
+        ride: futureRide,
+        request: createdRequest,
+      });
+      http.verify();
+    });
+
+    it('bloqueia accept, reject e cancelRide sem HTTP quando offline e reabilita quando online', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      const requestData = TestBed.inject(RideRequestData);
+      await authenticate(http, 'driver-1');
+
+      const futureRide: Ride = {
+        id: 'ride-1',
+        driverId: 'driver-1',
+        origin: 'Batel',
+        destination: 'UTFPR Neoville',
+        departureTime: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+        totalSeats: 3,
+        availableSeats: 2,
+        pricePerSeat: 9,
+        status: 'active',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      };
+      const pendingRequest: RideRequest = {
+        id: 'req-pending',
+        rideId: 'ride-1',
+        passengerId: 'passenger-1',
+        status: 'pending',
+        createdAt: '2026-01-01T08:00:00.000Z',
+      };
+
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      window.dispatchEvent(new Event('offline'));
+
+      requestData.accept(pendingRequest, futureRide);
+      expect(requestData.decisionResult()).toEqual({ connectionError: true });
+
+      requestData.reject(pendingRequest, futureRide);
+      expect(requestData.decisionResult()).toEqual({ connectionError: true });
+
+      requestData.cancelRide(futureRide);
+      expect(requestData.cancelResult()).toEqual({ connectionError: true });
+
+      http.expectNone(requestsUrl);
+      http.expectNone(ridesUrl);
+      http.expectNone(notificationsUrl);
+
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+      window.dispatchEvent(new Event('online'));
+
+      requestData.reject(pendingRequest, futureRide);
+      const rejectReq = http.expectOne(
+        (req) => req.url === requestsUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.req-pending',
+      );
+      const rejected = { ...pendingRequest, status: 'rejected' as const };
+      rejectReq.flush(toRequestRow(rejected));
+      expect(requestData.decisionResult()).toEqual({ request: rejected, ride: futureRide });
+      http.verify();
+    });
   });
 });

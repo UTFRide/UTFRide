@@ -124,6 +124,7 @@ function expectRideRead(http: HttpTestingController, rideId: string) {
 
 describe('rideDetailResolver (CA4 e CA6)', () => {
   beforeEach(() => {
+    localStorage.clear();
     TestBed.configureTestingModule({
       providers: [
         ...appConfig.providers,
@@ -133,7 +134,11 @@ describe('rideDetailResolver (CA4 e CA6)', () => {
     });
   });
 
-  afterEach(() => TestBed.inject(HttpTestingController).verify());
+  afterEach(() => {
+    TestBed.inject(HttpTestingController).verify();
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
 
   it('registra resolve.initialDetail na rota /rides/:id em app.routes.ts', () => {
     const ridesRoute = routes.find((route) => route.path === 'rides');
@@ -323,5 +328,51 @@ describe('rideDetailResolver (CA4 e CA6)', () => {
     const root = harness.routeNativeElement!.querySelector('main')!;
     expect(root.textContent).toContain('Origem Nova Sessão');
     expect(root.textContent).not.toContain('Origem Sessão Antiga');
+  });
+
+  it('retorna oferta do cache sem HTTP quando offline e connectionError quando ausente no cache', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    await authenticate(http, 'passenger-1');
+    const ride = makeRide({ id: 'ride-cache-1', origin: 'Água Verde' });
+
+    const onlineRoute = { paramMap: convertToParamMap({ id: 'ride-cache-1' }) } as ActivatedRouteSnapshot;
+    const state = { url: '/rides/ride-cache-1' } as RouterStateSnapshot;
+    const onlineResult$ = TestBed.runInInjectionContext(() => rideDetailResolver(onlineRoute, state));
+    expect(isObservable(onlineResult$)).toBe(true);
+    const onlinePromise = isObservable(onlineResult$) ? firstValueFrom(onlineResult$) : Promise.resolve(onlineResult$);
+
+    expectRideRead(http, 'ride-cache-1').flush([toRideRow(ride)]);
+    http
+      .expectOne((request) => request.method === 'POST' && request.url === driverSummariesUrl)
+      .flush([{ id: 'driver-1', name: 'Carlos Motorista', rating_average: 4.9 }]);
+
+    const expectedLoaded = {
+      status: 'loaded' as const,
+      ride: { ...ride, driver: { name: 'Carlos Motorista', ratingAverage: 4.9 } },
+    };
+    await expect(onlinePromise).resolves.toEqual(expectedLoaded);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    const cachedResult$ = TestBed.runInInjectionContext(() => rideDetailResolver(onlineRoute, state));
+    expect(isObservable(cachedResult$)).toBe(true);
+    if (isObservable(cachedResult$)) {
+      await expect(firstValueFrom(cachedResult$)).resolves.toEqual(expectedLoaded);
+    }
+
+    const missingRoute = { paramMap: convertToParamMap({ id: 'ride-ausente' }) } as ActivatedRouteSnapshot;
+    const missingState = { url: '/rides/ride-ausente' } as RouterStateSnapshot;
+    const missingResult$ = TestBed.runInInjectionContext(() => rideDetailResolver(missingRoute, missingState));
+    expect(isObservable(missingResult$)).toBe(true);
+    if (isObservable(missingResult$)) {
+      await expect(firstValueFrom(missingResult$)).resolves.toEqual({
+        status: 'error',
+        connectionError: true,
+      });
+    }
+
+    http.expectNone(ridesUrl);
+    http.expectNone(driverSummariesUrl);
   });
 });

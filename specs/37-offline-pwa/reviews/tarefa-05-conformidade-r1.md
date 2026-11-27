@@ -1,0 +1,15 @@
+<Parecer de Conformidade — Tarefa 5>
+**Veredito:** APROVADO
+
+## Critérios verificados
+| Critério (da spec) | Situação | Onde |
+| --- | --- | --- |
+| CA5 — `NotificationBell` exibe apenas notificações em cache e explicação `"Conecte-se à internet novamente para habilitar todas as funções do app UTFRide novamente"` quando offline, sem HTTP e sem quebrar isolamento de `shared/` | atendido | [notification-bell.ts](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/shared/components/notification-bell/notification-bell.ts#L18-L21), [notification-bell.html](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/shared/components/notification-bell/notification-bell.html#L46-L62), [rides-layout.html](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/features/rides/rides-layout/rides-layout.html#L14-L20) |
+| CA6 — Botão **Sair** offline em `RidesLayout` abre diálogo acessível de confirmação com o texto exigido (`"Você realmente deseja sair? Até se conectar novamente, você não terá acesso ao UTFRide."`) | atendido | [rides-layout.ts](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/features/rides/rides-layout/rides-layout.ts#L56-L63), [rides-layout.html](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/features/rides/rides-layout/rides-layout.html#L89-L140) |
+| CA6 — Cancelar ou pressionar `Escape` fecha o diálogo e mantém sessão autenticada e dados em cache | atendido | [rides-layout.ts](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/features/rides/rides-layout/rides-layout.ts#L33-L68), [rides-layout.html](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/features/rides/rides-layout/rides-layout.html#L97-L98), [rides-layout.spec.ts](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/features/rides/rides-layout/rides-layout.spec.ts#L170-L236) |
+| CA6 — Confirmar saída offline limpa sessão local e caches privados sem travar na ausência de rede e redireciona para `/login` | atendido | [rides-layout.ts](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/features/rides/rides-layout/rides-layout.ts#L70-L85), [auth-data.ts](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/core/services/auth-data.ts#L429-L438), [rides-layout.spec.ts](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/features/rides/rides-layout/rides-layout.spec.ts#L238-L284) |
+| CA7 — Reconexão (`online`) remove aviso offline reativamente e componentes alterados têm testes Vitest simulando `offline`/`online` sem chamadas reais de rede (`npm test`: 26 arquivos, 351 testes passando) | atendido | [notification-bell.spec.ts](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/shared/components/notification-bell/notification-bell.spec.ts#L164-L213), [rides-layout.spec.ts](file:///c:/Users/duduk/Documents/UTFRide/apps/web/src/app/features/rides/rides-layout/rides-layout.spec.ts#L286-L327) |
+
+## Apontamentos
+
+</Parecer de Conformidade — Tarefa 5>

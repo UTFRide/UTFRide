@@ -7,6 +7,7 @@ import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment';
 import { routes } from '../../app.routes';
 import { AuthData } from '../services/auth-data';
+import { OfflineCache } from '../services/offline-cache';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../services/supabase-client';
 import { authGuard } from './auth-guard';
 
@@ -104,6 +105,7 @@ describe('authGuard', () => {
   let fakeAuth: SupabaseAuthClient;
 
   beforeEach(() => {
+    localStorage.clear();
     fakeAuth = createFakeAuthClient();
     TestBed.configureTestingModule({
       providers: [
@@ -113,6 +115,11 @@ describe('authGuard', () => {
         { provide: SUPABASE_AUTH_CLIENT, useValue: fakeAuth },
       ],
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
   });
 
   it('retorna true direto quando o aluno já está autenticado sem chamar getSession()', async () => {
@@ -259,4 +266,45 @@ describe('authGuard', () => {
     expect(TestBed.inject(AuthData).isAuthenticated()).toBe(false);
     expect(TestBed.inject(AuthData).accessToken()).toBeNull();
   });
+
+  it.each(['/rides', '/rides/my-trips', '/driver/my-rides'])(
+    'libera rota protegida %s em modo offline com sessão local válida e perfil em cache sem consultar /rest/v1/users',
+    async (protectedRoute) => {
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      vi.mocked(fakeAuth.getSession).mockResolvedValueOnce({
+        data: { session: fakeSession },
+        error: null,
+      });
+      TestBed.inject(OfflineCache).setUserItem('supabase-user-1', 'profile', activeUser);
+      const auth = TestBed.inject(AuthData);
+      const http = TestBed.inject(HttpTestingController);
+
+      await RouterTestingHarness.create(protectedRoute);
+
+      http.expectNone((request) => request.url === `${environment.supabaseUrl}/rest/v1/users`);
+      expect(TestBed.inject(Router).url).toBe(protectedRoute);
+      expect(auth.isAuthenticated()).toBe(true);
+      expect(auth.currentUser()).toEqual(activeUser);
+      expect(auth.accessToken()).toBe('jwt-restored-token');
+      expect(fakeAuth.getSession).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['/rides', '/rides/my-trips', '/driver/my-rides'])(
+    'redireciona rota protegida %s para /login em modo offline quando não há sessão nem perfil em cache',
+    async (protectedRoute) => {
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      vi.mocked(fakeAuth.getSession).mockResolvedValueOnce({
+        data: { session: fakeSession },
+        error: null,
+      });
+      const http = TestBed.inject(HttpTestingController);
+
+      await RouterTestingHarness.create(protectedRoute);
+
+      http.expectNone((request) => request.url === `${environment.supabaseUrl}/rest/v1/users`);
+      expect(TestBed.inject(Router).url).toBe('/login');
+      expect(TestBed.inject(AuthData).isAuthenticated()).toBe(false);
+    },
+  );
 });

@@ -5,12 +5,14 @@ import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
 import { Ride } from '../../../core/models/ride.model';
 import { RideRequest } from '../../../core/models/ride-request.model';
 import { AuthData } from '../../../core/services/auth-data';
+import { OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
+import { OfflineCache } from '../../../core/services/offline-cache';
 import { RideData } from '../../../core/services/ride-data';
 import { RideRequestData } from '../../../core/services/ride-request-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
@@ -1634,6 +1636,510 @@ describe('Minhas Ofertas e Gerenciar Solicitações (MyRides)', () => {
     expect(returnedRoot.querySelector('[role="dialog"]')).toBeNull();
     expect(returnedRoot.querySelector('[data-testid="delete-ride-error"]')).toBeNull();
     expect(returnedRoot.querySelector('[data-testid="delete-ride-success"]')).toBeNull();
+    http.verify();
+  });
+});
+
+describe('Comportamento offline e reconexão em MyRides (CA4, CA5, CA7)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('exibe driverRides e solicitações em cache offline sem disparar HTTP e repassa estado offline ao NotificationBell (CA4, CA5)', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const cache = TestBed.inject(OfflineCache);
+    await authenticateDriver(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const activeRide: Ride = {
+      id: 'ride-cached-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const cancelledRide: Ride = {
+      ...activeRide,
+      id: 'ride-cached-2',
+      origin: 'Portão',
+      status: 'cancelled',
+    };
+    const ride1Requests: RideRequest[] = [
+      {
+        id: 'req-acc-1',
+        rideId: 'ride-cached-1',
+        passengerId: 'Mariana Silva',
+        status: 'accepted',
+        createdAt: '2026-01-01T07:00:00.000Z',
+      },
+      {
+        id: 'req-pen-1',
+        rideId: 'ride-cached-1',
+        passengerId: 'Lucas Andrade',
+        status: 'pending',
+        createdAt: '2026-01-01T07:10:00.000Z',
+      },
+    ];
+
+    // Carrega online primeiro para popular cache local
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    http
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(activeRide), toRideRow(cancelledRide)]);
+    await harness.fixture.whenStable();
+
+    http
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-cached-1')
+      .flush(ride1Requests.map(toRideRequestRow));
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    const selectCancelledBtn = Array.from(root.querySelectorAll('button')).find((btn) =>
+      btn.textContent?.includes('Portão →'),
+    )!;
+    selectCancelledBtn.click();
+    await harness.fixture.whenStable();
+    http
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-cached-2')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    cache.setUserItem('driver-1', 'notifications', [
+      {
+        id: 'notif-cached-1',
+        recipientId: 'driver-1',
+        rideId: 'ride-cached-1',
+        message: 'Notificação salva em cache.',
+        createdAt: '2026-01-01T08:00:00.000Z',
+      },
+    ]);
+
+    // Fica offline e reabre a rota do zero
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.navigateByUrl('/driver/offer');
+    await harness.fixture.whenStable();
+    await harness.navigateByUrl('/driver/my-rides');
+    await harness.fixture.whenStable();
+
+    http.expectNone(ridesUrl);
+    http.expectNone(requestsUrl);
+
+    const offlineRoot = harness.routeNativeElement as HTMLElement;
+    expect(offlineRoot.textContent).toContain('Batel → UTFPR Neoville');
+    expect(offlineRoot.textContent).toContain('Mariana Silva');
+    expect(offlineRoot.textContent).toContain('Lucas Andrade');
+
+    // Troca para a segunda oferta em cache sem HTTP
+    const switchBtn = Array.from(offlineRoot.querySelectorAll('button')).find((btn) =>
+      btn.textContent?.includes('Portão →'),
+    )!;
+    switchBtn.click();
+    await harness.fixture.whenStable();
+    http.expectNone(requestsUrl);
+    expect(offlineRoot.textContent).toContain('Cancelada');
+
+    // NotificationBell exibe avisos em cache sem HTTP e aviso offline
+    offlineRoot
+      .querySelector<HTMLButtonElement>('header [data-testid="notification-bell-button"]')!
+      .click();
+    await flushMicrotasks();
+    await harness.fixture.whenStable();
+    http.expectNone(notificationsUrl);
+    expect(
+      offlineRoot.querySelector('[data-testid="notifications-offline-notice"]')?.textContent,
+    ).toContain(OFFLINE_ACTION_MESSAGE);
+    expect(offlineRoot.querySelectorAll('[data-testid="notification-item"]').length).toBe(1);
+    http.verify();
+  });
+
+  it('desabilita e bloqueia ações de editar, cancelar, excluir e aceitar/rejeitar solicitação com OFFLINE_ACTION_MESSAGE offline e reabilita respeitando estado ao reconectar (CA5, CA7)', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateDriver(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const activeRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const cancelledRide: Ride = {
+      ...activeRide,
+      id: 'ride-2',
+      origin: 'Portão',
+      status: 'cancelled',
+    };
+    const pendingRequest: RideRequest = {
+      id: 'req-pending',
+      rideId: 'ride-1',
+      passengerId: 'Lucas Andrade',
+      status: 'pending',
+      createdAt: '2026-01-01T07:10:00.000Z',
+    };
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    const root = harness.routeNativeElement as HTMLElement;
+    const component = harness.routeDebugElement?.componentInstance as MyRides;
+
+    http
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(activeRide), toRideRow(cancelledRide)]);
+    await harness.fixture.whenStable();
+    http
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush([toRideRequestRow(pendingRequest)]);
+    await harness.fixture.whenStable();
+
+    // Fica offline
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    const editBtn = root.querySelector<HTMLButtonElement>('[data-testid="edit-ride-button"]')!;
+    const cancelBtn = root.querySelector<HTMLButtonElement>('[data-testid="cancel-ride-button"]')!;
+    const deleteBtn = root.querySelector<HTMLButtonElement>('[data-testid="delete-ride-button"]')!;
+    const acceptBtn = root.querySelector<HTMLButtonElement>('[data-testid="accept-request-req-pending"]')!;
+    const rejectBtn = root.querySelector<HTMLButtonElement>('[data-testid="reject-request-req-pending"]')!;
+
+    expect(editBtn.disabled).toBe(true);
+    expect(cancelBtn.disabled).toBe(true);
+    expect(deleteBtn.disabled).toBe(true);
+    expect(acceptBtn.disabled).toBe(true);
+    expect(rejectBtn.disabled).toBe(true);
+    expect(root.textContent).not.toContain('Sem vagas disponíveis');
+
+    const actionsDescribedBy = editBtn.getAttribute('aria-describedby');
+    expect(actionsDescribedBy).toBeTruthy();
+    expect(cancelBtn.getAttribute('aria-describedby')).toBe(actionsDescribedBy);
+    expect(deleteBtn.getAttribute('aria-describedby')).toBe(actionsDescribedBy);
+    expect(root.querySelector(`#${actionsDescribedBy}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+    expect(root.querySelector('[data-testid="my-rides-requests-offline-hint"]')?.textContent).toContain(
+      OFFLINE_ACTION_MESSAGE,
+    );
+
+    // Chamadas diretas não devem navegar, abrir modal nem disparar HTTP
+    component.editSelectedRide();
+    component.openCancelConfirmation();
+    component.confirmCancelRide();
+    component.acceptRequest(pendingRequest);
+    component.rejectRequest(pendingRequest);
+    await harness.fixture.whenStable();
+    expect(TestBed.inject(Router).url).toBe('/driver/my-rides');
+    expect(root.querySelector('[role="dialog"]')).toBeNull();
+    http.expectNone(ridesUrl);
+    http.expectNone(requestsUrl);
+    http.expectNone(notificationsUrl);
+
+    // Selecionar oferta cancelada offline mantém Excluir Oferta desabilitado
+    const selectCancelledBtn = Array.from(root.querySelectorAll('button')).find((btn) =>
+      btn.textContent?.includes('Portão →'),
+    )!;
+    selectCancelledBtn.click();
+    await harness.fixture.whenStable();
+    http.expectNone(requestsUrl);
+
+    expect(deleteBtn.disabled).toBe(true);
+    component.openDeleteConfirmation();
+    component.confirmDeleteRide();
+    await harness.fixture.whenStable();
+    expect(root.querySelector('[role="dialog"]')).toBeNull();
+    http.expectNone(ridesUrl);
+
+    // Voltar online na oferta cancelada: apenas Excluir Oferta reabilita (respeitando estado cancelado)
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+    expect(deleteBtn.disabled).toBe(false);
+    expect(editBtn.disabled).toBe(true);
+    expect(cancelBtn.disabled).toBe(true);
+
+    // Voltar para oferta ativa online: Editar, Cancelar, Aceitar e Recusar reabilitam; Excluir fica desabilitado
+    const selectActiveBtn = Array.from(root.querySelectorAll('button')).find((btn) =>
+      btn.textContent?.includes('Batel →'),
+    )!;
+    selectActiveBtn.click();
+    await harness.fixture.whenStable();
+    http
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush([toRideRequestRow(pendingRequest)]);
+    await harness.fixture.whenStable();
+
+    expect(editBtn.disabled).toBe(false);
+    expect(cancelBtn.disabled).toBe(false);
+    expect(deleteBtn.disabled).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="accept-request-req-pending"]')!.disabled).toBe(
+      false,
+    );
+    expect(root.querySelector<HTMLButtonElement>('[data-testid="reject-request-req-pending"]')!.disabled).toBe(
+      false,
+    );
+    http.verify();
+  });
+
+  it('desabilita confirmação dentro dos modais de cancelamento e exclusão ao cair a rede e reabilita ao reconectar (CA5, CA7)', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateDriver(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const activeRide: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const cancelledRide: Ride = {
+      ...activeRide,
+      id: 'ride-2',
+      origin: 'Portão',
+      status: 'cancelled',
+    };
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    const root = harness.routeNativeElement as HTMLElement;
+    const component = harness.routeDebugElement?.componentInstance as MyRides;
+
+    http
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(activeRide), toRideRow(cancelledRide)]);
+    await harness.fixture.whenStable();
+    http
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    // 1. Modal de cancelamento aberto e rede cai
+    root.querySelector<HTMLButtonElement>('[data-testid="cancel-ride-button"]')!.click();
+    await harness.fixture.whenStable();
+
+    const confirmCancelBtn = root.querySelector<HTMLButtonElement>(
+      '[data-testid="confirm-cancel-ride-button"]',
+    )!;
+    expect(confirmCancelBtn.disabled).toBe(false);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    expect(confirmCancelBtn.disabled).toBe(true);
+    const cancelModalDescribedBy = confirmCancelBtn.getAttribute('aria-describedby');
+    expect(cancelModalDescribedBy).toBeTruthy();
+    expect(root.querySelector(`#${cancelModalDescribedBy}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    component.confirmCancelRide();
+    await harness.fixture.whenStable();
+    http.expectNone(ridesUrl);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(confirmCancelBtn.disabled).toBe(false);
+    root.querySelector<HTMLButtonElement>('[data-testid="keep-ride-button"]')!.click();
+    await harness.fixture.whenStable();
+
+    // 2. Modal de exclusão aberto e rede cai
+    Array.from(root.querySelectorAll('button'))
+      .find((btn) => btn.textContent?.includes('Portão →'))!
+      .click();
+    await harness.fixture.whenStable();
+    http
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-2')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    root.querySelector<HTMLButtonElement>('[data-testid="delete-ride-button"]')!.click();
+    await harness.fixture.whenStable();
+
+    const confirmDeleteBtn = root.querySelector<HTMLButtonElement>(
+      '[data-testid="confirm-delete-ride-button"]',
+    )!;
+    expect(confirmDeleteBtn.disabled).toBe(false);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    expect(confirmDeleteBtn.disabled).toBe(true);
+    const deleteModalDescribedBy = confirmDeleteBtn.getAttribute('aria-describedby');
+    expect(deleteModalDescribedBy).toBeTruthy();
+    expect(root.querySelector(`#${deleteModalDescribedBy}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    component.confirmDeleteRide();
+    await harness.fixture.whenStable();
+    http.expectNone(ridesUrl);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(confirmDeleteBtn.disabled).toBe(false);
+    confirmDeleteBtn.click();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'DELETE' && req.params.get('id') === 'eq.ride-2')
+      .flush(null);
+    await harness.fixture.whenStable();
+    http
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector('[role="dialog"]')).toBeNull();
+    http.verify();
+  });
+
+  it('desabilita botões Tentar novamente de ofertas e solicitações quando offline com OFFLINE_ACTION_MESSAGE e reabilita ao reconectar (CA5, CA7)', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateDriver(http);
+
+    // Sem cache offline ao abrir /driver/my-rides
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    const harness = await RouterTestingHarness.create('/driver/my-rides');
+    await harness.fixture.whenStable();
+    const root = harness.routeNativeElement as HTMLElement;
+
+    http.expectNone(ridesUrl);
+    const retryRidesBtn = root.querySelector<HTMLButtonElement>('[data-testid="retry-load-rides-button"]')!;
+    expect(retryRidesBtn).not.toBeNull();
+    expect(retryRidesBtn.disabled).toBe(true);
+    const ridesRetryDescribedBy = retryRidesBtn.getAttribute('aria-describedby');
+    expect(ridesRetryDescribedBy).toBeTruthy();
+    expect(root.querySelector(`#${ridesRetryDescribedBy}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    retryRidesBtn.click();
+    await harness.fixture.whenStable();
+    http.expectNone(ridesUrl);
+
+    // Reconecta e recarrega duas ofertas
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(retryRidesBtn.disabled).toBe(false);
+    retryRidesBtn.click();
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const ride1: Ride = {
+      id: 'ride-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const ride2: Ride = {
+      ...ride1,
+      id: 'ride-2',
+      origin: 'Água Verde',
+    };
+
+    http
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ride1), toRideRow(ride2)]);
+    await harness.fixture.whenStable();
+    http
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-1')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    // Fica offline e seleciona ride-2 que não tem solicitações em cache
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    Array.from(root.querySelectorAll('button'))
+      .find((btn) => btn.textContent?.includes('Água Verde →'))!
+      .click();
+    await harness.fixture.whenStable();
+    http.expectNone(requestsUrl);
+
+    const retryRequestsBtn = root.querySelector<HTMLButtonElement>(
+      '[data-testid="retry-load-requests-button"]',
+    )!;
+    expect(retryRequestsBtn).not.toBeNull();
+    expect(retryRequestsBtn.disabled).toBe(true);
+    const reqRetryDescribedBy = retryRequestsBtn.getAttribute('aria-describedby');
+    expect(reqRetryDescribedBy).toBeTruthy();
+    expect(root.querySelector(`#${reqRetryDescribedBy}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    retryRequestsBtn.click();
+    await harness.fixture.whenStable();
+    http.expectNone(requestsUrl);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(retryRequestsBtn.disabled).toBe(false);
+    retryRequestsBtn.click();
+    http
+      .expectOne((req) => req.url === requestsUrl && req.params.get('ride_id') === 'eq.ride-2')
+      .flush([]);
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector('[data-testid="ride-requests-error"]')).toBeNull();
     http.verify();
   });
 });

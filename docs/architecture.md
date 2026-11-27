@@ -1,8 +1,8 @@
 # 🏗️ Especificação de Arquitetura Técnica (Architecture / SSD)
 
 **Projeto:** UTFRide  
-**Versão:** 1.0.3<br>
-**Data:** 2026-11-26<br>
+**Versão:** 1.0.4<br>
+**Data:** 2026-11-27<br>
 **Status:** Aprovado  
 
 > 🤖 **Este documento é a régua arquitetural e técnica do UTFRide.** Ele estabelece os padrões estruturais, a organização do código, o modelo de dados e os contratos de integração que o `/utf-setup`, os implementadores e os revisores devem seguir rigorosamente durante todo o ciclo de desenvolvimento.
@@ -67,6 +67,11 @@ A persistência do UTFRide evolui em duas fases bem demarcadas:
   - **Chave Publicável (`sb_publishable_...`):** **pode** ser versionada no Git dentro de `environments/` e enviada no código cliente (`createClient(supabaseUrl, supabasePublishableKey)`), pois identifica apenas o projeto na borda pública; a proteção real dos dados é garantida pelo JWT do usuário autenticado e pelas políticas de **Row Level Security (RLS)** no servidor.
   - **Chave Secreta (`sb_secret_...` / `service_role`):** **nunca** deve ser colocada no código frontend, nos arquivos `environments/` ou em qualquer commit do repositório, pois contorna o RLS e concede acesso administrativo irrestrito ao projeto.
 - **Isolamento em Testes Automatizados:** os testes unitários (Vitest) **nunca** executam chamadas reais ao Supabase; o cliente `@supabase/supabase-js` é encapsulado em `core/services/` e substituído por dublês/mocks em memória nos testes.
+
+### 2.6 Resiliência Offline e Cache Local (US07 / RNF02)
+- **Monitoramento de Rede (`NetworkStatus`):** serviço singleton em `core/services/network-status.ts` que expõe os signals reativos `isOnline` e `isOffline` (sincronizados com `navigator.onLine` e os eventos `online`/`offline` do navegador) e a constante `OFFLINE_ACTION_MESSAGE`. O componente raiz (`App`) exibe o banner global persistente no topo enquanto `isOffline()` estiver ativo.
+- **Cache Local Isolado por Usuário (`OfflineCache`):** serviço singleton em `core/services/offline-cache.ts` sobre `localStorage`, com chaves globais (`utfride:offline:...`) e escopo por usuário (`utfride:offline:user:<userId>:...`). Permite que `AuthData`, `LocationData`, `RideData` (inclusive `rideDetailResolver`), `RideRequestData` e `NotificationData` sirvam os últimos dados salvos em modo somente leitura sem vazar dados entre sessões ou após logout (`clearUser` / `clearAllUsers`).
+- **Bloqueio de Operações Remotas e Isolamento de Camadas:** quando offline, os Services impedem chamadas HTTP remotas de leitura externa/escrita e as telas autenticadas/públicas desabilitam ações dependentes de servidor com explicação clara, reabilitando-as automaticamente ao retornar ao estado online. Componentes reutilizáveis em `shared/` (como `NotificationBell`) recebem o estado offline por `input()`, preservando a regra de não importar de `core/`.
 
 ---
 

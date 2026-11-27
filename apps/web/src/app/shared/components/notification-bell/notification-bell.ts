@@ -17,6 +17,8 @@ export class NotificationBell {
 
   readonly notifications = input<readonly NotificationItem[]>([]);
   readonly loadError = input<string | null>(null);
+  readonly isOffline = input<boolean>(false);
+  readonly offlineNotice = input<string>('');
   readonly opened = output<void>();
   readonly isOpen = signal(false);
 

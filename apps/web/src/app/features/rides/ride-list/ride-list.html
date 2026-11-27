@@ -45,11 +45,25 @@
         </p>
         <button
           type="button"
-          class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+          [disabled]="network.isOffline()"
+          [attr.aria-describedby]="network.isOffline() ? 'ride-list-offline-hint' : null"
+          class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
           (click)="retrySearch()"
         >
           Tentar novamente
         </button>
+        @if (network.isOffline()) {
+          <p
+            id="ride-list-offline-hint"
+            role="status"
+            class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">
+              wifi_off
+            </span>
+            <span>{{ offlineMessage }}</span>
+          </p>
+        }
       </div>
     }
     @case ('loaded') {

@@ -11,11 +11,14 @@ import {
   Subject,
   switchMap,
   tap,
+  throwError,
 } from 'rxjs';
 import { Notification } from '../models/notification.model';
 import { Ride } from '../models/ride.model';
 import { AuthData, AuthenticatedUser } from './auth-data';
 import { ErrorNotice } from './error-notice';
+import { NetworkStatus } from './network-status';
+import { OfflineCache } from './offline-cache';
 import {
   mapNotificationRow,
   NotificationRow,
@@ -29,11 +32,15 @@ export type LoadNotificationsResult =
   | { connectionError: true }
   | { requestError: true };
 
+const NOTIFICATIONS_CACHE_KEY = 'notifications';
+
 @Injectable({ providedIn: 'root' })
 export class NotificationData {
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthData);
   private readonly notice = inject(ErrorNotice);
+  private readonly network = inject(NetworkStatus);
+  private readonly cache = inject(OfflineCache);
   private readonly loads = new Subject<void>();
   private readonly resets = new Subject<void>();
   private readonly notificationsState = signal<Notification[]>([]);
@@ -63,6 +70,19 @@ export class NotificationData {
               return of({ unauthorized: true as const });
             }
 
+            if (this.network.isOffline()) {
+              const cached = this.readCachedNotifications(user.id);
+              if (cached !== null) {
+                const filtered = cached.filter((notification) =>
+                  this.isRecipient(notification, user),
+                );
+                this.notificationsState.set(filtered);
+                return of({ notifications: filtered });
+              }
+              this.notificationsState.set([]);
+              return of({ connectionError: true as const });
+            }
+
             return this.http
               .get<NotificationRow[]>(supabaseRestUrl('notifications'), {
                 params: { recipient_id: `eq.${user.id}` },
@@ -73,7 +93,12 @@ export class NotificationData {
                     .map(mapNotificationRow)
                     .filter((notification) => this.isRecipient(notification, user)),
                 ),
-                tap((items) => this.notificationsState.set(items)),
+                tap((items) => {
+                  this.notificationsState.set(items);
+                  if (user.id === this.auth.currentUser()?.id) {
+                    this.saveCachedNotifications(user.id, items);
+                  }
+                }),
                 map((notifications) => ({ notifications })),
                 catchError((error: unknown) => {
                   this.notificationsState.set([]);
@@ -124,6 +149,9 @@ export class NotificationData {
     if (uniqueRecipients.length === 0) {
       return of([]);
     }
+    if (this.network.isOffline()) {
+      return throwError(() => new HttpErrorResponse({ status: 0, statusText: 'Offline' }));
+    }
 
     const createdAt = new Date().toISOString();
     const message = `A carona ${ride.origin} → ${ride.destination} foi cancelada pelo motorista.`;
@@ -152,6 +180,15 @@ export class NotificationData {
     this.notificationsState.set([]);
     this.lastLoadUserId.set(null);
     this.resets.next();
+  }
+
+  private readCachedNotifications(userId: string): Notification[] | null {
+    const cached = this.cache.getUserItem<unknown>(userId, NOTIFICATIONS_CACHE_KEY);
+    return Array.isArray(cached) ? (cached as Notification[]) : null;
+  }
+
+  private saveCachedNotifications(userId: string, notifications: Notification[]): void {
+    this.cache.setUserItem(userId, NOTIFICATIONS_CACHE_KEY, notifications);
   }
 
   private mapLoadError(error: unknown): LoadNotificationsResult {

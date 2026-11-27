@@ -4,11 +4,13 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
 import { Ride } from '../../../core/models/ride.model';
 import { AuthData } from '../../../core/services/auth-data';
+import { OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
+import { OfflineCache } from '../../../core/services/offline-cache';
 import { RideData } from '../../../core/services/ride-data';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 
@@ -1295,6 +1297,245 @@ describe('Publicação de oferta de carona (OfferRide)', () => {
     expect(auth.accessToken()).toBeNull();
     expect(auth.isAuthenticated()).toBe(false);
     expect(router.url).toBe('/login');
+    http.verify();
+  });
+});
+
+describe('Comportamento offline e reconexão em OfferRide (CA4, CA5, CA7)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('desabilita e bloqueia publicação de oferta com OFFLINE_ACTION_MESSAGE quando offline e reabilita ao voltar online (CA5, CA7)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const rideData = TestBed.inject(RideData);
+    await authenticateStudent(http);
+
+    const harness = await RouterTestingHarness.create('/driver/offer');
+    const root = harness.routeNativeElement as HTMLElement;
+
+    const future = new Date(2026, 10, 17, 7, 30, 0);
+    setField(root, 'origin', 'Praça do Japão');
+    setField(root, 'destination', 'UTFPR - Sede Centro');
+    setField(root, 'departureDate', formatLocalDate(future));
+    setField(root, 'departureTime', formatLocalTime(future));
+    setField(root, 'pricePerSeat', '10');
+    await harness.fixture.whenStable();
+
+    const submitButton = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(submitButton.disabled).toBe(false);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    expect(submitButton.disabled).toBe(true);
+    const describedById = submitButton.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(root.querySelector(`#${describedById}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await harness.fixture.whenStable();
+    http.expectNone(ridesUrl);
+    expect(rideData.publishResult()).toBeUndefined();
+
+    // Se formulário ficar inválido offline e voltar online, permanece desabilitado pela validade
+    setField(root, 'origin', '');
+    await harness.fixture.whenStable();
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+    expect(submitButton.disabled).toBe(true);
+
+    setField(root, 'origin', 'Praça do Japão');
+    await harness.fixture.whenStable();
+    expect(submitButton.disabled).toBe(false);
+
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    const postReq = http.expectOne((req) => req.url === ridesUrl && req.method === 'POST');
+    postReq.flush({ id: 'ride-1', ...(postReq.request.body as Record<string, unknown>) });
+    await harness.fixture.whenStable();
+
+    expect(root.textContent).toContain('Carona Publicada!');
+    http.verify();
+  });
+
+  it('carrega oferta em cache para edição offline, bloqueia salvamento com OFFLINE_ACTION_MESSAGE e reabilita ao voltar online (CA4, CA5, CA7)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    const cache = TestBed.inject(OfflineCache);
+    await authenticateStudent(http);
+
+    const existingRide: Ride = {
+      id: 'ride-cached-edit',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: new Date(2026, 10, 17, 7, 30, 0).toISOString(),
+      totalSeats: 3,
+      availableSeats: 3,
+      pricePerSeat: 9,
+      status: 'active',
+      notes: 'Próximo ao shopping',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    cache.setUserItem('driver-1', 'driver-rides', [existingRide]);
+    cache.setUserItem('driver-1', 'notifications', [
+      {
+        id: 'notif-driver-1',
+        recipientId: 'driver-1',
+        rideId: 'ride-cached-edit',
+        message: 'Aviso salvo em cache para motorista.',
+        createdAt: '2026-11-16T09:00:00.000Z',
+      },
+    ]);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-cached-edit');
+    await harness.fixture.whenStable();
+    const root = harness.routeNativeElement as HTMLElement;
+
+    http.expectNone(ridesUrl);
+    expect(root.querySelector<HTMLInputElement>('[formControlName="origin"]')!.value).toBe('Batel');
+    expect(root.querySelector<HTMLInputElement>('[formControlName="destination"]')!.value).toBe(
+      'UTFPR Neoville',
+    );
+
+    const submitButton = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(submitButton.textContent).toContain('Salvar Alterações');
+    expect(submitButton.disabled).toBe(true);
+    const describedById = submitButton.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(root.querySelector(`#${describedById}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await harness.fixture.whenStable();
+    http.expectNone(ridesUrl);
+
+    // NotificationBell no cabeçalho também exibe avisos em cache e aviso offline
+    root.querySelector<HTMLButtonElement>('header [data-testid="notification-bell-button"]')!.click();
+    await flushMicrotasks();
+    await harness.fixture.whenStable();
+    http.expectNone(`${environment.supabaseUrl}/rest/v1/notifications`);
+    expect(root.querySelector('[data-testid="notifications-offline-notice"]')?.textContent).toContain(
+      OFFLINE_ACTION_MESSAGE,
+    );
+    expect(root.querySelectorAll('[data-testid="notification-item"]').length).toBe(1);
+
+    setField(root, 'origin', 'Água Verde');
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(submitButton.disabled).toBe(false);
+    expect(root.querySelector('[data-testid="offer-ride-offline-hint"]')).toBeNull();
+
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    const patchReq = http.expectOne(
+      (req) => req.url === ridesUrl && req.method === 'PATCH' && req.params.get('id') === 'eq.ride-cached-edit',
+    );
+    patchReq.flush({ ...toRideRow(existingRide), ...(patchReq.request.body as Record<string, unknown>) });
+    await harness.fixture.whenStable();
+
+    expect(root.textContent).toContain('Oferta Atualizada!');
+    http.verify();
+  });
+
+  it('desabilita Tentar novamente quando oferta de edição não está em cache offline e reabilita ao voltar online (CA4, CA5, CA7)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0, 0));
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+    });
+    const http = TestBed.inject(HttpTestingController);
+    await authenticateStudent(http);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    const harness = await RouterTestingHarness.create('/driver/offer?rideId=ride-missing');
+    await harness.fixture.whenStable();
+    const root = harness.routeNativeElement as HTMLElement;
+
+    http.expectNone(ridesUrl);
+    expect(root.querySelector('[data-testid="edit-load-error"]')).not.toBeNull();
+
+    const retryBtn = root.querySelector<HTMLButtonElement>('[data-testid="retry-edit-load-button"]')!;
+    expect(retryBtn).not.toBeNull();
+    expect(retryBtn.disabled).toBe(true);
+    const describedById = retryBtn.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(root.querySelector(`#${describedById}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    retryBtn.click();
+    await harness.fixture.whenStable();
+    http.expectNone(ridesUrl);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(retryBtn.disabled).toBe(false);
+    retryBtn.click();
+
+    const fetchedRide: Ride = {
+      id: 'ride-missing',
+      driverId: 'driver-1',
+      origin: 'Portão',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: new Date(2026, 10, 17, 7, 30, 0).toISOString(),
+      totalSeats: 2,
+      availableSeats: 2,
+      pricePerSeat: 8,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-missing')
+      .flush([toRideRow(fetchedRide)]);
+    await harness.fixture.whenStable();
+
+    expect(root.querySelector('[data-testid="edit-load-error"]')).toBeNull();
+    expect(root.querySelector<HTMLInputElement>('[formControlName="origin"]')!.value).toBe('Portão');
+    expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
     http.verify();
   });
 });

@@ -21,19 +21,47 @@
     }
     @case ('error') {
       <div class="space-y-space-md rounded-xl bg-perigo-fundo p-space-lg">
-        <p role="alert" class="text-body-md">
-          Não foi possível carregar os detalhes da carona.
-          @if (result.connectionError) {
-            Falha de conexão. Verifique sua internet.
-          }
-        </p>
-        <button
-          type="button"
-          class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
-          (click)="retryDetail()"
-        >
-          Tentar novamente
-        </button>
+        @if (network.isOffline()) {
+          <p role="alert" class="text-body-md">
+            Esta oferta de carona não está salva em cache e está indisponível sem internet.
+          </p>
+        } @else {
+          <p role="alert" class="text-body-md">
+            Não foi possível carregar os detalhes da carona.
+            @if (result.connectionError) {
+              Falha de conexão. Verifique sua internet.
+            }
+          </p>
+        }
+        <div class="flex flex-wrap items-center gap-space-md">
+          <button
+            type="button"
+            [disabled]="network.isOffline()"
+            [attr.aria-describedby]="network.isOffline() ? 'ride-detail-error-offline-hint' : null"
+            class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+            (click)="retryDetail()"
+          >
+            Tentar novamente
+          </button>
+          <a
+            routerLink="/rides"
+            class="rounded-xl px-space-sm py-space-sm text-label-lg text-texto hover:bg-fundo focus-visible:ring-2 focus-visible:ring-texto"
+          >
+            Voltar para a busca
+          </a>
+        </div>
+        @if (network.isOffline()) {
+          <p
+            id="ride-detail-error-offline-hint"
+            role="status"
+            class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">
+              wifi_off
+            </span>
+            <span>{{ offlineMessage }}</span>
+          </p>
+        }
       </div>
     }
     @case ('not-found') {
@@ -189,11 +217,25 @@
             </p>
             <button
               type="button"
-              class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+              [disabled]="network.isOffline()"
+              [attr.aria-describedby]="network.isOffline() ? 'ride-request-read-offline-hint' : null"
+              class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
               (click)="retryRequestRead()"
             >
               Tentar novamente
             </button>
+            @if (network.isOffline()) {
+              <p
+                id="ride-request-read-offline-hint"
+                role="status"
+                class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+              >
+                <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">
+                  wifi_off
+                </span>
+                <span>{{ offlineMessage }}</span>
+              </p>
+            }
           }
           @case ('loaded') {
             <p role="status" class="text-body-md">
@@ -257,14 +299,27 @@
           <button
             #requestTrigger
             type="button"
-            class="w-full rounded-xl bg-primaria px-space-lg py-space-md text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:bg-desabilitado disabled:text-texto-suave"
+            class="w-full rounded-xl bg-primaria px-space-lg py-space-md text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
             aria-controls="ride-request-confirmation"
             [attr.aria-expanded]="confirmationOpen()"
-            [disabled]="submitting()"
+            [disabled]="submitting() || network.isOffline()"
+            [attr.aria-describedby]="network.isOffline() ? 'ride-detail-request-offline-hint' : null"
             (click)="toggleConfirmation()"
           >
             Solicitar vaga
           </button>
+          @if (network.isOffline()) {
+            <p
+              id="ride-detail-request-offline-hint"
+              role="status"
+              class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+            >
+              <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">
+                wifi_off
+              </span>
+              <span>{{ offlineMessage }}</span>
+            </p>
+          }
           <div id="ride-request-confirmation">
             @defer (on interaction(requestTrigger)) {
               @if (confirmationOpen()) {

@@ -38,6 +38,8 @@ import {
 } from '../models/ride.model';
 import { AuthData, AuthenticatedUser } from './auth-data';
 import { ErrorNotice } from './error-notice';
+import { NetworkStatus } from './network-status';
+import { OfflineCache } from './offline-cache';
 import {
   DriverSummaryRow,
   isInvalidUuidError,
@@ -99,6 +101,9 @@ interface RideSearchQuery extends RideSearchFilters {
 
 const searchLoading = { status: 'loading' } as const;
 const detailLoading = { status: 'loading' } as const;
+const AVAILABLE_RIDES_CACHE_KEY = 'available-rides';
+const DRIVER_RIDES_CACHE_KEY = 'driver-rides';
+const RIDE_DETAILS_CACHE_KEY = 'ride-details';
 
 export function passengerLoadError(error: unknown): PassengerLoadError {
   return error instanceof HttpErrorResponse && error.status === 0
@@ -125,6 +130,8 @@ export class RideData {
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthData);
   private readonly notice = inject(ErrorNotice);
+  private readonly network = inject(NetworkStatus);
+  private readonly cache = inject(OfflineCache);
   private readonly publishSubmissions = new Subject<RideDraft>();
   private readonly publishResets = new Subject<void>();
   private readonly updateSubmissions = new Subject<{ ride: Ride; draft: RideDraft }>();
@@ -150,9 +157,20 @@ export class RideData {
         merge(
           this.editRideLoads.pipe(
             switchMap((rideId) => {
-              if (!this.canOperateAsDriver()) {
+              const driver = this.getAuthorizedDriver();
+              if (!driver) {
                 this.editingRideState.set(null);
                 return of({ unauthorized: true as const });
+              }
+
+              if (this.network.isOffline()) {
+                const cached = this.findCachedDriverRide(driver.id, rideId);
+                if (cached && this.canManageRide(cached)) {
+                  this.editingRideState.set(cached);
+                  return of({ ride: cached });
+                }
+                this.editingRideState.set(null);
+                return of({ connectionError: true as const });
               }
 
               return this.http
@@ -197,11 +215,26 @@ export class RideData {
               return of({ unauthorized: true as const });
             }
 
+            if (this.network.isOffline()) {
+              const cached = this.readCachedDriverRides(driver.id);
+              if (cached !== null) {
+                this.driverRidesState.set(cached);
+                return of({ rides: cached });
+              }
+              this.driverRidesState.set([]);
+              return of({ connectionError: true as const });
+            }
+
             return this.http
               .get<RideRow[]>(supabaseRestUrl('rides'), { params: { driver_id: `eq.${driver.id}` } })
               .pipe(
                 map((rows) => rows.map(mapRideRow).filter((ride) => ride.driverId === driver.id)),
-                tap((rides) => this.driverRidesState.set(rides)),
+                tap((rides) => {
+                  this.driverRidesState.set(rides);
+                  if (driver.id === this.auth.currentUser()?.id) {
+                    this.saveDriverRidesCache(driver.id, rides);
+                  }
+                }),
                 map((rides) => ({ rides })),
                 catchError((error: unknown) => of(this.mapError(error))),
               );
@@ -223,6 +256,10 @@ export class RideData {
               return of({ unauthorized: true as const });
             }
 
+            if (this.network.isOffline()) {
+              return of({ connectionError: true as const });
+            }
+
             const notes = draft.notes?.trim();
             const body = {
               driver_id: driver.id,
@@ -242,7 +279,16 @@ export class RideData {
                 headers: SUPABASE_SINGLE_OBJECT_HEADERS,
               })
               .pipe(
-                map((row) => ({ ride: mapRideRow(row) })),
+                map((row) => mapRideRow(row)),
+                tap((ride) => {
+                  if (driver.id === this.auth.currentUser()?.id) {
+                    const cached = this.readCachedDriverRides(driver.id);
+                    if (cached) {
+                      this.saveDriverRidesCache(driver.id, [...cached, ride]);
+                    }
+                  }
+                }),
+                map((ride) => ({ ride })),
                 catchError((error: unknown) => of(this.mapError(error))),
               );
           }),
@@ -260,6 +306,10 @@ export class RideData {
           exhaustMap(({ ride, draft }) => {
             if (!this.canManageRide(ride)) {
               return of({ unauthorized: true as const });
+            }
+
+            if (this.network.isOffline()) {
+              return of({ connectionError: true as const });
             }
 
             if (
@@ -309,6 +359,7 @@ export class RideData {
                   this.driverRidesState.update((rides) =>
                     rides.map((item) => (item.id === updated.id ? updated : item)),
                   );
+                  this.syncCachedDriverRide(updated);
                   this.editingRideState.set(updated);
                 }),
                 map((updated) => ({ ride: updated })),
@@ -335,6 +386,10 @@ export class RideData {
               return of({ invalidState: true as const });
             }
 
+            if (this.network.isOffline()) {
+              return of({ connectionError: true as const });
+            }
+
             const driver = this.auth.currentUser();
             return this.http
               .delete<void>(supabaseRestUrl('rides'), {
@@ -347,6 +402,15 @@ export class RideData {
                   this.driverRidesState.update((rides) =>
                     rides.filter((item) => item.id !== ride.id),
                   );
+                  if (driver) {
+                    const cached = this.readCachedDriverRides(driver.id);
+                    if (cached) {
+                      this.saveDriverRidesCache(
+                        driver.id,
+                        cached.filter((item) => item.id !== ride.id),
+                      );
+                    }
+                  }
                   if (this.editingRideState()?.id === ride.id) {
                     this.editingRideState.set(null);
                   }
@@ -425,6 +489,19 @@ export class RideData {
     rideId: string,
     isCurrentSession: () => boolean,
   ): Observable<RideDetailResult> {
+    if (this.network.isOffline()) {
+      const passenger = this.auth.currentUser();
+      if (!passenger || !isCurrentSession()) {
+        return EMPTY;
+      }
+      const cached = this.readCachedRideDetail(passenger.id, rideId);
+      return of(
+        cached
+          ? { status: 'loaded' as const, ride: cached }
+          : { status: 'error' as const, connectionError: true as const },
+      );
+    }
+
     return this.readPassengerRide(rideId).pipe(
       switchMap((offer): Observable<RideDetailResult> => {
         // A sessão ou seleção pode mudar antes de cancelar a leitura anterior.
@@ -432,6 +509,12 @@ export class RideData {
         if (!offer) return of({ status: 'not-found' });
 
         return this.enrichWithDrivers([offer.ride]).pipe(
+          tap(([ride]) => {
+            const passenger = this.auth.currentUser();
+            if (passenger && isCurrentSession() && ride) {
+              this.cacheRideDetails(passenger.id, [ride]);
+            }
+          }),
           map(([ride]) => ({ status: 'loaded' as const, ride })),
         );
       }),
@@ -534,6 +617,14 @@ export class RideData {
 
   private loadAvailableRides(query: RideSearchQuery): Observable<RideSearchResult> {
     const { passenger, origin, destination, date } = query;
+    if (this.network.isOffline()) {
+      const cached = this.readCachedAvailableRides(passenger.id);
+      if (cached === null) {
+        return of({ status: 'error' as const, connectionError: true as const });
+      }
+      return of({ status: 'loaded' as const, rides: this.filterAvailableRides(cached, query) });
+    }
+
     const params: Record<string, string> = {
       status: 'eq.active',
       available_seats: 'gt.0',
@@ -541,7 +632,6 @@ export class RideData {
       ...(origin ? { origin: `ilike.*${origin}*` } : {}),
       ...(destination ? { destination: `ilike.*${destination}*` } : {}),
     };
-    const localDay = date ? new Date(`${date}T00:00:00`).toDateString() : '';
 
     return this.http
       .get<RideRow[]>(supabaseRestUrl('rides'), {
@@ -549,21 +639,15 @@ export class RideData {
         context: new HttpContext().set(HANDLE_SESSION_EXPIRATION_ONLY, true),
       })
       .pipe(
-        map((rows) =>
-          rows
-            .map(mapRideRow)
-            .filter(
-              (ride) =>
-                this.canAcceptNewRequests(ride) &&
-                ride.driverId !== passenger.id &&
-                normalizeSearchText(ride.origin).includes(origin) &&
-                normalizeSearchText(ride.destination).includes(destination) &&
-                (!localDay || new Date(ride.departureTime).toDateString() === localDay),
-            ),
-        ),
+        map((rows) => this.filterAvailableRides(rows.map(mapRideRow), query)),
         switchMap((rides) =>
           passenger === this.auth.currentUser() ? this.enrichWithDrivers(rides) : EMPTY,
         ),
+        tap((rides) => {
+          if (passenger === this.auth.currentUser()) {
+            this.cacheAvailableRides(passenger.id, rides, Boolean(origin || destination || date));
+          }
+        }),
         map((rides) => ({ status: 'loaded' as const, rides })),
         catchError((error: unknown) => of(passengerLoadError(error))),
       );
@@ -694,6 +778,10 @@ export class RideData {
       return throwError(() => new RideUnauthorizedError());
     }
 
+    if (this.network.isOffline()) {
+      return throwError(() => new HttpErrorResponse({ status: 0, statusText: 'Offline' }));
+    }
+
     return this.http
       .patch<RideRow>(
         supabaseRestUrl('rides'),
@@ -706,6 +794,7 @@ export class RideData {
           this.driverRidesState.update((rides) =>
             rides.map((item) => (item.id === updated.id ? updated : item)),
           );
+          this.syncCachedDriverRide(updated);
           if (this.editingRideState()?.id === updated.id) {
             this.editingRideState.set(updated);
           }
@@ -718,6 +807,10 @@ export class RideData {
       return throwError(() => new RideUnauthorizedError());
     }
 
+    if (this.network.isOffline()) {
+      return throwError(() => new HttpErrorResponse({ status: 0, statusText: 'Offline' }));
+    }
+
     const availableSeats = Math.max(0, ride.availableSeats - 1);
     const status: RideStatus = availableSeats === 0 ? 'full' : 'active';
     return this.http
@@ -728,11 +821,12 @@ export class RideData {
       )
       .pipe(
         map(mapRideRow),
-        tap((updated) =>
+        tap((updated) => {
           this.driverRidesState.update((rides) =>
             rides.map((item) => (item.id === updated.id ? updated : item)),
-          ),
-        ),
+          );
+          this.syncCachedDriverRide(updated);
+        }),
       );
   }
 
@@ -775,6 +869,96 @@ export class RideData {
     }
 
     return true;
+  }
+
+  private filterAvailableRides<T extends Ride>(rides: T[], query: RideSearchQuery): T[] {
+    const localDay = query.date ? new Date(`${query.date}T00:00:00`).toDateString() : '';
+    return rides.filter(
+      (ride) =>
+        this.canAcceptNewRequests(ride) &&
+        ride.driverId !== query.passenger.id &&
+        normalizeSearchText(ride.origin).includes(query.origin) &&
+        normalizeSearchText(ride.destination).includes(query.destination) &&
+        (!localDay || new Date(ride.departureTime).toDateString() === localDay),
+    );
+  }
+
+  private readCachedAvailableRides(userId: string): RideWithDriver[] | null {
+    const cached = this.cache.getUserItem<unknown>(userId, AVAILABLE_RIDES_CACHE_KEY);
+    return Array.isArray(cached) ? (cached as RideWithDriver[]) : null;
+  }
+
+  private cacheAvailableRides(userId: string, rides: RideWithDriver[], isFiltered: boolean): void {
+    if (!isFiltered) {
+      this.cache.setUserItem(userId, AVAILABLE_RIDES_CACHE_KEY, rides);
+    } else {
+      const existing = this.readCachedAvailableRides(userId) ?? [];
+      const merged = new Map<string, RideWithDriver>(existing.map((ride) => [ride.id, ride]));
+      for (const ride of rides) {
+        merged.set(ride.id, ride);
+      }
+      this.cache.setUserItem(userId, AVAILABLE_RIDES_CACHE_KEY, [...merged.values()]);
+    }
+    this.cacheRideDetails(userId, rides);
+  }
+
+  private readCachedRideDetailsMap(userId: string): Record<string, RideWithDriver> {
+    const cached = this.cache.getUserItem<unknown>(userId, RIDE_DETAILS_CACHE_KEY);
+    if (!cached || typeof cached !== 'object' || Array.isArray(cached)) {
+      return {};
+    }
+    return cached as Record<string, RideWithDriver>;
+  }
+
+  private cacheRideDetails(userId: string, rides: RideWithDriver[]): void {
+    if (!rides.length) {
+      return;
+    }
+    const nextMap = { ...this.readCachedRideDetailsMap(userId) };
+    for (const ride of rides) {
+      nextMap[ride.id] = ride;
+    }
+    this.cache.setUserItem(userId, RIDE_DETAILS_CACHE_KEY, nextMap);
+  }
+
+  private readCachedRideDetail(userId: string, rideId: string): RideWithDriver | null {
+    const details = this.readCachedRideDetailsMap(userId);
+    if (details[rideId]) {
+      return details[rideId];
+    }
+    return this.readCachedAvailableRides(userId)?.find((item) => item.id === rideId) ?? null;
+  }
+
+  private readCachedDriverRides(userId: string): Ride[] | null {
+    const cached = this.cache.getUserItem<unknown>(userId, DRIVER_RIDES_CACHE_KEY);
+    return Array.isArray(cached) ? (cached as Ride[]) : null;
+  }
+
+  private saveDriverRidesCache(userId: string, rides: Ride[]): void {
+    this.cache.setUserItem(userId, DRIVER_RIDES_CACHE_KEY, rides);
+  }
+
+  private syncCachedDriverRide(updated: Ride): void {
+    const driverId = this.auth.currentUser()?.id;
+    if (!driverId || driverId !== updated.driverId) {
+      return;
+    }
+    const cached = this.readCachedDriverRides(driverId);
+    if (!cached) {
+      return;
+    }
+    this.saveDriverRidesCache(
+      driverId,
+      cached.map((item) => (item.id === updated.id ? updated : item)),
+    );
+  }
+
+  private findCachedDriverRide(userId: string, rideId: string): Ride | null {
+    return (
+      this.driverRidesState().find((item) => item.id === rideId) ??
+      this.readCachedDriverRides(userId)?.find((item) => item.id === rideId) ??
+      null
+    );
   }
 
   private mapError(error: unknown): RideErrorResult {

@@ -43,6 +43,24 @@
         </button>
       </div>
 
+      @if (isOffline()) {
+        <div
+          role="status"
+          data-testid="notifications-offline-notice"
+          class="flex items-start gap-space-xs rounded-xl border border-borda bg-fundo p-space-sm text-body-sm text-texto-suave"
+        >
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <div class="flex min-w-0 flex-1 flex-col gap-space-xs">
+            <p class="text-label-md text-texto">
+              Exibindo avisos em cache • Atualização indisponível offline
+            </p>
+            @if (offlineNotice()) {
+              <p>{{ offlineNotice() }}</p>
+            }
+          </div>
+        </div>
+      }
+
       @if (loadError(); as errorMessage) {
         <div
           role="alert"

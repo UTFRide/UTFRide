@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 import { Ride } from '../../../core/models/ride.model';
 import { AuthData } from '../../../core/services/auth-data';
+import { NetworkStatus, OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
 import { NotificationData } from '../../../core/services/notification-data';
 import { RideData } from '../../../core/services/ride-data';
 import { NotificationBell } from '../../../shared/components/notification-bell/notification-bell';
@@ -80,6 +81,8 @@ export class OfferRide {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  protected readonly network = inject(NetworkStatus);
+  protected readonly offlineMessage = OFFLINE_ACTION_MESSAGE;
   private readonly routeRideId = toSignal(
     this.route.queryParamMap.pipe(map((params) => params.get('rideId'))),
     { initialValue: this.route.snapshot.queryParamMap.get('rideId') },
@@ -127,7 +130,8 @@ export class OfferRide {
       this.editAccessDenied() ||
       !this.canManageEditingRide() ||
       this.editLoadError() !== null ||
-      this.pendingEditRideId() !== null,
+      this.pendingEditRideId() !== null ||
+      this.network.isOffline(),
   );
   readonly hasConfirmedPassengers = computed(() => {
     const ride = this.editingRide();
@@ -393,6 +397,7 @@ export class OfferRide {
   }
 
   retryLoadEdit(): void {
+    if (this.network.isOffline()) return;
     const rideId = this.pendingEditRideId();
     if (!rideId) return;
     this.editLoadError.set(null);
@@ -471,6 +476,7 @@ export class OfferRide {
   }
 
   submit(): void {
+    if (this.network.isOffline()) return;
     this.submitAttempted.set(true);
     this.authorizationError.set(null);
     this.operationError.set(null);
