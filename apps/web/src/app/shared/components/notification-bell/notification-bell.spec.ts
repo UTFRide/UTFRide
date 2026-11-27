@@ -9,6 +9,8 @@ import { NotificationBell, NotificationItem } from './notification-bell';
     <app-notification-bell
       [notifications]="notifications()"
       [loadError]="loadError()"
+      [isOffline]="isOffline()"
+      [offlineNotice]="offlineNotice()"
       (opened)="openedCount = openedCount + 1"
     />
   `,
@@ -16,6 +18,8 @@ import { NotificationBell, NotificationItem } from './notification-bell';
 class NotificationBellHost {
   readonly notifications = signal<NotificationItem[]>([]);
   readonly loadError = signal<string | null>(null);
+  readonly isOffline = signal(false);
+  readonly offlineNotice = signal('');
   openedCount = 0;
 }
 
@@ -154,6 +158,57 @@ describe('NotificationBell', () => {
     await fixture.whenStable();
 
     expect(root.querySelector('[data-testid="notifications-error"]')).toBeNull();
+    expect(root.querySelectorAll('[data-testid="notification-item"]').length).toBe(1);
+  });
+
+  it('exibe avisos em cache e explicação de atualização indisponível quando offline e remove aviso ao voltar online', async () => {
+    await TestBed.configureTestingModule({
+      imports: [NotificationBellHost],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(NotificationBellHost);
+    const offlineMessage =
+      'Conecte-se à internet novamente para habilitar todas as funções do app UTFRide novamente';
+    fixture.componentInstance.notifications.set([
+      {
+        id: 'notif-cached-1',
+        recipientId: 'passenger-1',
+        rideId: 'ride-1',
+        message: 'A carona Batel → UTFPR Neoville foi cancelada pelo motorista.',
+        createdAt: '2026-01-01T10:00:00.000Z',
+      },
+    ]);
+    fixture.componentInstance.isOffline.set(true);
+    fixture.componentInstance.offlineNotice.set(offlineMessage);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('[data-testid="notification-badge"]')?.textContent?.trim()).toBe('1');
+
+    const bellButton = root.querySelector<HTMLButtonElement>(
+      '[data-testid="notification-bell-button"]',
+    )!;
+    bellButton.click();
+    await fixture.whenStable();
+
+    const offlineBanner = root.querySelector<HTMLElement>(
+      '[data-testid="notifications-offline-notice"]',
+    );
+    expect(offlineBanner).not.toBeNull();
+    expect(offlineBanner!.getAttribute('role')).toBe('status');
+    expect(offlineBanner!.textContent).toContain('cache');
+    expect(offlineBanner!.textContent).toContain(offlineMessage);
+
+    const items = root.querySelectorAll('[data-testid="notification-item"]');
+    expect(items.length).toBe(1);
+    expect(items[0].textContent).toContain(
+      'A carona Batel → UTFPR Neoville foi cancelada pelo motorista.',
+    );
+
+    fixture.componentInstance.isOffline.set(false);
+    await fixture.whenStable();
+
+    expect(root.querySelector('[data-testid="notifications-offline-notice"]')).toBeNull();
     expect(root.querySelectorAll('[data-testid="notification-item"]').length).toBe(1);
   });
 });
