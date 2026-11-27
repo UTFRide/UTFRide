@@ -26,7 +26,7 @@
 
 ## Tarefas
 
-- [ ] **Tarefa 1 — Criar `NetworkStatus`, `OfflineCache` e banner global offline no `App`**
+- [x] **Tarefa 1 — Criar `NetworkStatus`, `OfflineCache` e banner global offline no `App`**
   - Cobre: CA1, CA7
   - Teste primeiro: criar `apps/web/src/app/core/services/network-status.spec.ts` e `apps/web/src/app/core/services/offline-cache.spec.ts`, e atualizar `apps/web/src/app/app.spec.ts` provando detecção reativa de `navigator.onLine` e eventos `offline`/`online`, gravação/leitura/limpeza isolada por usuário no `localStorage`, e exibição/remoção automática do banner global (`role="status"`, texto *"Você está offline. Visualizando dados salvos"* e classes da Opção C) no `App`; falha inicialmente porque `NetworkStatus`, `OfflineCache` e o banner em `app.ts|html` ainda não existem.
   - Arquivos previstos: `apps/web/src/app/core/services/network-status.spec.ts`, `apps/web/src/app/core/services/network-status.ts`, `apps/web/src/app/core/services/offline-cache.spec.ts`, `apps/web/src/app/core/services/offline-cache.ts`, `apps/web/src/app/app.spec.ts`, `apps/web/src/app/app.ts`, `apps/web/src/app/app.html`.
