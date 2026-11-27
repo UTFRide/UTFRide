@@ -24,7 +24,9 @@ import { Ride, RideDriverSummary } from '../models/ride.model';
 import { RideRequest } from '../models/ride-request.model';
 import { AuthData, AuthenticatedUser, PassengerAccessRestriction } from './auth-data';
 import { ErrorNotice } from './error-notice';
+import { NetworkStatus } from './network-status';
 import { NotificationData } from './notification-data';
+import { OfflineCache } from './offline-cache';
 import {
   passengerLoadError,
   PassengerLoadError,
@@ -112,6 +114,9 @@ export type CancelRideResult =
 const passengerRequestLoading = { status: 'loading' } as const;
 const passengerRequestError = { status: 'error' } as const;
 const unauthenticated = { status: 'unauthenticated' } as const;
+const PASSENGER_TRIPS_CACHE_KEY = 'passenger-trips';
+const RIDE_REQUESTS_BY_RIDE_CACHE_KEY = 'ride-requests-by-ride';
+const PASSENGER_REQUESTS_BY_RIDE_CACHE_KEY = 'passenger-requests-by-ride';
 
 export function isActiveRideRequest(request: RideRequest | null): boolean {
   return request?.status === 'pending' || request?.status === 'accepted';
@@ -124,6 +129,8 @@ export class RideRequestData {
   private readonly rideData = inject(RideData);
   private readonly notificationData = inject(NotificationData);
   private readonly notice = inject(ErrorNotice);
+  private readonly network = inject(NetworkStatus);
+  private readonly cache = inject(OfflineCache);
 
   private readonly loadRideIds = new Subject<string>();
   private readonly decisionSubmissions = new Subject<{
@@ -180,13 +187,26 @@ export class RideRequestData {
               return of({ unauthorized: true as const });
             }
 
+            const driver = this.auth.currentUser();
+            if (!driver) {
+              this.requestsState.set([]);
+              return of({ unauthorized: true as const });
+            }
+
             const knownRide = this.rideData.driverRides().find((item) => item.id === rideId);
             if (knownRide) {
               if (!this.rideData.canManageRide(knownRide)) {
                 this.requestsState.set([]);
                 return of({ unauthorized: true as const });
               }
-              return this.fetchRequestsForRide(rideId);
+              if (this.network.isOffline()) {
+                return this.loadCachedRequestsForRide(driver.id, rideId);
+              }
+              return this.fetchRequestsForRide(rideId, driver.id);
+            }
+
+            if (this.network.isOffline()) {
+              return this.loadCachedRequestsForRide(driver.id, rideId);
             }
 
             return this.http
@@ -203,7 +223,7 @@ export class RideRequestData {
                     this.requestsState.set([]);
                     return of({ unauthorized: true as const });
                   }
-                  return this.fetchRequestsForRide(rideId);
+                  return this.fetchRequestsForRide(rideId, driver.id);
                 }),
                 catchError((error: unknown) => {
                   this.requestsState.set([]);
@@ -242,6 +262,10 @@ export class RideRequestData {
                 return of({ noAvailableSeats: true as const });
               }
 
+              if (this.network.isOffline()) {
+                return of({ connectionError: true as const });
+              }
+
               return this.http
                 .patch<RideRequestRow>(
                   supabaseRestUrl('ride_requests'),
@@ -255,17 +279,22 @@ export class RideRequestData {
                       map((updatedRide) => ({ request: updatedRequest, ride: updatedRide })),
                     ),
                   ),
-                  tap(({ request: updatedRequest }) =>
+                  tap(({ request: updatedRequest }) => {
                     this.requestsState.update((items) =>
                       items.map((item) => (item.id === updatedRequest.id ? updatedRequest : item)),
-                    ),
-                  ),
+                    );
+                    this.syncCachedDriverRideRequests(ride.driverId, ride.id);
+                  }),
                   catchError((error: unknown) =>
                     error instanceof RideUnauthorizedError
                       ? of({ unauthorized: true as const })
                       : of(this.mapError(error)),
                   ),
                 );
+            }
+
+            if (this.network.isOffline()) {
+              return of({ connectionError: true as const });
             }
 
             return this.http
@@ -276,11 +305,12 @@ export class RideRequestData {
               )
               .pipe(
                 map(mapRideRequestRow),
-                tap((updatedRequest) =>
+                tap((updatedRequest) => {
                   this.requestsState.update((items) =>
                     items.map((item) => (item.id === updatedRequest.id ? updatedRequest : item)),
-                  ),
-                ),
+                  );
+                  this.syncCachedDriverRideRequests(ride.driverId, ride.id);
+                }),
                 map((updatedRequest) => ({ request: updatedRequest, ride })),
                 catchError((error: unknown) => of(this.mapError(error))),
               );
@@ -303,6 +333,10 @@ export class RideRequestData {
 
             if (!this.rideData.canCancel(ride)) {
               return of({ invalidState: true as const });
+            }
+
+            if (this.network.isOffline()) {
+              return of({ connectionError: true as const });
             }
 
             return this.rideData.cancel$(ride).pipe(
@@ -345,8 +379,17 @@ export class RideRequestData {
           return this.passengerTripsRefresh.pipe(
             filter((refreshedPassenger) => refreshedPassenger === passenger),
             startWith(passenger),
-            switchMap(() =>
-              this.http
+            switchMap(() => {
+              if (this.network.isOffline()) {
+                const cached = this.readCachedPassengerTrips(passenger.id);
+                const result: PassengerTripsResult =
+                  cached !== null
+                    ? { status: 'loaded', trips: cached }
+                    : { status: 'error', connectionError: true };
+                return of({ passenger, result });
+              }
+
+              return this.http
                 .post<PassengerTripSummary[]>(
                   supabaseRpcUrl('get_passenger_trip_summaries'),
                   {},
@@ -361,11 +404,16 @@ export class RideRequestData {
                       whatsapp ? { ...trip, whatsapp } : trip,
                     ),
                   })),
+                  tap((result) => {
+                    if (result.status === 'loaded' && passenger === this.auth.currentUser()) {
+                      this.savePassengerTripsCache(passenger.id, result.trips);
+                    }
+                  }),
                   catchError((error: unknown) => of(passengerLoadError(error))),
                   startWith({ status: 'loading' } as const),
                   map((result) => ({ passenger, result })),
-                ),
-            ),
+                );
+            }),
           );
         }),
       ),
@@ -404,6 +452,14 @@ export class RideRequestData {
           const isCurrent = () => selection === query();
           const read = defer((): Observable<PassengerRequestResult> => {
             if (!isCurrent()) return EMPTY;
+            if (this.network.isOffline()) {
+              const cached = this.readCachedPassengerRequest(passenger.id, rideId);
+              return of(
+                cached !== undefined
+                  ? ({ status: 'loaded', request: cached } as const)
+                  : ({ status: 'error', connectionError: true } as const),
+              );
+            }
             if (this.passengerRequestRecoveries.get(passenger)?.has(rideId)) {
               return this.recoverPassengerRequest(rideId, passenger, isCurrent).pipe(
                 filter(isCurrent),
@@ -484,6 +540,7 @@ export class RideRequestData {
       if (!passenger) return of(unauthenticated);
       const failure = this.passengerAccessFailure(passenger);
       if (failure) return of(failure);
+      if (this.network.isOffline()) return of({ status: 'connection-error' as const });
 
       const creations =
         this.passengerCreations.get(passenger) ?? new Map<string, Observable<CreateRideRequestResult>>();
@@ -500,6 +557,9 @@ export class RideRequestData {
 
       return creation.pipe(
         tap((result) => {
+          if ('request' in result && passenger === this.auth.currentUser()) {
+            this.savePassengerRequestCache(passenger.id, rideId, result.request);
+          }
           if (isCurrent()) this.finishPassengerRequestRecovery(rideId, passenger, result);
         }),
       );
@@ -512,6 +572,7 @@ export class RideRequestData {
       if (!passenger) return of(unauthenticated);
       const failure = this.passengerAccessFailure(passenger);
       if (failure) return of(failure);
+      if (this.network.isOffline()) return of({ status: 'connection-error' as const });
 
       const cancellations =
         this.passengerCancellations.get(passenger) ??
@@ -521,8 +582,15 @@ export class RideRequestData {
       if (inProgress) return inProgress;
 
       const cancellation = this.patchPendingPassengerRequest(requestId, passenger).pipe(
-        tap(({ status }) => {
-          if (status === 'cancelled' || status === 'invalid-state' || status === 'not-owned') {
+        tap((result) => {
+          if (result.status === 'cancelled' && passenger === this.auth.currentUser()) {
+            this.syncCancelledPassengerCaches(passenger.id, result.request);
+          }
+          if (
+            result.status === 'cancelled' ||
+            result.status === 'invalid-state' ||
+            result.status === 'not-owned'
+          ) {
             this.passengerTripsRefresh.next(passenger);
           }
         }),
@@ -567,6 +635,7 @@ export class RideRequestData {
           if (request.id !== requestId) return of({ status: 'request-error' });
           if (request.passengerId !== passenger.id) return of({ status: 'not-owned' });
           if (request.status !== 'pending') return of({ status: 'invalid-state' });
+          if (this.network.isOffline()) return of({ status: 'connection-error' as const });
 
           return this.http
             .patch<RideRequestRow>(
@@ -616,6 +685,7 @@ export class RideRequestData {
       switchMap((previous) => {
         const failure = this.passengerAccessFailure(passenger);
         if (failure) return of(failure);
+        if (this.network.isOffline()) return of({ status: 'connection-error' as const });
         if (!isActiveRideRequest(previous)) return this.submitNewPassengerRequest(rideId, passenger);
 
         this.rememberPassengerRequestRecovery(rideId, passenger);
@@ -639,6 +709,7 @@ export class RideRequestData {
 
         const reason = this.requestBlockReason(ride);
         if (reason) return of({ status: 'unavailable', reason, ride });
+        if (this.network.isOffline()) return of({ status: 'connection-error' as const });
         return this.postPassengerRequest(ride, passenger);
       }),
     );
@@ -810,17 +881,43 @@ export class RideRequestData {
             .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
           return matching.find(isActiveRideRequest) ?? matching[0] ?? null;
         }),
+        tap((request) => {
+          if (passengerId === this.auth.currentUser()?.id) {
+            this.savePassengerRequestCache(passengerId, rideId, request);
+          }
+        }),
       );
   }
 
-  private fetchRequestsForRide(rideId: string): Observable<LoadRideRequestsResult> {
+  private loadCachedRequestsForRide(
+    driverId: string,
+    rideId: string,
+  ): Observable<LoadRideRequestsResult> {
+    const cached = this.readCachedRequestsForRide(driverId, rideId);
+    if (cached !== null) {
+      this.requestsState.set(cached);
+      return of({ requests: cached });
+    }
+    this.requestsState.set([]);
+    return of({ connectionError: true as const });
+  }
+
+  private fetchRequestsForRide(
+    rideId: string,
+    driverId: string,
+  ): Observable<LoadRideRequestsResult> {
     return this.http
       .get<RideRequestRow[]>(supabaseRestUrl('ride_requests'), {
         params: { ride_id: `eq.${rideId}` },
       })
       .pipe(
         map((rows) => rows.map(mapRideRequestRow)),
-        tap((requests) => this.requestsState.set(requests)),
+        tap((requests) => {
+          this.requestsState.set(requests);
+          if (driverId === this.auth.currentUser()?.id) {
+            this.saveRequestsForRideCache(driverId, rideId, requests);
+          }
+        }),
         map((requests) => ({ requests })),
         catchError((error: unknown) => of(this.mapError(error))),
       );
@@ -863,6 +960,9 @@ export class RideRequestData {
           ...current.filter((item) => item.rideId !== cancelledRide.id),
           ...merged,
         ]);
+        if (cancelledRide.driverId === this.auth.currentUser()?.id) {
+          this.saveRequestsForRideCache(cancelledRide.driverId, cancelledRide.id, merged);
+        }
       }),
       switchMap((cancelledRequests) =>
         this.notificationData
@@ -876,6 +976,95 @@ export class RideRequestData {
           ),
       ),
     );
+  }
+
+  private readCachedPassengerTrips(userId: string): PassengerTripSummary[] | null {
+    const cached = this.cache.getUserItem<unknown>(userId, PASSENGER_TRIPS_CACHE_KEY);
+    return Array.isArray(cached) ? (cached as PassengerTripSummary[]) : null;
+  }
+
+  private savePassengerTripsCache(userId: string, trips: PassengerTripSummary[]): void {
+    this.cache.setUserItem(userId, PASSENGER_TRIPS_CACHE_KEY, trips);
+  }
+
+  private readCachedRecord<T>(userId: string, key: string): Record<string, T> {
+    const cached = this.cache.getUserItem<unknown>(userId, key);
+    if (!cached || typeof cached !== 'object' || Array.isArray(cached)) {
+      return {};
+    }
+    return cached as Record<string, T>;
+  }
+
+  private readCachedPassengerRequest(
+    userId: string,
+    rideId: string,
+  ): RideRequest | null | undefined {
+    const map = this.readCachedRecord<RideRequest | null>(
+      userId,
+      PASSENGER_REQUESTS_BY_RIDE_CACHE_KEY,
+    );
+    return Object.prototype.hasOwnProperty.call(map, rideId) ? map[rideId] : undefined;
+  }
+
+  private savePassengerRequestCache(
+    userId: string,
+    rideId: string,
+    request: RideRequest | null,
+  ): void {
+    const next = {
+      ...this.readCachedRecord<RideRequest | null>(userId, PASSENGER_REQUESTS_BY_RIDE_CACHE_KEY),
+      [rideId]: request,
+    };
+    this.cache.setUserItem(userId, PASSENGER_REQUESTS_BY_RIDE_CACHE_KEY, next);
+  }
+
+  private syncCancelledPassengerCaches(userId: string, cancelled: RideRequest): void {
+    const requestsMap = this.readCachedRecord<RideRequest | null>(
+      userId,
+      PASSENGER_REQUESTS_BY_RIDE_CACHE_KEY,
+    );
+    if (Object.prototype.hasOwnProperty.call(requestsMap, cancelled.rideId)) {
+      this.savePassengerRequestCache(userId, cancelled.rideId, cancelled);
+    }
+    const trips = this.readCachedPassengerTrips(userId);
+    if (trips) {
+      this.savePassengerTripsCache(
+        userId,
+        trips.map((trip) => (trip.id === cancelled.id ? { ...trip, status: 'cancelled' } : trip)),
+      );
+    }
+  }
+
+  private readCachedRequestsForRide(userId: string, rideId: string): RideRequest[] | null {
+    const map = this.readCachedRecord<RideRequest[]>(userId, RIDE_REQUESTS_BY_RIDE_CACHE_KEY);
+    const items = map[rideId];
+    return Array.isArray(items) ? items : null;
+  }
+
+  private saveRequestsForRideCache(
+    userId: string,
+    rideId: string,
+    requests: RideRequest[],
+  ): void {
+    const next = {
+      ...this.readCachedRecord<RideRequest[]>(userId, RIDE_REQUESTS_BY_RIDE_CACHE_KEY),
+      [rideId]: requests,
+    };
+    this.cache.setUserItem(userId, RIDE_REQUESTS_BY_RIDE_CACHE_KEY, next);
+  }
+
+  private syncCachedDriverRideRequests(driverId: string, rideId: string): void {
+    if (driverId !== this.auth.currentUser()?.id) {
+      return;
+    }
+    const cached = this.readCachedRequestsForRide(driverId, rideId);
+    if (!cached) {
+      return;
+    }
+    const updatedForRide = this.requestsState().filter((item) => item.rideId === rideId);
+    if (updatedForRide.length > 0) {
+      this.saveRequestsForRideCache(driverId, rideId, updatedForRide);
+    }
   }
 
   private mapError(error: unknown): RideErrorResult {
