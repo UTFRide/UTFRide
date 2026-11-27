@@ -1,4 +1,4 @@
-import { provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -95,6 +95,7 @@ async function authenticateStudent(http: HttpTestingController, overrides: Recor
 
 describe('RideData', () => {
   beforeEach(() => {
+    localStorage.clear();
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
@@ -102,6 +103,11 @@ describe('RideData', () => {
         { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
       ],
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
   });
 
   it('carrega a oferta por id via /rest/v1/rides com o resumo público do motorista e cancela a leitura anterior ao trocar o id', async () => {
@@ -1423,6 +1429,7 @@ describe('Busca de ofertas em RideData (CA1)', () => {
   const debounceMs = 250;
 
   beforeEach(() => {
+    localStorage.clear();
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     vi.setSystemTime(new Date(2030, 4, 9, 18));
     TestBed.configureTestingModule({
@@ -1434,7 +1441,11 @@ describe('Busca de ofertas em RideData (CA1)', () => {
     });
   });
 
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
 
   async function startSearch(http: HttpTestingController) {
     await authenticateStudent(http);
@@ -1570,6 +1581,275 @@ describe('Busca de ofertas em RideData (CA1)', () => {
     runDebounce();
     http.expectOne((request) => request.url === ridesUrl).flush([]);
     expect(result()).toEqual({ status: 'loaded', rides: [] });
+    http.verify();
+  });
+});
+
+describe('Cache local e bloqueio offline em RideData (CA4, CA5, CA7)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('persiste ofertas disponíveis por usuário e retorna do cache filtrado sem HTTP quando offline, isolando contas', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date(2030, 4, 9, 18));
+
+    const http = TestBed.inject(HttpTestingController);
+    const auth = TestBed.inject(AuthData);
+    const rideData = TestBed.inject(RideData);
+
+    await authenticateStudent(http, { id: 'passenger-1', email: 'ana@alunos.utfpr.edu.br' });
+
+    const filters = signal({ origin: '', destination: '', date: '' });
+    const search = rideData.searchAvailableRides(filters, TestBed.inject(Injector));
+
+    TestBed.tick();
+    vi.advanceTimersByTime(250);
+
+    const batelRide: Ride = {
+      id: 'ride-batel',
+      driverId: 'driver-9',
+      origin: 'Batel',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: new Date(2030, 4, 10, 8, 0).toISOString(),
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 10,
+      status: 'active',
+      createdAt: new Date(2030, 4, 9, 12, 0).toISOString(),
+    };
+    const portaoRide: Ride = {
+      ...batelRide,
+      id: 'ride-portao',
+      origin: 'Portão',
+    };
+
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET')
+      .flush([toRideRow(batelRide), toRideRow(portaoRide)]);
+    http
+      .expectOne((req) => req.url === driverSummariesRpcUrl && req.method === 'POST')
+      .flush([{ id: 'driver-9', name: 'Carlos Motorista', rating_average: 4.9 }]);
+
+    expect(search()).toEqual({
+      status: 'loaded',
+      rides: [
+        { ...batelRide, driver: { name: 'Carlos Motorista', ratingAverage: 4.9 } },
+        { ...portaoRide, driver: { name: 'Carlos Motorista', ratingAverage: 4.9 } },
+      ],
+    });
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    filters.set({ origin: 'batel', destination: '', date: '' });
+    TestBed.tick();
+    vi.advanceTimersByTime(250);
+
+    http.expectNone(ridesUrl);
+    http.expectNone(driverSummariesRpcUrl);
+    expect(search()).toEqual({
+      status: 'loaded',
+      rides: [{ ...batelRide, driver: { name: 'Carlos Motorista', ratingAverage: 4.9 } }],
+    });
+
+    // Troca de usuário para conta sem cache próprio não vaza o cache da conta anterior.
+    await auth.logout();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await authenticateStudent(http, { id: 'passenger-2', email: 'bruno@alunos.utfpr.edu.br' });
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    filters.set({ origin: '', destination: '', date: '' });
+    TestBed.tick();
+    vi.advanceTimersByTime(250);
+
+    http.expectNone(ridesUrl);
+    expect(search()).toEqual({ status: 'error', connectionError: true });
+    http.verify();
+  });
+
+  it('persiste e lê driverRides e loadRideForEdit em cache escopado por usuário sem HTTP offline', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const rideData = TestBed.inject(RideData);
+    await authenticateStudent(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const ownRide: Ride = {
+      id: 'ride-driver-1',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    rideData.loadDriverRides();
+    http
+      .expectOne((req) => req.url === ridesUrl && req.params.get('driver_id') === 'eq.driver-1')
+      .flush([toRideRow(ownRide)]);
+    expect(rideData.driverRides()).toEqual([ownRide]);
+
+    rideData.resetDriverRides();
+    expect(rideData.driverRides()).toEqual([]);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    rideData.loadDriverRides();
+    http.expectNone(ridesUrl);
+    expect(rideData.driverRides()).toEqual([ownRide]);
+    expect(rideData.driverRidesResult()).toEqual({ rides: [ownRide] });
+
+    rideData.loadRideForEdit('ride-driver-1');
+    http.expectNone(ridesUrl);
+    expect(rideData.editRideLoadResult()).toEqual({ ride: ownRide });
+    expect(rideData.editingRide()).toEqual(ownRide);
+
+    rideData.loadRideForEdit('ride-inexistente');
+    http.expectNone(ridesUrl);
+    expect(rideData.editRideLoadResult()).toEqual({ connectionError: true });
+    expect(rideData.editingRide()).toBeNull();
+
+    http.verify();
+  });
+
+  it('persiste detalhe da oferta por usuário e em resolveRideDetail/loadRideDetail retorna cache offline ou erro connectionError quando ausente', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const rideData = TestBed.inject(RideData);
+    await authenticateStudent(http, { id: 'passenger-1', email: 'ana@alunos.utfpr.edu.br' });
+
+    const ride: Ride = {
+      id: 'ride-detail-1',
+      driverId: 'driver-1',
+      origin: 'Portão',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 8,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const onlinePromise = firstValueFrom(rideData.resolveRideDetail('ride-detail-1'));
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET' && req.params.get('id') === 'eq.ride-detail-1')
+      .flush([toRideRow(ride)]);
+    http
+      .expectOne((req) => req.url === driverSummariesRpcUrl && req.method === 'POST')
+      .flush([{ id: 'driver-1', name: 'Carlos Motorista', rating_average: 5 }]);
+
+    const expectedDetail = {
+      status: 'loaded' as const,
+      ride: { ...ride, driver: { name: 'Carlos Motorista', ratingAverage: 5 } },
+    };
+    await expect(onlinePromise).resolves.toEqual(expectedDetail);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    await expect(firstValueFrom(rideData.resolveRideDetail('ride-detail-1'))).resolves.toEqual(
+      expectedDetail,
+    );
+    await expect(firstValueFrom(rideData.resolveRideDetail('ride-ausente'))).resolves.toEqual({
+      status: 'error',
+      connectionError: true,
+    });
+
+    const id = signal('ride-detail-1');
+    const detail = rideData.loadRideDetail(id, TestBed.inject(Injector));
+    TestBed.tick();
+    expect(detail()).toEqual(expectedDetail);
+
+    id.set('ride-ausente');
+    TestBed.tick();
+    expect(detail()).toEqual({ status: 'error', connectionError: true });
+
+    http.expectNone(ridesUrl);
+    http.expectNone(driverSummariesRpcUrl);
+    http.verify();
+  });
+
+  it('bloqueia publish, update, deleteRide, cancel$ e occupySeat$ sem HTTP quando offline e reabilita ao voltar online', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const rideData = TestBed.inject(RideData);
+    await authenticateStudent(http);
+
+    const futureDeparture = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    const activeRide: Ride = {
+      id: 'ride-active',
+      driverId: 'driver-1',
+      origin: 'Batel',
+      destination: 'UTFPR Neoville',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 9,
+      status: 'active',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const cancelledRide: Ride = { ...activeRide, id: 'ride-cancelled', status: 'cancelled' };
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    const draft = {
+      origin: 'Portão',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: futureDeparture,
+      totalSeats: 3,
+      pricePerSeat: 10,
+    };
+
+    rideData.publish(draft);
+    expect(rideData.publishResult()).toEqual({ connectionError: true });
+
+    rideData.update(activeRide, draft);
+    expect(rideData.updateResult()).toEqual({ connectionError: true });
+
+    rideData.deleteRide(cancelledRide);
+    expect(rideData.deleteResult()).toEqual({ connectionError: true });
+
+    await expect(firstValueFrom(rideData.cancel$(activeRide))).rejects.toMatchObject({
+      status: 0,
+    } satisfies Partial<HttpErrorResponse>);
+
+    await expect(firstValueFrom(rideData.occupySeat$(activeRide))).rejects.toMatchObject({
+      status: 0,
+    } satisfies Partial<HttpErrorResponse>);
+
+    http.expectNone(ridesUrl);
+
+    // Ao voltar online, novas publicações disparam normalmente.
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+
+    rideData.publish(draft);
+    const postReq = http.expectOne((req) => req.url === ridesUrl && req.method === 'POST');
+    postReq.flush({ id: 'ride-created', ...postReq.request.body });
+    expect(rideData.publishResult()).toEqual({
+      ride: expect.objectContaining({ id: 'ride-created', origin: 'Portão' }),
+    });
+
     http.verify();
   });
 });
