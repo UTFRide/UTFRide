@@ -8,6 +8,7 @@ import { appConfig } from '../../../app.config';
 import { RideRequest } from '../../../core/models/ride-request.model';
 import { User } from '../../../core/models/user.model';
 import { AuthData } from '../../../core/services/auth-data';
+import { OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 
 const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
@@ -480,5 +481,195 @@ describe('Minhas Viagens (CA9)', () => {
         .flush([{ ...pendingTrip, status: 'cancelled' }]);
       expect(confirm).toHaveBeenCalledTimes(2);
     }
+  });
+});
+
+describe('Comportamento offline e reconexão em Minhas Viagens (CA4, CA5, CA7)', () => {
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [
+        ...appConfig.providers,
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    http.verify();
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('exibe viagens em cache offline, desabilita Cancelar solicitação com OFFLINE_ACTION_MESSAGE e reabilita ao voltar online', async () => {
+    await authenticate(http);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const harness = await RouterTestingHarness.create('/rides/my-trips');
+    const root = harness.routeNativeElement!.querySelector('main')!;
+    http
+      .expectOne((request) => request.url === summariesUrl && request.method === 'POST')
+      .flush([
+        pendingTrip,
+        {
+          id: 'confirmed',
+          status: 'accepted',
+          driver,
+          ride: { ...ride, origin: 'Batel', status: 'full' },
+          whatsapp: '(41) 98765-1122',
+        },
+        { id: 'finished', status: 'accepted', driver, ride: { ...ride, status: 'completed' } },
+      ]);
+    await harness.fixture.whenStable();
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    const cancelButton = findButton(root, 'Cancelar solicitação de vaga');
+    expect(cancelButton.disabled).toBe(true);
+    const describedById = cancelButton.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(root.querySelector(`#${describedById}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    cancelButton.click();
+    expect(confirm).not.toHaveBeenCalled();
+    http.expectNone(requestsUrl);
+
+    // Navegar e reabrir offline carrega viagens do cache sem HTTP
+    await harness.navigateByUrl('/rides');
+    await harness.navigateByUrl('/rides/my-trips');
+    await harness.fixture.whenStable();
+    http.expectNone(summariesUrl);
+
+    expect(root.querySelector('article')?.textContent).toContain('Praça do Japão');
+    expect(findButton(root, 'Cancelar solicitação de vaga').disabled).toBe(true);
+
+    findButton(root, 'Confirmadas').click();
+    await harness.fixture.whenStable();
+    expect(root.textContent).toContain('WhatsApp: (41) 98765-1122');
+
+    findButton(root, 'Histórico').click();
+    await harness.fixture.whenStable();
+    expect(root.querySelector('article')?.textContent).toContain('Concluída');
+
+    findButton(root, 'Pendentes').click();
+    await harness.fixture.whenStable();
+
+    // Reconexão reabilita automaticamente
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    const reenabledCancel = findButton(root, 'Cancelar solicitação de vaga');
+    expect(reenabledCancel.disabled).toBe(false);
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+  });
+
+  it('mantém Cancelar solicitação desabilitado ao reconectar quando o aluno está bloqueado (CA7)', async () => {
+    const auth = await authenticate(http);
+    vi.spyOn(auth, 'currentUser').mockReturnValue({ ...auth.currentUser()!, isBlocked: true });
+
+    const harness = await RouterTestingHarness.create('/rides/my-trips');
+    const root = harness.routeNativeElement!.querySelector('main')!;
+    http
+      .expectOne((request) => request.url === summariesUrl && request.method === 'POST')
+      .flush([pendingTrip]);
+    await harness.fixture.whenStable();
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+    expect(findButton(root, 'Cancelar solicitação de vaga').disabled).toBe(true);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(findButton(root, 'Cancelar solicitação de vaga').disabled).toBe(true);
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+    expect(root.textContent).toContain('Sua conta está bloqueada');
+  });
+
+  it('desabilita Tentar novamente sem cache offline e reabilita ao voltar online (CA5, CA7)', async () => {
+    await authenticate(http);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    const harness = await RouterTestingHarness.create('/rides/my-trips');
+    await harness.fixture.whenStable();
+    http.expectNone(summariesUrl);
+
+    const root = harness.routeNativeElement!.querySelector('main')!;
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain('Falha de conexão');
+
+    const retryButton = findButton(root, 'Tentar novamente');
+    expect(retryButton.disabled).toBe(true);
+    const describedById = retryButton.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(root.querySelector(`#${describedById}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    retryButton.click();
+    http.expectNone(summariesUrl);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(retryButton.disabled).toBe(false);
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+
+    retryButton.click();
+    http.expectOne({ method: 'POST', url: summariesUrl }).flush([pendingTrip]);
+    await harness.fixture.whenStable();
+    expect(root.querySelector('article')?.textContent).toContain('Aguardando resposta do motorista');
+  });
+
+  it('desabilita Atualizar viagens após falha incerta quando fica offline e reabilita ao reconectar (CA5, CA7)', async () => {
+    await authenticate(http);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    const harness = await RouterTestingHarness.create('/rides/my-trips');
+    const root = harness.routeNativeElement!.querySelector('main')!;
+    http.expectOne({ method: 'POST', url: summariesUrl }).flush([pendingTrip]);
+    await harness.fixture.whenStable();
+
+    findButton(root, 'Cancelar solicitação de vaga').click();
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === requestsUrl && req.params.get('id') === 'eq.009')
+      .flush([pendingRow]);
+    expectCancellationPatch(http).error(new ProgressEvent('error'));
+    await harness.fixture.whenStable();
+
+    const refreshButton = findButton(root, 'Atualizar viagens');
+    expect(refreshButton.disabled).toBe(false);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    expect(refreshButton.disabled).toBe(true);
+    const describedById = refreshButton.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(root.querySelector(`#${describedById}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    refreshButton.click();
+    http.expectNone(summariesUrl);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(refreshButton.disabled).toBe(false);
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+
+    refreshButton.click();
+    http.expectOne({ method: 'POST', url: summariesUrl }).flush([{ ...pendingTrip, status: 'cancelled' }]);
+    await harness.fixture.whenStable();
+    expect(root.querySelector('[role="alert"]')).toBeNull();
   });
 });

@@ -4,6 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { map, startWith, Subject, switchMap } from 'rxjs';
 import { AuthData } from '../../../core/services/auth-data';
+import { NetworkStatus, OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
 import { RideData, RideDetailResult } from '../../../core/services/ride-data';
 import { isActiveRideRequest, RideRequestData } from '../../../core/services/ride-request-data';
 import { CurrencyBrlPipe } from '../../../shared/pipes/currency-brl-pipe';
@@ -22,6 +23,8 @@ export class RideDetail {
   private readonly injector = inject(Injector);
   private readonly auth = inject(AuthData);
   private readonly requests = inject(RideRequestData);
+  protected readonly network = inject(NetworkStatus);
+  protected readonly offlineMessage = OFFLINE_ACTION_MESSAGE;
   private readonly selection = computed(() => ({
     rideId: this.id(),
     passenger: this.auth.currentUser(),
@@ -65,8 +68,14 @@ export class RideDetail {
   });
 
   protected readonly confirmationOpen = linkedSignal({
-    source: this.selection,
-    computation: () => false,
+    source: () => ({ selection: this.selection(), offline: this.network.isOffline() }),
+    computation: (source, previous): boolean => {
+      if (source.offline) return false;
+      if (previous && previous.source.selection === source.selection) {
+        return previous.value;
+      }
+      return false;
+    },
   });
   protected readonly submitting = computed(
     () => this.currentConfirmation()?.status === 'submitting',
@@ -137,15 +146,21 @@ export class RideDetail {
   });
 
   protected retryDetail(): void {
-    if (this.detail().status === 'error') this.detailRetry.update((attempt) => attempt + 1);
+    if (this.detail().status === 'error' && !this.network.isOffline()) {
+      this.detailRetry.update((attempt) => attempt + 1);
+    }
   }
 
   protected retryRequestRead(): void {
-    if (this.passengerRequest().status === 'error') this.requestRetry.update((attempt) => attempt + 1);
+    if (this.passengerRequest().status === 'error' && !this.network.isOffline()) {
+      this.requestRetry.update((attempt) => attempt + 1);
+    }
   }
 
   protected toggleConfirmation(): void {
-    if (this.canRequest() && !this.submitting()) this.confirmationOpen.update((open) => !open);
+    if (this.canRequest() && !this.submitting() && !this.network.isOffline()) {
+      this.confirmationOpen.update((open) => !open);
+    }
   }
 
   protected dismissConfirmation(trigger: HTMLButtonElement): void {
@@ -155,7 +170,12 @@ export class RideDetail {
   }
 
   protected confirmRequest(): void {
-    if (this.canRequest() && this.confirmationOpen() && !this.submitting()) {
+    if (
+      this.canRequest() &&
+      this.confirmationOpen() &&
+      !this.submitting() &&
+      !this.network.isOffline()
+    ) {
       this.confirmations.next();
     }
   }

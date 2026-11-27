@@ -14,6 +14,8 @@ import { Notification } from '../../../core/models/notification.model';
 import { Ride } from '../../../core/models/ride.model';
 import { AuthData } from '../../../core/services/auth-data';
 import { ErrorNotice } from '../../../core/services/error-notice';
+import { OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
+import { OfflineCache } from '../../../core/services/offline-cache';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 import { RidesLayout } from '../rides-layout/rides-layout';
 import { RideList } from './ride-list';
@@ -998,6 +1000,167 @@ describe('Busca de caronas (CA1, CA3 e CA11)', () => {
     expect(auth.currentUser()).toBeNull();
     expect(TestBed.inject(Router).url).toBe('/login');
     expect(TestBed.inject(ErrorNotice).message()).toContain('Faça login');
+    http.verify();
+  });
+});
+
+describe('Comportamento offline e reconexão em RideList (CA4, CA5, CA7)', () => {
+  const ridesUrl = `${environment.supabaseUrl}/rest/v1/rides`;
+  const driverSummariesUrl = `${environment.supabaseUrl}/rest/v1/rpc/get_driver_summaries`;
+
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [
+        ...appConfig.providers,
+        provideHttpClientTesting(),
+        { provide: SUPABASE_AUTH_CLIENT, useValue: createFakeAuthClient() },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('exibe ofertas e sugestões de municípios em cache quando offline sem disparar HTTP (CA4)', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    await authenticatePassenger(http, {
+      id: 'passenger-1',
+      name: 'Mariana Silva',
+      email: 'mariana@alunos.utfpr.edu.br',
+    });
+
+    const rideCuritiba: Ride = {
+      id: 'ride-cached-1',
+      driverId: 'driver-2',
+      origin: 'Curitiba',
+      destination: 'UTFPR - Sede Centro',
+      departureTime: new Date(2030, 4, 11, 8).toISOString(),
+      totalSeats: 3,
+      availableSeats: 2,
+      pricePerSeat: 10,
+      status: 'active',
+      createdAt: new Date(2030, 4, 9, 16).toISOString(),
+    };
+    const ridePinhais: Ride = {
+      ...rideCuritiba,
+      id: 'ride-cached-2',
+      origin: 'Pinhais',
+    };
+
+    const harness = await RouterTestingHarness.create('/rides');
+    TestBed.tick();
+    vi.advanceTimersByTime(250);
+    http
+      .expectOne((req) => req.url === ridesUrl && req.method === 'GET')
+      .flush([toRideRow(rideCuritiba), toRideRow(ridePinhais)]);
+    http
+      .expectOne((req) => req.url === driverSummariesUrl && req.method === 'POST')
+      .flush([{ id: 'driver-2', name: 'Camila Rocha', rating_average: 4.9 }]);
+    await harness.fixture.whenStable();
+
+    const root = harness.routeNativeElement as HTMLElement;
+    const filtersButton = root.querySelector<HTMLButtonElement>(
+      '[aria-controls="ride-search-filters"]',
+    )!;
+    filtersButton.click();
+    await harness.fixture.whenStable();
+    locationRequest(http).flush([{ nome: 'Curitiba' }, { nome: 'Pinhais' }]);
+    await harness.fixture.whenStable();
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    await harness.navigateByUrl('/rides/my-trips');
+    await harness.fixture.whenStable();
+    await harness.navigateByUrl('/rides');
+    TestBed.tick();
+    vi.advanceTimersByTime(250);
+    await harness.fixture.whenStable();
+
+    http.expectNone(ridesUrl);
+    http.expectNone(driverSummariesUrl);
+    expect(root.textContent).toContain('Curitiba');
+    expect(root.textContent).toContain('Pinhais');
+    expect(root.textContent).toContain('Camila Rocha');
+
+    root
+      .querySelector<HTMLButtonElement>('[aria-controls="ride-search-filters"]')!
+      .click();
+    await harness.fixture.whenStable();
+    http.expectNone(municipalitiesUrl);
+    const originInput = root.querySelector<HTMLInputElement>('#ride-search-origin')!;
+    expect([...originInput.list!.options].map((option) => option.value)).toEqual([
+      'Curitiba',
+      'Pinhais',
+    ]);
+
+    originInput.value = 'Pinhais';
+    originInput.dispatchEvent(new Event('input', { bubbles: true }));
+    TestBed.tick();
+    vi.advanceTimersByTime(250);
+    await harness.fixture.whenStable();
+
+    http.expectNone(ridesUrl);
+    const filteredCards = [...root.querySelectorAll('article')];
+    expect(filteredCards).toHaveLength(1);
+    expect(filteredCards[0].textContent).toContain('Pinhais');
+    expect(filteredCards[0].textContent).not.toContain('Curitiba');
+    expect(TestBed.inject(OfflineCache).getUserItem('passenger-1', 'available-rides')).not.toBeNull();
+    http.verify();
+  });
+
+  it('desabilita Tentar novamente com OFFLINE_ACTION_MESSAGE sem cache offline e reabilita automaticamente ao voltar online (CA5, CA7)', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    await authenticatePassenger(http, {
+      id: 'passenger-1',
+      name: 'Mariana Silva',
+      email: 'mariana@alunos.utfpr.edu.br',
+    });
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    const harness = await RouterTestingHarness.create('/rides');
+    TestBed.tick();
+    vi.advanceTimersByTime(250);
+    await harness.fixture.whenStable();
+
+    http.expectNone(ridesUrl);
+    const root = harness.routeNativeElement as HTMLElement;
+    expect(root.querySelector('main [role="alert"]')?.textContent).toContain('Falha de conexão');
+
+    const retryButton = [...root.querySelectorAll('button')].find(
+      (btn) => btn.textContent?.trim() === 'Tentar novamente',
+    )!;
+    expect(retryButton).toBeDefined();
+    expect(retryButton.disabled).toBe(true);
+    const describedById = retryButton.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    expect(root.querySelector(`#${describedById}`)?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    retryButton.click();
+    TestBed.tick();
+    vi.advanceTimersByTime(250);
+    http.expectNone(ridesUrl);
+
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(retryButton.disabled).toBe(false);
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+
+    retryButton.click();
+    TestBed.tick();
+    vi.advanceTimersByTime(250);
+    http.expectOne((req) => req.url === ridesUrl && req.method === 'GET').flush([]);
+    await harness.fixture.whenStable();
+
+    expect(root.textContent).toContain('Nenhuma carona disponível');
     http.verify();
   });
 });
