@@ -2,6 +2,7 @@ import { Component, DestroyRef, effect, inject, signal } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthData } from '../../../core/services/auth-data';
+import { NetworkStatus, OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
 
 function matchingPasswords(control: AbstractControl): ValidationErrors | null {
   return control.get('password')?.value === control.get('confirmPassword')?.value
@@ -18,6 +19,8 @@ export class Register {
   private readonly auth = inject(AuthData);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  protected readonly network = inject(NetworkStatus);
+  protected readonly offlineMessage = OFFLINE_ACTION_MESSAGE;
 
   constructor() {
     this.auth.resetRegistration();
@@ -57,7 +60,7 @@ export class Register {
   });
 
   submit(): void {
-    if (this.form.invalid || this.loading()) return;
+    if (this.form.invalid || this.loading() || this.network.isOffline()) return;
     this.duplicate.set(false);
     this.connectionError.set(false);
     this.authError.set('');

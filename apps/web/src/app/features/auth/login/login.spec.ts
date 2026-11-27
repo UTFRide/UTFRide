@@ -9,6 +9,7 @@ import { routes } from '../../../app.routes';
 import { errorInterceptor } from '../../../core/interceptors/error-interceptor';
 import { AuthData } from '../../../core/services/auth-data';
 import { ErrorNotice } from '../../../core/services/error-notice';
+import { OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 
 const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
@@ -65,6 +66,7 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 function setupLoginTesting(fakeAuth = createFakeAuthClient(), useErrorInterceptor = false) {
+  localStorage.clear();
   TestBed.configureTestingModule({
     providers: [
       provideRouter(routes),
@@ -77,6 +79,11 @@ function setupLoginTesting(fakeAuth = createFakeAuthClient(), useErrorIntercepto
   });
   return fakeAuth;
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
 
 function fillCredentials(root: HTMLElement, emailValue: string, passwordValue: string): void {
   for (const [name, value] of [
@@ -397,4 +404,82 @@ it('exibe aviso em português de conta criada com sucesso ao navegar vindo do ca
   await harness.fixture.whenStable();
   expect((harness.routeNativeElement as HTMLElement).querySelector('[role="status"]')).toBeNull();
   TestBed.inject(HttpTestingController).verify();
+});
+
+describe('comportamento offline e reconexão em Login (CA2, CA7)', () => {
+  it('desabilita o envio offline, exibe OFFLINE_ACTION_MESSAGE acessível e impede submit sem chamadas de rede', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const fakeAuth = setupLoginTesting();
+    const harness = await RouterTestingHarness.create('/login');
+    const root = harness.routeNativeElement as HTMLElement;
+    const http = TestBed.inject(HttpTestingController);
+
+    fillCredentials(root, 'ana@alunos.utfpr.edu.br', 'senha123');
+    await harness.fixture.whenStable();
+
+    const submit = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(submit.disabled).toBe(true);
+    const describedById = submit.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    const hint = root.querySelector(`#${describedById}`);
+    expect(hint).not.toBeNull();
+    expect(hint?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushMicrotasks();
+
+    expect(fakeAuth.signInWithPassword).not.toHaveBeenCalled();
+    http.expectNone(usersUrl);
+    expect(TestBed.inject(Router).url).toBe('/login');
+    http.verify();
+  });
+
+  it('reage aos eventos offline e online reabilitando o envio válido ao reconectar', async () => {
+    const fakeAuth = setupLoginTesting();
+    const harness = await RouterTestingHarness.create('/login');
+    const root = harness.routeNativeElement as HTMLElement;
+    const http = TestBed.inject(HttpTestingController);
+
+    fillCredentials(root, 'ana@alunos.utfpr.edu.br', 'senha123');
+    await harness.fixture.whenStable();
+    const submit = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(submit.disabled).toBe(false);
+
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    expect(submit.disabled).toBe(true);
+    expect(root.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushMicrotasks();
+    expect(fakeAuth.signInWithPassword).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(submit.disabled).toBe(false);
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushMicrotasks();
+    http.expectOne((request) => request.url === usersUrl).flush([
+      {
+        id: '1',
+        name: 'Ana',
+        email: 'ana@alunos.utfpr.edu.br',
+        registration_number: '123',
+        whatsapp: '',
+        role: 'student',
+        is_blocked: false,
+        is_email_confirmed: true,
+        rating_average: 0,
+        created_at: '2026-01-01',
+      },
+    ]);
+    await flushMicrotasks();
+    await harness.fixture.whenStable();
+
+    expect(TestBed.inject(Router).url).toBe('/rides');
+    http.verify();
+  });
 });

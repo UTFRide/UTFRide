@@ -7,6 +7,7 @@ import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { environment } from '../../../../environments/environment';
 import { routes } from '../../../app.routes';
 import { AuthData } from '../../../core/services/auth-data';
+import { OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
 import { SUPABASE_AUTH_CLIENT, SupabaseAuthClient } from '../../../core/services/supabase-client';
 
 const usersUrl = `${environment.supabaseUrl}/rest/v1/users`;
@@ -60,6 +61,7 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 function setupRegisterTesting(fakeAuth = createFakeAuthClient()) {
+  localStorage.clear();
   TestBed.configureTestingModule({
     providers: [
       provideRouter(routes),
@@ -70,6 +72,11 @@ function setupRegisterTesting(fakeAuth = createFakeAuthClient()) {
   });
   return fakeAuth;
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
 
 function fillField(root: HTMLElement, name: string, value: string): void {
   const input = root.querySelector<HTMLInputElement>(`input[formControlName="${name}"]`);
@@ -454,4 +461,88 @@ it('exibe alerta em português e não redireciona para /login quando signOut fal
   expect(root.querySelector('[role="alert"]')?.textContent).toContain('Não foi possível concluir o cadastro');
   expect(root.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
   http.verify();
+});
+
+describe('comportamento offline e reconexão em Register (CA2, CA7)', () => {
+  function fillValidRegistration(root: HTMLElement): void {
+    for (const [name, value] of Object.entries({
+      name: 'Ana Silva',
+      email: 'ana@alunos.utfpr.edu.br',
+      registrationNumber: '1234567',
+      password: 'senha123',
+      confirmPassword: 'senha123',
+    })) {
+      fillField(root, name, value);
+    }
+    const terms = root.querySelector<HTMLInputElement>('input[formControlName="terms"]')!;
+    terms.checked = true;
+    terms.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  it('desabilita o envio offline, exibe OFFLINE_ACTION_MESSAGE acessível e bloqueia submit sem RPC ou Supabase Auth', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const fakeAuth = setupRegisterTesting();
+    const harness = await RouterTestingHarness.create('/register');
+    const root = harness.routeNativeElement as HTMLElement;
+    const http = TestBed.inject(HttpTestingController);
+
+    fillValidRegistration(root);
+    await harness.fixture.whenStable();
+
+    const submit = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(submit.disabled).toBe(true);
+    const describedById = submit.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    const hint = root.querySelector(`#${describedById}`);
+    expect(hint).not.toBeNull();
+    expect(hint?.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushMicrotasks();
+
+    expect(fakeAuth.signUp).not.toHaveBeenCalled();
+    http.expectNone(registrationExistsRpcUrl);
+    http.expectNone(usersUrl);
+    expect(TestBed.inject(Router).url).toBe('/register');
+    http.verify();
+  });
+
+  it('reage aos eventos offline e online reabilitando o cadastro válido ao reconectar', async () => {
+    const fakeAuth = setupRegisterTesting();
+    const harness = await RouterTestingHarness.create('/register');
+    const root = harness.routeNativeElement as HTMLElement;
+    const http = TestBed.inject(HttpTestingController);
+
+    fillValidRegistration(root);
+    await harness.fixture.whenStable();
+    const submit = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(submit.disabled).toBe(false);
+
+    window.dispatchEvent(new Event('offline'));
+    await harness.fixture.whenStable();
+
+    expect(submit.disabled).toBe(true);
+    expect(root.textContent).toContain(OFFLINE_ACTION_MESSAGE);
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushMicrotasks();
+    expect(fakeAuth.signUp).not.toHaveBeenCalled();
+    http.expectNone(registrationExistsRpcUrl);
+
+    window.dispatchEvent(new Event('online'));
+    await harness.fixture.whenStable();
+
+    expect(submit.disabled).toBe(false);
+    expect(root.textContent).not.toContain(OFFLINE_ACTION_MESSAGE);
+
+    root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    http.expectOne(registrationExistsRpcUrl).flush(false);
+    await flushMicrotasks();
+    const request = http.expectOne(usersUrl);
+    request.flush({ id: 'supabase-user-1', ...request.request.body });
+    await flushMicrotasks();
+    await harness.fixture.whenStable();
+
+    expect(TestBed.inject(Router).url).toBe('/login');
+    http.verify();
+  });
 });

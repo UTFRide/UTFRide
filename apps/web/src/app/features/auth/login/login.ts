@@ -2,6 +2,7 @@ import { Component, DestroyRef, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthData } from '../../../core/services/auth-data';
+import { NetworkStatus, OFFLINE_ACTION_MESSAGE } from '../../../core/services/network-status';
 
 @Component({
   imports: [ReactiveFormsModule, RouterLink],
@@ -11,6 +12,8 @@ export class Login {
   private readonly auth = inject(AuthData);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  protected readonly network = inject(NetworkStatus);
+  protected readonly offlineMessage = OFFLINE_ACTION_MESSAGE;
   readonly loading = signal(false);
   readonly invalidCredentials = signal(false);
   readonly connectionError = signal(false);
@@ -43,7 +46,7 @@ export class Login {
   });
 
   submit(): void {
-    if (this.form.invalid || this.loading()) return;
+    if (this.form.invalid || this.loading() || this.network.isOffline()) return;
     this.accountCreated.set(false);
     this.invalidCredentials.set(false);
     this.connectionError.set(false);

@@ -66,7 +66,21 @@
       </div>
       <div class="flex items-start gap-space-sm"><input id="terms" type="checkbox" formControlName="terms" class="mt-space-xs accent-primaria" /><label for="terms" class="text-body-sm text-texto-suave">Declaro que sou aluno regularmente matriculado na UTFPR e aceito os termos de uso e diretrizes comunitárias de carona solidária.</label></div>
       <p class="text-body-sm text-texto-suave">Após criar sua conta, a confirmação do e-mail será simulada automaticamente. Em seguida, entre pela tela de login.</p>
-      <button type="submit" [disabled]="form.invalid || loading()" class="flex items-center justify-center gap-space-sm rounded-xl bg-primaria px-space-lg py-space-lg text-label-lg text-texto hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave">{{ loading() ? 'Criando conta...' : 'Criar conta institucional' }} <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button>
+      <button
+        type="submit"
+        [disabled]="form.invalid || loading() || network.isOffline()"
+        [attr.aria-describedby]="network.isOffline() ? 'register-offline-hint' : null"
+        class="flex items-center justify-center gap-space-sm rounded-xl bg-primaria px-space-lg py-space-lg text-label-lg text-texto hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+      >
+        {{ loading() ? 'Criando conta...' : 'Criar conta institucional' }}
+        <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+      </button>
+      @if (network.isOffline()) {
+        <p id="register-offline-hint" role="status" class="flex items-start gap-space-xs rounded-xl border border-borda bg-fundo p-space-sm text-body-sm text-texto-suave">
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <span>{{ offlineMessage }}</span>
+        </p>
+      }
     </form>
     <p class="text-center text-body-md text-texto-suave">Já tem uma conta? <a routerLink="/login" class="text-label-lg text-texto underline">Entrar</a></p>
   </main>
