@@ -23,7 +23,7 @@ UTFRide é um aplicativo de caronas universitárias, que conecta estudantes que 
 
 ## Em produção
 
-A partir da Entrega 3.
+[Acesse o UTFRide](https://utfride.onrender.com/).
 
 ## Instruções de Execução
 

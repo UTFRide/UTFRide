@@ -53,7 +53,7 @@
 
 - [x] **ID1:** Desenvolver protótipos navegáveis (ex: gerados via Stitch e refinados no Figma) que demonstram compreensão das diretrizes de usabilidade, com link público disponibilizado no repositório.
 - [x] **ID2:** Projetar interfaces responsivas com a abordagem Mobile-First, garantindo que o layout se adapte perfeitamente a diferentes resoluções (celulares, tablets e desktops).
-- [ ] **ID3:** Projetar a experiência de aplicativo nativo (PWA), configurando o manifest.webmanifest (ícones, cores de tema, splash screen e modo de exibição standalone) e prevendo o comportamento visual da interface em estados offline.
+- [x] **ID3:** Projetar a experiência de aplicativo nativo (PWA), configurando o manifest.webmanifest (ícones, cores de tema, splash screen e modo de exibição standalone) e prevendo o comportamento visual da interface em estados offline.
 
 ## RA2 — Componentização e UI Declarativa Moderna
 
@@ -81,29 +81,29 @@
 - [x] **ID16:** Configurar rotas dinâmicas utilizando a API funcional moderna (provideRouter) e habilitar a passagem automática de parâmetros ativando a função withComponentInputBinding().
 - [x] **ID17:** Passar e consumir dados entre telas capturando os parâmetros da rota (URL) diretamente através da função moderna Signal input() no componente de destino.
 - [x] **ID18:** Criar uma estrutura de navegação aninhada (rotas filhas) para representar hierarquias de layout.
-- [ ] **ID19:** Aplicar Functional Route Guards para controle de acesso (autenticação) e Resolvers para pré-carregamento de dados antes da transição da tela.
+- [x] **ID19:** Aplicar Functional Route Guards para controle de acesso (autenticação) e Resolvers para pré-carregamento de dados antes da transição da tela.
 
 ## RA6 — Integração de APIs e Assincronismo (BaaS)
 
 - [x] **ID20:** Realizar requisições assíncronas (GET) a uma API pública.
-- [ ] **ID21:** Implementar o fluxo de Autenticação e Gerenciamento de Sessão (JWT) conectando a aplicação aos serviços de identidade do BaaS (ex: Supabase Auth).
-- [ ] **ID22:** Realizar o ciclo completo de operações CRUD (GET, POST, PUT, PATCH, DELETE) conectando a aplicação a um Backend-as-a-Service (ex: Supabase, PocketBase).
-- [ ] **ID23:** Implementar Functional Interceptors para injetar tokens de autenticação globalmente e tratar erros de forma centralizada.
+- [x] **ID21:** Implementar o fluxo de Autenticação e Gerenciamento de Sessão (JWT) conectando a aplicação aos serviços de identidade do BaaS (ex: Supabase Auth).
+- [x] **ID22:** Realizar o ciclo completo de operações CRUD (GET, POST, PUT, PATCH, DELETE) conectando a aplicação a um Backend-as-a-Service (ex: Supabase, PocketBase).
+- [x] **ID23:** Implementar Functional Interceptors para injetar tokens de autenticação globalmente e tratar erros de forma centralizada.
 - [x] **ID24:** Aplicar validações em Formulários Reativos, exibindo mensagens de erro claras e desabilitando o botão de submit com base na validade do formulário.
 - [x] **ID25:** Fazer a ponte entre o assincronismo e a reatividade utilizando toSignal() e toObservable(), integrando RxJS com o ecossistema de Signals.
 
 ## RA7 — Engenharia de Software, Versionamento e DevOps
 
 - [x] **ID26:** Criar e gerenciar um repositório no GitHub utilizando a estrutura ágil do Gitflow (branches main e develop).
-- [ ] **ID27:** Colaborar ativamente realizando integrações via Pull Requests e resolução de conflitos.
-- [ ] **ID28:** Planejar, executar o processo de build moderno e realizar o deploy automatizado da aplicação em ambiente de produção (ex: Render, Vercel).
+- [x] **ID27:** Colaborar ativamente realizando integrações via Pull Requests e resolução de conflitos.
+- [x] **ID28:** Planejar, executar o processo de build moderno e realizar o deploy automatizado da aplicação em ambiente de produção (ex: Render, Vercel).
 
 ## RA8 — Engenharia de Software Assistida por IA (SDD e Orquestração)
 
 - [x] **ID29 — Escopo e Gestão Ágil:** Utilizar IA Generativa para a ideação e redação de User Stories. Cadastrar e gerenciar essas histórias como Issues em um Kanban no GitHub Projects.
 - [x] **ID30 — Fundações (PRD):** Apoiar-se na IA para estruturar o Documento de Requisitos do Produto (prd.md).
 - [x] **ID31 — Especificação Técnica:** A partir do PRD, instruir a IA a gerar um documento de especificação rigoroso (ssd.md — aqui, `docs/architecture.md`), detalhando explicitamente a arquitetura dos componentes Standalone e Services antes da geração do código fonte.
-- [ ] **ID32 — Orquestração (MCP e Skills):** Configurar a IDE (ex: Antigravity) ativando Servidores MCP (Model Context Protocol, ex: Figma, Supabase) e utilizando Skills de Angular 20+ para que o Agente gere o código com o contexto exato do projeto.
+- [x] **ID32 — Orquestração (MCP e Skills):** Configurar a IDE (ex: Antigravity) ativando Servidores MCP (Model Context Protocol, ex: Figma, Supabase) e utilizando Skills de Angular 20+ para que o Agente gere o código com o contexto exato do projeto.
 - [x] **ID33 — Validação e Testes (TDD):** Atuar como revisor técnico da IA. Orientar o agente a gerar testes unitários (.spec.ts) focados nas regras de negócio para validar rigorosamente a implementação gerada.
 
 ---
