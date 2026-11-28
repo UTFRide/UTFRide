@@ -15,6 +15,7 @@ Você implementa **uma única tarefa** de um `plan.md`. Você não enxerga a con
 1. Leia o `spec.md` inteiro, no caminho que veio no despacho.
 2. Leia `docs/architecture.md`: padrões de camada, contrato de API, estratégia de autenticação e o glossário PT-BR → EN.
 3. Leia o `plan.md` e localize **exatamente** a tarefa que te foi passada. Se o texto do despacho e o do plano divergirem, pare e avise.
+4. Se a tarefa toca uma tela, abra o arquivo citado na seção "Telas do protótipo" do `spec.md` (dentro de `docs/prototipo/`) e siga-o em layout, fluxo e estados. Cor, espaçamento e tipografia vêm só dos tokens. Não copie HTML/CSS do protótipo. Se a spec não cita a tela, ou ela não está no índice `docs/prototipo/README.md`, **pare e pergunte**.
 
 ## Ciclo obrigatório
 

@@ -1,0 +1,47 @@
+<form
+  [formGroup]="form"
+  aria-label="Filtros de caronas"
+  class="grid gap-space-md rounded-xl border border-borda bg-superficie p-space-lg sm:grid-cols-3"
+>
+  <div class="flex min-w-0 flex-col gap-space-xs">
+    <label for="ride-search-origin" class="text-label-md">Origem</label>
+    <input
+      id="ride-search-origin"
+      type="text"
+      formControlName="origin"
+      autocomplete="off"
+      [attr.list]="suggestions().length ? 'ride-search-locations' : null"
+      class="w-full rounded-lg border border-borda bg-fundo p-space-sm text-body-md focus-visible:ring-2 focus-visible:ring-texto"
+    />
+  </div>
+
+  <div class="flex min-w-0 flex-col gap-space-xs">
+    <label for="ride-search-destination" class="text-label-md">Destino</label>
+    <input
+      id="ride-search-destination"
+      type="text"
+      formControlName="destination"
+      autocomplete="off"
+      [attr.list]="suggestions().length ? 'ride-search-locations' : null"
+      class="w-full rounded-lg border border-borda bg-fundo p-space-sm text-body-md focus-visible:ring-2 focus-visible:ring-texto"
+    />
+  </div>
+
+  <div class="flex min-w-0 flex-col gap-space-xs">
+    <label for="ride-search-date" class="text-label-md">Data</label>
+    <input
+      id="ride-search-date"
+      type="date"
+      formControlName="date"
+      class="min-w-0 w-full rounded-lg border border-borda bg-fundo p-space-sm text-body-md focus-visible:ring-2 focus-visible:ring-texto"
+    />
+  </div>
+
+  @if (suggestions().length) {
+    <datalist id="ride-search-locations">
+      @for (location of suggestions(); track location) {
+        <option [value]="location"></option>
+      }
+    </datalist>
+  }
+</form>

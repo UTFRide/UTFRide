@@ -1,0 +1,348 @@
+<div class="space-y-space-md">
+  <h1 class="text-headline-sm">
+    <a
+      routerLink="/rides"
+      aria-label="Detalhes da Viagem, voltar à busca de caronas"
+      class="inline-flex items-center gap-space-sm rounded-xl focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+    >
+      <span class="material-symbols-outlined rounded-full bg-fundo p-space-sm" aria-hidden="true">
+        arrow_back
+      </span>
+      Detalhes da Viagem
+    </a>
+  </h1>
+
+  @let result = detail();
+  @switch (result.status) {
+    @case ('loading') {
+      <p role="status" class="rounded-xl bg-fundo p-space-lg text-body-md">
+        Carregando detalhes da carona…
+      </p>
+    }
+    @case ('error') {
+      <div class="space-y-space-md rounded-xl bg-perigo-fundo p-space-lg">
+        @if (network.isOffline()) {
+          <p role="alert" class="text-body-md">
+            Esta oferta de carona não está salva em cache e está indisponível sem internet.
+          </p>
+        } @else {
+          <p role="alert" class="text-body-md">
+            Não foi possível carregar os detalhes da carona.
+            @if (result.connectionError) {
+              Falha de conexão. Verifique sua internet.
+            }
+          </p>
+        }
+        <div class="flex flex-wrap items-center gap-space-md">
+          <button
+            type="button"
+            [disabled]="network.isOffline()"
+            [attr.aria-describedby]="network.isOffline() ? 'ride-detail-error-offline-hint' : null"
+            class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+            (click)="retryDetail()"
+          >
+            Tentar novamente
+          </button>
+          <a
+            routerLink="/rides"
+            class="rounded-xl px-space-sm py-space-sm text-label-lg text-texto hover:bg-fundo focus-visible:ring-2 focus-visible:ring-texto"
+          >
+            Voltar para a busca
+          </a>
+        </div>
+        @if (network.isOffline()) {
+          <p
+            id="ride-detail-error-offline-hint"
+            role="status"
+            class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">
+              wifi_off
+            </span>
+            <span>{{ offlineMessage }}</span>
+          </p>
+        }
+      </div>
+    }
+    @case ('not-found') {
+      <div class="space-y-space-md rounded-xl bg-perigo-fundo p-space-lg">
+        <p role="alert" class="text-body-md">Oferta de carona não encontrada.</p>
+        <a
+          routerLink="/rides"
+          class="inline-block rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2"
+        >
+          Voltar para a busca
+        </a>
+      </div>
+    }
+    @case ('loaded') {
+      @let ride = result.ride;
+      @let rideStatus = ride.status === 'active' && ride.availableSeats <= 0 ? 'full' : ride.status;
+      @let availableSeats = rideStatus === 'full' ? 0 : ride.availableSeats;
+      <section
+        aria-label="Trajeto e valor"
+        class="space-y-space-lg rounded-xl border border-borda bg-superficie p-space-lg shadow-sm"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-space-sm">
+          <h2>
+            <time [attr.datetime]="ride.departureTime" class="flex flex-col gap-space-xs">
+              <span class="text-headline-sm"
+                >Saída às {{ ride.departureTime | date: 'HH:mm' }}</span
+              >
+              <span class="text-body-sm text-texto-suave">{{
+                ride.departureTime | date: 'dd/MM/yyyy'
+              }}</span>
+            </time>
+          </h2>
+          <div class="flex flex-col items-start gap-space-xs sm:items-end">
+            <p class="rounded-full bg-fundo px-space-md py-space-xs text-label-md">
+              {{ availableSeats }} de {{ ride.totalSeats }}
+              {{ ride.totalSeats === 1 ? 'vaga livre' : 'vagas livres' }}
+            </p>
+            <p
+              class="rounded-full px-space-md py-space-xs text-label-pill"
+              [class.bg-sucesso-fundo]="rideStatus === 'active'"
+              [class.bg-perigo-fundo]="rideStatus === 'full' || rideStatus === 'cancelled'"
+              [class.bg-fundo]="rideStatus === 'completed'"
+            >
+              @switch (rideStatus) {
+                @case ('active') {
+                  Carona ativa
+                }
+                @case ('full') {
+                  Carona lotada
+                }
+                @case ('completed') {
+                  Carona concluída
+                }
+                @case ('cancelled') {
+                  Carona cancelada
+                }
+                @default {
+                  Status da carona indisponível
+                }
+              }
+            </p>
+          </div>
+        </div>
+
+        <dl class="rounded-xl bg-fundo p-space-md">
+          <div
+            class="relative pb-space-md pl-space-xl before:absolute before:top-space-sm before:bottom-0 before:left-space-xs before:w-px before:bg-trilho"
+          >
+            <dt class="text-label-pill uppercase text-texto-suave">
+              <span
+                class="absolute top-space-xs left-0 size-space-sm rounded-full bg-sucesso"
+                aria-hidden="true"
+              ></span>
+              Ponto de embarque
+            </dt>
+            <dd class="mt-space-xs text-body-lg">{{ ride.origin }}</dd>
+          </div>
+          <div class="relative pl-space-xl">
+            <dt class="text-label-pill uppercase text-texto-suave">
+              <span
+                class="absolute top-0 left-0 size-space-sm bg-secundaria"
+                aria-hidden="true"
+              ></span>
+              Destino final
+            </dt>
+            <dd class="mt-space-xs text-body-lg">{{ ride.destination }}</dd>
+          </div>
+        </dl>
+
+        @if (ride.notes?.trim(); as notes) {
+          <div class="space-y-space-xs rounded-xl bg-fundo p-space-md">
+            <h3 class="text-label-md">Ponto de referência</h3>
+            <p class="text-body-md">{{ notes }}</p>
+          </div>
+        }
+
+        <div class="border-t border-borda pt-space-md">
+          <p class="text-body-sm text-texto-suave">Contribuição por vaga</p>
+          <p class="text-display-currency">{{ ride.pricePerSeat | currencyBrl }}</p>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="ride-driver-heading"
+        class="space-y-space-md rounded-xl border border-borda bg-superficie p-space-lg shadow-sm"
+      >
+        <h2 id="ride-driver-heading" class="text-headline-sm">Motorista</h2>
+        @if (ride.driver; as driver) {
+          <div class="flex items-center gap-space-md">
+            <span
+              data-testid="driver-initials"
+              aria-hidden="true"
+              class="grid shrink-0 place-items-center rounded-full bg-primaria p-space-md text-label-lg"
+            >
+              {{ driver.name | initials }}
+            </span>
+            <div class="min-w-0">
+              <p class="text-body-lg">{{ driver.name }}</p>
+              @if (driver.ratingAverage > 0) {
+                <p class="text-body-sm text-texto-suave">
+                  Avaliação média {{ driver.ratingAverage.toFixed(1).replace('.', ',') }}
+                </p>
+              } @else {
+                <p class="text-body-sm text-texto-suave">Sem avaliações</p>
+              }
+            </div>
+          </div>
+        } @else {
+          <p class="text-body-md text-texto-suave">Dados do motorista indisponíveis.</p>
+        }
+      </section>
+
+      <section
+        aria-labelledby="passenger-request-heading"
+        class="space-y-space-sm rounded-xl bg-fundo p-space-lg"
+      >
+        <h2 id="passenger-request-heading" class="text-headline-sm">Sua solicitação</h2>
+        @let requestResult = passengerRequest();
+        @switch (requestResult.status) {
+          @case ('loading') {
+            <p role="status" class="text-body-md">Consultando sua solicitação…</p>
+          }
+          @case ('error') {
+            <p role="alert" class="text-body-md">
+              @if (requestResult.rideRefreshError) {
+                Não foi possível atualizar a disponibilidade da carona.
+              } @else {
+                Não foi possível consultar sua solicitação.
+              }
+              @if (requestResult.connectionError) {
+                Falha de conexão. Verifique sua internet.
+              }
+            </p>
+            <button
+              type="button"
+              [disabled]="network.isOffline()"
+              [attr.aria-describedby]="network.isOffline() ? 'ride-request-read-offline-hint' : null"
+              class="rounded-xl bg-primaria px-space-lg py-space-sm text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+              (click)="retryRequestRead()"
+            >
+              Tentar novamente
+            </button>
+            @if (network.isOffline()) {
+              <p
+                id="ride-request-read-offline-hint"
+                role="status"
+                class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+              >
+                <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">
+                  wifi_off
+                </span>
+                <span>{{ offlineMessage }}</span>
+              </p>
+            }
+          }
+          @case ('loaded') {
+            <p role="status" class="text-body-md">
+              @switch (requestResult.request?.status) {
+                @case ('pending') {
+                  Aguardando aprovação do motorista
+                }
+                @case ('accepted') {
+                  Solicitação confirmada
+                }
+                @case ('rejected') {
+                  Solicitação rejeitada
+                }
+                @case ('cancelled') {
+                  Solicitação cancelada
+                }
+                @default {
+                  @if (requestResult.request === null) {
+                    Você ainda não solicitou uma vaga.
+                  } @else {
+                    Status da solicitação indisponível.
+                  }
+                }
+              }
+            </p>
+          }
+        }
+        @if (passengerRestriction(); as restriction) {
+          <p role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">
+            @switch (restriction) {
+              @case ('blocked-account') {
+                Sua conta está bloqueada. Você não pode solicitar vagas nem cancelar solicitações.
+              }
+              @case ('support-profile') {
+                Perfis de suporte não podem solicitar vagas nem cancelar solicitações.
+              }
+            }
+          </p>
+        } @else if (requestBlockReason(); as reason) {
+          <p role="status" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">
+            @switch (reason) {
+              @case ('full') {
+                Todas as vagas desta carona foram preenchidas.
+              }
+              @case ('cancelled') {
+                A carona foi cancelada.
+              }
+              @case ('completed') {
+                A carona já foi concluída.
+              }
+              @case ('departed') {
+                O horário desta carona já passou.
+              }
+              @case ('own-ride') {
+                Você é o autor desta oferta.
+              }
+            }
+          </p>
+        }
+        @if (canRequest()) {
+          <button
+            #requestTrigger
+            type="button"
+            class="w-full rounded-xl bg-primaria px-space-lg py-space-md text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+            aria-controls="ride-request-confirmation"
+            [attr.aria-expanded]="confirmationOpen()"
+            [disabled]="submitting() || network.isOffline()"
+            [attr.aria-describedby]="network.isOffline() ? 'ride-detail-request-offline-hint' : null"
+            (click)="toggleConfirmation()"
+          >
+            Solicitar vaga
+          </button>
+          @if (network.isOffline()) {
+            <p
+              id="ride-detail-request-offline-hint"
+              role="status"
+              class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+            >
+              <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">
+                wifi_off
+              </span>
+              <span>{{ offlineMessage }}</span>
+            </p>
+          }
+          <div id="ride-request-confirmation">
+            @defer (on interaction(requestTrigger)) {
+              @if (confirmationOpen()) {
+                <app-ride-request-confirm-panel
+                  [ride]="ride"
+                  [submitting]="submitting()"
+                  [errorMessage]="confirmationError()"
+                  (confirmed)="confirmRequest()"
+                  (dismissed)="dismissConfirmation(requestTrigger)"
+                />
+              }
+            } @placeholder {
+              @if (confirmationOpen()) {
+                <p role="status" class="text-body-md">Carregando confirmação…</p>
+              }
+            } @error {
+              <p role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">
+                Não foi possível abrir o painel de confirmação.
+              </p>
+            }
+          </div>
+        }
+      </section>
+    }
+  }
+</div>

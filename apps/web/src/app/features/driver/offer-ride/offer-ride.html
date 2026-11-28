@@ -1,0 +1,454 @@
+<div class="min-h-screen bg-fundo pb-24 font-sans text-texto">
+  <header class="sticky top-0 z-40 border-b border-borda bg-superficie/95 px-space-lg py-space-md backdrop-blur">
+    <div class="mx-auto flex max-w-2xl items-center justify-between">
+      <a routerLink="/rides" class="flex items-center gap-space-sm">
+        <img src="/assets/logo.png" alt="UTFRide" class="h-8 w-auto object-contain" />
+        <span class="text-headline-sm text-texto">UTFRide</span>
+      </a>
+      <div class="flex items-center gap-space-md">
+        <span class="text-label-md text-texto-suave">{{ isEditMode() ? 'Editar Oferta' : 'Oferecer Carona' }}</span>
+        <app-notification-bell
+          [notifications]="notifications()"
+          [loadError]="notificationsError()"
+          [isOffline]="network.isOffline()"
+          [offlineNotice]="offlineMessage"
+          (opened)="loadNotifications()"
+        />
+        <div
+          role="img"
+          data-testid="student-avatar"
+          [attr.aria-label]="'Foto do aluno ' + studentName()"
+          class="flex h-8 w-8 items-center justify-center rounded-full bg-primaria text-label-md text-texto"
+        >
+          {{ studentName() | initials }}
+        </div>
+        <button
+          type="button"
+          data-testid="logout-button"
+          [disabled]="loggingOut()"
+          (click)="logout()"
+          class="inline-flex h-8 items-center gap-space-xs rounded-full border border-borda bg-superficie px-space-sm text-label-md text-texto-suave transition-colors hover:bg-fundo hover:text-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          <span class="material-symbols-outlined text-body-md" aria-hidden="true">logout</span>
+          <span>Sair</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto flex w-full max-w-2xl flex-col gap-space-lg px-space-lg py-space-xl">
+    <div class="flex flex-col gap-space-xs">
+      <div class="inline-flex items-center gap-space-xs self-start rounded-full bg-primaria/25 px-space-md py-space-xs text-primaria-escura">
+        <span class="material-symbols-outlined text-body-lg" aria-hidden="true">directions_car</span>
+        <span class="text-label-pill uppercase">Motorista UTFPR</span>
+      </div>
+      <h1 class="text-headline-lg text-texto">{{ isEditMode() ? 'Editar Oferta de Carona' : 'Oferecer uma Carona' }}</h1>
+      <p class="text-body-md text-texto-suave">
+        Compartilhe seu trajeto e divida os custos com colegas da UTFPR de forma sustentável e segura.
+      </p>
+    </div>
+
+    @if (blockedStudentNotice(); as blockedMessage) {
+      <div
+        role="alert"
+        data-testid="blocked-offer-alert"
+        class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+      >
+        <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">block</span>
+        <div class="flex flex-col gap-space-xs">
+          <span class="text-label-md">Acesso restrito para ofertas</span>
+          <p class="text-body-sm">{{ blockedMessage }}</p>
+        </div>
+      </div>
+    } @else if (authorizationError(); as authError) {
+      <div
+        role="alert"
+        data-testid="driver-authorization-error"
+        class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+      >
+        <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">gpp_bad</span>
+        <div class="flex flex-col gap-space-xs">
+          <span class="text-label-md">Operação não permitida</span>
+          <p class="text-body-sm">{{ authError }}</p>
+        </div>
+      </div>
+    } @else if (editLoadError(); as loadError) {
+      <div
+        role="alert"
+        data-testid="edit-load-error"
+        class="flex flex-col gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+      >
+        <div class="flex items-start gap-space-sm">
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <div class="flex flex-col gap-space-xs">
+            <span class="text-label-md">Não foi possível carregar a oferta</span>
+            <p class="text-body-sm">{{ loadError }}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          data-testid="retry-edit-load-button"
+          [disabled]="network.isOffline()"
+          [attr.aria-describedby]="network.isOffline() ? 'offer-edit-load-offline-hint' : null"
+          (click)="retryLoadEdit()"
+          class="self-start rounded-lg bg-superficie px-space-md py-space-xs text-label-md text-perigo shadow-sm hover:bg-fundo disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          Tentar novamente
+        </button>
+        @if (network.isOffline()) {
+          <p
+            id="offer-edit-load-offline-hint"
+            role="status"
+            class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+          >
+            <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+            <span>{{ offlineMessage }}</span>
+          </p>
+        }
+      </div>
+    }
+
+    <form [formGroup]="form" (ngSubmit)="submit()" class="flex flex-col gap-space-lg">
+      <section class="flex flex-col gap-space-md rounded-2xl border border-borda bg-superficie p-space-lg shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-label-md uppercase text-texto-suave">Itinerário da Viagem</span>
+          <span class="material-symbols-outlined text-texto-suave" aria-hidden="true">alt_route</span>
+        </div>
+
+        <div class="relative flex flex-col gap-space-md">
+          <div class="flex items-start gap-space-md">
+            <div class="mt-space-xs flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sucesso-fundo text-sucesso">
+              <span class="material-symbols-outlined" aria-hidden="true">trip_origin</span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <label for="origin" class="mb-space-xs block text-label-md text-texto">Origem / Ponto de Partida *</label>
+              <input
+                id="origin"
+                type="text"
+                formControlName="origin"
+                placeholder="Ex: Portão, Praça do Japão, Bacacheri..."
+                class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+              />
+              @if (isFieldInvalid('origin')) {
+                <p role="alert" class="mt-space-xs flex items-center gap-space-xs text-body-sm text-perigo">
+                  <span class="material-symbols-outlined text-body-md" aria-hidden="true">error</span>
+                  Informe o ponto de origem da carona.
+                </p>
+              }
+            </div>
+          </div>
+
+          <div class="flex items-start gap-space-md">
+            <div class="mt-space-xs flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secundaria text-primaria">
+              <span class="material-symbols-outlined" aria-hidden="true">location_on</span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <label for="destination" class="mb-space-xs block text-label-md text-texto">Câmpus de Destino ou Endereço *</label>
+              <input
+                id="destination"
+                type="text"
+                formControlName="destination"
+                placeholder="Ex: UTFPR Câmpus Curitiba (Sede Centro)"
+                class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+              />
+              @if (isFieldInvalid('destination')) {
+                <p role="alert" class="mt-space-xs flex items-center gap-space-xs text-body-sm text-perigo">
+                  <span class="material-symbols-outlined text-body-md" aria-hidden="true">error</span>
+                  Informe o destino da carona.
+                </p>
+              }
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-space-sm pl-space-xl">
+            @for (campus of campusOptions; track campus.label) {
+              <button
+                type="button"
+                [disabled]="hasConfirmedPassengers()"
+                (click)="setDestination(campus.value)"
+                class="rounded-full bg-fundo px-space-md py-space-xs text-label-pill text-texto hover:bg-primaria disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+              >
+                {{ campus.label }}
+              </button>
+            }
+          </div>
+
+          <div class="flex flex-col gap-space-xs rounded-xl bg-fundo p-space-md">
+            <label for="notes" class="flex items-center gap-space-xs text-label-md text-texto">
+              <span class="material-symbols-outlined text-body-lg text-texto-suave" aria-hidden="true">pin_drop</span>
+              Ponto de Encontro Exato / Referência (Opcional)
+            </label>
+            <input
+              id="notes"
+              type="text"
+              formControlName="notes"
+              placeholder="Ex: Próximo à guarita do bloco B ou estação tubo"
+              class="h-11 w-full rounded-lg border border-borda bg-superficie px-space-md text-body-sm text-texto outline-none focus:border-secundaria disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-space-md rounded-2xl border border-borda bg-superficie p-space-lg shadow-sm">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-space-sm">
+            <span class="material-symbols-outlined text-primaria-escura" aria-hidden="true">calendar_clock</span>
+            <h2 class="text-headline-sm text-texto">Data &amp; Horário</h2>
+          </div>
+          <span class="rounded-full bg-fundo px-space-sm py-space-xs text-label-pill text-texto-suave">Horário futuro</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-space-md">
+          <div class="flex flex-col gap-space-xs">
+            <label for="departureDate" class="text-label-md text-texto">Data de saída *</label>
+            <input
+              id="departureDate"
+              type="date"
+              formControlName="departureDate"
+              class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+            />
+          </div>
+          <div class="flex flex-col gap-space-xs">
+            <label for="departureTime" class="text-label-md text-texto">Horário *</label>
+            <input
+              id="departureTime"
+              type="time"
+              formControlName="departureTime"
+              class="h-12 w-full rounded-xl border border-borda bg-fundo px-space-md text-body-md text-texto outline-none focus:border-secundaria focus:bg-superficie disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+            />
+          </div>
+        </div>
+
+        @if (isFieldInvalid('departureDate') || isFieldInvalid('departureTime')) {
+          <p role="alert" class="flex items-center gap-space-xs text-body-sm text-perigo">
+            <span class="material-symbols-outlined text-body-md" aria-hidden="true">error</span>
+            Informe a data e o horário de saída.
+          </p>
+        }
+
+        @if (hasNonFutureDateError()) {
+          <div role="alert" class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo">
+            <span class="material-symbols-outlined shrink-0" aria-hidden="true">schedule</span>
+            <span class="text-body-sm">Data e horário inválidos: a saída deve ser estritamente futura em relação ao momento atual.</span>
+          </div>
+        }
+      </section>
+
+      <section class="flex flex-col gap-space-md rounded-2xl border border-borda bg-superficie p-space-lg shadow-sm">
+        <div class="flex items-center justify-between gap-space-md">
+          <div>
+            <h2 class="text-headline-sm text-texto">Vagas Disponíveis</h2>
+            <p class="text-body-sm text-texto-suave">Selecione de {{ minAllowedSeats() }} a 4 passageiros</p>
+          </div>
+          <div class="flex items-center gap-space-xs">
+            <label for="totalSeats" class="sr-only">Quantidade de vagas</label>
+            <input
+              id="totalSeats"
+              type="number"
+              [min]="minAllowedSeats()"
+              max="4"
+              step="1"
+              formControlName="totalSeats"
+              class="h-10 w-16 rounded-xl border border-borda bg-fundo text-center text-headline-sm text-texto outline-none focus:border-secundaria"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-4 gap-space-sm">
+          @for (seats of seatOptions; track seats) {
+            <button
+              type="button"
+              [attr.data-testid]="'seat-option-' + seats"
+              [disabled]="isSeatOptionDisabled(seats)"
+              (click)="selectSeats(seats)"
+              [class]="
+                form.controls.totalSeats.value === seats
+                  ? 'flex flex-col items-center justify-center rounded-xl bg-primaria py-space-sm text-texto ring-2 ring-secundaria'
+                  : 'flex flex-col items-center justify-center rounded-xl bg-fundo py-space-sm text-texto hover:bg-borda disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave'
+              "
+            >
+              <span class="text-headline-sm">{{ seats }}</span>
+              <span class="text-label-pill text-texto-suave">{{ seats === 1 ? 'vaga' : 'vagas' }}</span>
+            </button>
+          }
+        </div>
+
+        <div class="flex items-start gap-space-sm rounded-xl bg-fundo p-space-md text-texto-suave">
+          <span class="material-symbols-outlined shrink-0 text-primaria-escura" aria-hidden="true">verified_user</span>
+          <p class="text-body-sm">
+            Escolha entre 1 e 4 vagas. O motorista é responsável por não oferecer mais vagas do que a capacidade do veículo.
+          </p>
+        </div>
+
+        @if (hasSeatReductionError()) {
+          <p role="alert" class="flex items-center gap-space-xs text-body-sm text-perigo">
+            <span class="material-symbols-outlined text-body-md" aria-hidden="true">error</span>
+            Não é permitido reduzir o número de vagas quando há passageiros confirmados.
+          </p>
+        } @else if (isFieldInvalid('totalSeats')) {
+          <p role="alert" class="flex items-center gap-space-xs text-body-sm text-perigo">
+            <span class="material-symbols-outlined text-body-md" aria-hidden="true">error</span>
+            Informe uma quantidade válida entre 1 e 4 vagas.
+          </p>
+        }
+      </section>
+
+      <section class="flex flex-col gap-space-md rounded-2xl border border-borda bg-superficie p-space-lg shadow-sm">
+        <div class="flex items-center justify-between gap-space-md">
+          <div>
+            <label for="pricePerSeat" class="block text-headline-sm text-texto">Valor da Contribuição</label>
+            <span class="text-body-sm text-texto-suave">Por vaga ocupada</span>
+          </div>
+          <div class="flex items-center gap-space-xs rounded-xl border border-borda bg-fundo px-space-md py-space-xs">
+            <span class="text-headline-sm text-texto">R$</span>
+            <input
+              id="pricePerSeat"
+              type="number"
+              min="0"
+              step="0.50"
+              formControlName="pricePerSeat"
+              class="w-20 bg-transparent text-right text-display-currency text-texto outline-none disabled:cursor-not-allowed disabled:text-texto-suave"
+            />
+          </div>
+        </div>
+
+        @if (isFieldInvalid('pricePerSeat')) {
+          <p role="alert" class="flex items-center gap-space-xs text-body-sm text-perigo">
+            <span class="material-symbols-outlined text-body-md" aria-hidden="true">error</span>
+            Informe um valor por vaga maior ou igual a zero.
+          </p>
+        }
+
+        <div class="flex items-start gap-space-sm rounded-xl bg-pendente-fundo p-space-md text-pendente">
+          <span class="material-symbols-outlined shrink-0" aria-hidden="true">volunteer_activism</span>
+          <div class="flex flex-col">
+            <span class="text-label-md">Rateio Justo Comunitário</span>
+            <span class="text-body-sm text-texto">
+              O valor arrecadado é destinado exclusivamente para ratear gastos de combustível e pedágio entre membros da UTFPR.
+            </span>
+          </div>
+        </div>
+      </section>
+
+      @if (operationError(); as opError) {
+        <div
+          role="alert"
+          data-testid="offer-operation-error"
+          class="flex items-start gap-space-sm rounded-xl bg-perigo-fundo p-space-md text-perigo"
+        >
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <div class="flex flex-col gap-space-xs">
+            <span class="text-label-md">Falha ao enviar oferta</span>
+            <p class="text-body-sm">{{ opError }}</p>
+          </div>
+        </div>
+      }
+
+      <button
+        type="submit"
+        [disabled]="form.invalid || loading() || submitBlocked()"
+        [attr.aria-describedby]="network.isOffline() ? 'offer-ride-offline-hint' : null"
+        class="flex h-13 w-full items-center justify-center gap-space-sm rounded-2xl bg-primaria px-space-lg text-label-lg text-texto shadow-sm hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">{{ isEditMode() ? 'save' : 'add_circle' }}</span>
+        {{
+          loading()
+            ? isEditMode()
+              ? 'Salvando...'
+              : 'Publicando...'
+            : isEditMode()
+              ? 'Salvar Alterações'
+              : 'Publicar Oferta de Carona'
+        }}
+      </button>
+
+      @if (network.isOffline()) {
+        <p
+          id="offer-ride-offline-hint"
+          role="status"
+          data-testid="offer-ride-offline-hint"
+          class="flex items-start gap-space-xs rounded-xl border border-borda bg-superficie p-space-sm text-body-sm text-texto-suave"
+        >
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <span>{{ offlineMessage }}</span>
+        </p>
+      }
+    </form>
+  </main>
+
+  @if (publishedRide(); as ride) {
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="published-ride-title"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-secundaria/60 p-space-lg backdrop-blur-sm"
+    >
+      <div class="flex w-full max-w-sm flex-col items-center gap-space-md rounded-2xl bg-superficie p-space-xl text-center shadow-lg">
+        <div class="flex h-16 w-16 items-center justify-center rounded-full bg-sucesso-fundo text-sucesso">
+          <span class="material-symbols-outlined text-headline-lg" aria-hidden="true">check_circle</span>
+        </div>
+        <span class="rounded-full bg-sucesso-fundo px-space-md py-space-xs text-label-pill uppercase text-sucesso">
+          {{ ride.status === 'full' ? 'Esgotada' : 'Ativa' }}
+        </span>
+        <h2 id="published-ride-title" class="text-headline-md text-texto">
+          {{ isEditMode() ? 'Oferta Atualizada!' : 'Carona Publicada!' }}
+        </h2>
+        <p class="text-body-md text-texto-suave">
+          Sua oferta já está disponível para alunos da UTFPR.
+        </p>
+        <div class="flex w-full flex-col gap-space-xs rounded-xl bg-fundo p-space-md text-left">
+          <div class="flex justify-between text-body-sm text-texto-suave">
+            <span>Capacidade:</span>
+            <span class="text-label-md text-texto">{{ ride.totalSeats }} {{ ride.totalSeats === 1 ? 'vaga' : 'vagas' }}</span>
+          </div>
+          <div class="flex justify-between text-body-sm text-texto-suave">
+            <span>Contribuição:</span>
+            <span class="text-label-md text-texto">{{ ride.pricePerSeat | currencyBrl }}</span>
+          </div>
+        </div>
+        <div class="flex w-full flex-col gap-space-sm">
+          <a
+            routerLink="/driver/my-rides"
+            class="flex h-12 w-full items-center justify-center rounded-xl bg-secundaria text-label-lg text-superficie"
+          >
+            Ver Minhas Ofertas
+          </a>
+          <button
+            type="button"
+            (click)="resetForAnotherRide()"
+            class="flex h-11 w-full items-center justify-center rounded-xl border border-borda text-label-lg text-texto"
+          >
+            Oferecer outra carona
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <nav class="fixed bottom-0 z-40 w-full border-t border-borda bg-superficie/95 backdrop-blur">
+    <div class="mx-auto flex h-16 max-w-2xl items-center justify-around px-space-xs">
+      <a
+        routerLink="/rides"
+        class="flex min-w-16 flex-col items-center justify-center text-texto-suave hover:text-texto"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">search</span>
+        <span class="text-label-pill">Buscar</span>
+      </a>
+      <a
+        routerLink="/driver/offer"
+        aria-current="page"
+        class="flex min-w-16 flex-col items-center justify-center text-texto"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">add_circle</span>
+        <span class="text-label-pill">Oferecer</span>
+      </a>
+      <a
+        routerLink="/driver/my-rides"
+        class="flex min-w-16 flex-col items-center justify-center text-texto-suave hover:text-texto"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">local_offer</span>
+        <span class="text-label-pill">Ofertas</span>
+      </a>
+    </div>
+  </nav>
+</div>

@@ -1,0 +1,51 @@
+<div class="min-h-screen bg-superficie font-sans text-texto">
+  <header class="border-b border-borda px-space-lg py-space-lg"><div class="mx-auto flex max-w-2xl items-center"><a routerLink="/"><img src="/assets/logo.png" alt="UTFRide" class="h-8 w-auto object-contain" /></a></div></header>
+  <main class="mx-auto flex w-full max-w-(--container-md) flex-col gap-space-lg px-space-lg py-space-xl">
+    <div class="flex flex-col items-center gap-space-sm text-center">
+      <img src="/assets/logo.png" alt="UTFRide Caronas UTFPR" class="h-16 w-auto object-contain" />
+      <span class="inline-flex items-center gap-space-xs rounded-full bg-primaria px-space-md py-space-xs text-label-pill"><span class="material-symbols-outlined text-body-lg" aria-hidden="true">school</span> Acesso Acadêmico Exclusivo</span>
+      <h1 class="text-headline-lg">Acesse sua conta</h1>
+      <p class="text-body-md text-texto-suave">Informe seu e-mail institucional da UTFPR</p>
+    </div>
+    @if (accountCreated()) {
+      <div role="status" class="flex items-start gap-space-sm rounded-xl bg-sucesso-fundo p-space-md text-sucesso">
+        <span class="material-symbols-outlined shrink-0" aria-hidden="true">check_circle</span>
+        <div>
+          <p class="text-label-md">Conta criada com sucesso</p>
+          <p class="mt-space-xs text-body-sm">Entre com seu e-mail institucional e senha para continuar.</p>
+        </div>
+      </div>
+    }
+    <form [formGroup]="form" (ngSubmit)="submit()" class="flex w-full flex-col gap-space-lg rounded-xl bg-superficie p-space-lg shadow-sm">
+      <div class="flex flex-col gap-space-xs"><label for="login-email" class="flex flex-wrap items-center justify-between gap-space-xs text-label-md"><span>E-mail Institucional</span> <span class="text-body-sm text-texto-suave">&#64;alunos.utfpr.edu.br</span></label><div class="flex items-center gap-space-sm rounded-xl bg-fundo px-space-md"><span class="material-symbols-outlined text-texto-suave" aria-hidden="true">alternate_email</span><input id="login-email" type="email" formControlName="email" autocomplete="email" placeholder="aluno&#64;alunos.utfpr.edu.br" class="min-w-0 flex-1 py-space-lg text-body-md outline-none" /></div></div>
+      <div class="flex flex-col gap-space-xs"><label for="login-password" class="text-label-md">Senha do Portal</label><div class="flex items-center gap-space-sm rounded-xl bg-fundo px-space-md"><span class="material-symbols-outlined text-texto-suave" aria-hidden="true">lock</span><input id="login-password" [type]="passwordVisible() ? 'text' : 'password'" formControlName="password" autocomplete="current-password" placeholder="Digite sua senha" class="min-w-0 flex-1 py-space-lg text-body-md outline-none" /><button type="button" (click)="passwordVisible.set(!passwordVisible())" [attr.aria-label]="passwordVisible() ? 'Ocultar senha' : 'Mostrar senha'"><span class="material-symbols-outlined text-texto-suave" aria-hidden="true">{{ passwordVisible() ? 'visibility_off' : 'visibility' }}</span></button></div></div>
+      <button
+        type="submit"
+        [disabled]="form.invalid || loading() || network.isOffline()"
+        [attr.aria-describedby]="network.isOffline() ? 'login-offline-hint' : null"
+        class="flex w-full items-center justify-center gap-space-sm rounded-xl bg-primaria px-space-lg py-space-lg text-label-lg hover:bg-primaria-hover disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+      >
+        {{ loading() ? 'Entrando...' : 'Entrar' }}
+        <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+      </button>
+      @if (network.isOffline()) {
+        <p id="login-offline-hint" role="status" class="flex items-start gap-space-xs rounded-xl border border-borda bg-fundo p-space-sm text-body-sm text-texto-suave">
+          <span class="material-symbols-outlined shrink-0 text-body-lg" aria-hidden="true">wifi_off</span>
+          <span>{{ offlineMessage }}</span>
+        </p>
+      }
+      <p class="text-center text-body-md text-texto-suave">Ainda não tem conta? <a routerLink="/register" class="text-label-lg text-primaria-escura underline">Cadastre-se com seu e-mail UTFPR</a></p>
+    </form>
+    @if (connectionError()) {
+      <div role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-perigo">Falha de conexão. Verifique sua conexão e tente novamente.</div>
+    }
+    @if (invalidCredentials()) {
+      <div role="alert" class="rounded-xl bg-perigo/10 p-space-md text-perigo">
+        <h2 class="text-label-lg">Falha na autenticação</h2>
+        <p class="text-body-md">E-mail ou senha incorretos.</p>
+        <p class="text-body-sm">Verifique suas credenciais e tente novamente.</p>
+      </div>
+    }
+    <div class="flex items-center gap-space-sm rounded-xl bg-fundo p-space-lg text-texto-suave"><span class="material-symbols-outlined shrink-0 text-primaria-escura" aria-hidden="true">verified_user</span><p class="text-body-sm">O UTFRide é de uso exclusivo da comunidade acadêmica com autenticação validada pelo domínio UTFPR.</p></div>
+  </main>
+</div>

@@ -1,0 +1,140 @@
+<div
+  [inert]="logoutConfirming()"
+  class="flex min-h-screen flex-col bg-superficie font-sans text-texto [--rides-header-height:calc(var(--spacing-space-xl)+var(--spacing-space-lg)+var(--spacing-space-md)*2+1px)] [--rides-navigation-height:calc(var(--spacing-space-xl)*2+var(--spacing-space-lg)+1px)]"
+>
+  <header
+    class="sticky top-0 z-40 border-b border-borda bg-superficie/95 px-space-lg py-space-md backdrop-blur max-lg:h-(--rides-header-height) max-lg:shrink-0"
+  >
+    <div class="mx-auto flex max-w-2xl items-center justify-between">
+      <a routerLink="/rides" class="flex items-center gap-space-sm">
+        <img src="/assets/logo.png" alt="" class="h-8 w-auto object-contain" />
+        <span class="text-headline-sm text-texto">UTFRide</span>
+      </a>
+      <div class="flex items-center gap-space-md">
+        <app-notification-bell
+          [notifications]="notifications()"
+          [loadError]="notificationsError()"
+          [isOffline]="network.isOffline()"
+          [offlineNotice]="offlineMessage"
+          (opened)="loadNotifications()"
+        />
+        <div
+          role="img"
+          data-testid="student-avatar"
+          [attr.aria-label]="'Foto do aluno ' + studentName()"
+          class="flex h-8 w-8 items-center justify-center rounded-full bg-primaria text-label-md text-texto"
+        >
+          {{ studentName() | initials }}
+        </div>
+        <button
+          #logoutButton
+          type="button"
+          data-testid="logout-button"
+          [disabled]="loggingOut()"
+          (click)="logout()"
+          class="inline-flex h-8 items-center gap-space-xs rounded-full border border-borda bg-superficie px-space-sm text-label-md text-texto-suave transition-colors hover:bg-fundo hover:text-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          <span class="material-symbols-outlined text-body-md" aria-hidden="true">logout</span>
+          <span>Sair</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto w-full max-w-2xl flex-1 px-space-lg py-space-xl">
+    <router-outlet />
+  </main>
+
+  <nav
+    aria-label="Navegação principal"
+    class="sticky bottom-0 z-40 h-(--rides-navigation-height) w-full shrink-0 border-t border-borda bg-superficie/95 backdrop-blur"
+  >
+    <div class="mx-auto flex h-full max-w-2xl items-center justify-around px-space-xs">
+      <a
+        routerLink="/rides"
+        [attr.aria-current]="tripsLink.isActive ? null : 'page'"
+        class="relative flex h-full min-w-16 flex-col items-center justify-center text-texto-suave hover:text-texto aria-[current=page]:text-texto after:absolute after:bottom-space-xs after:size-space-xs after:rounded-full aria-[current=page]:after:bg-primaria"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">search</span>
+        <span class="text-label-pill">Buscar</span>
+      </a>
+      <a
+        routerLink="/driver/offer"
+        class="flex h-full min-w-16 flex-col items-center justify-center text-texto-suave hover:text-texto"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">add_circle</span>
+        <span class="text-label-pill">Oferecer</span>
+      </a>
+      <a
+        routerLink="/driver/my-rides"
+        class="flex h-full min-w-16 flex-col items-center justify-center text-texto-suave hover:text-texto"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">local_offer</span>
+        <span class="text-label-pill">Ofertas</span>
+      </a>
+      <a
+        routerLink="/rides/my-trips"
+        routerLinkActive
+        #tripsLink="routerLinkActive"
+        ariaCurrentWhenActive="page"
+        class="relative flex h-full min-w-16 flex-col items-center justify-center text-texto-suave hover:text-texto aria-[current=page]:text-texto after:absolute after:bottom-space-xs after:size-space-xs after:rounded-full aria-[current=page]:after:bg-primaria"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>
+        <span class="text-label-pill">Viagens</span>
+      </a>
+    </div>
+  </nav>
+</div>
+
+@if (logoutConfirming()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-secundaria/50 p-space-lg backdrop-blur-sm">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="offline-logout-dialog-title"
+      aria-describedby="offline-logout-dialog-description"
+      data-testid="offline-logout-dialog"
+      tabindex="-1"
+      (keydown.escape)="closeLogoutConfirmation()"
+      class="flex w-full max-w-md flex-col gap-space-md rounded-2xl border border-borda bg-superficie p-space-lg shadow-lg"
+    >
+      <div class="flex items-start gap-space-md">
+        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-perigo-fundo text-perigo">
+          <span class="material-symbols-outlined text-headline-md" aria-hidden="true">wifi_off</span>
+        </div>
+        <div class="flex flex-col gap-space-xs">
+          <h2 id="offline-logout-dialog-title" class="text-headline-sm text-texto">
+            Confirmar saída offline
+          </h2>
+          <p id="offline-logout-dialog-description" class="text-body-md text-texto-suave">
+            Você realmente deseja sair? Até se conectar novamente, você não terá acesso ao UTFRide.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-space-sm pt-space-xs">
+        <button
+          type="button"
+          data-testid="confirm-offline-logout-button"
+          [disabled]="loggingOut()"
+          (click)="confirmOfflineLogout()"
+          class="flex h-12 w-full items-center justify-center gap-space-sm rounded-xl bg-perigo px-space-lg text-label-lg text-superficie shadow-sm hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          <span class="material-symbols-outlined text-body-lg" aria-hidden="true">logout</span>
+          <span>{{ loggingOut() ? 'Saindo...' : 'Sair mesmo assim' }}</span>
+        </button>
+
+        <button
+          #cancelLogoutButton
+          type="button"
+          data-testid="cancel-offline-logout-button"
+          [disabled]="loggingOut()"
+          (click)="closeLogoutConfirmation()"
+          class="flex h-12 w-full items-center justify-center rounded-xl border border-borda bg-fundo px-space-lg text-label-lg text-texto hover:bg-borda focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secundaria focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-desabilitado disabled:text-texto-suave"
+        >
+          Voltar
+        </button>
+      </div>
+    </div>
+  </div>
+}

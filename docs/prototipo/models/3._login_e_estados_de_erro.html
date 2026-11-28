@@ -1,0 +1,607 @@
+<!doctype html>
+<html class="light" lang="pt-BR" data-stitch-orig-opacity="1">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+      name="viewport"
+    />
+    <meta content="mobile_tab" name="shell-type" />
+    <title>UTFRide</title>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              primary: '#745b00',
+              tertiary: '#5d5e60',
+              'surface-container-low': '#f4f2fd',
+              'secondary-container': '#e5e2e1',
+              'on-primary-fixed-variant': '#584400',
+              'on-error': '#ffffff',
+              'on-tertiary': '#ffffff',
+              'surface-bright': '#fbf8ff',
+              'tertiary-fixed-dim': '#c6c6c7',
+              'surface-container-highest': '#e3e1ec',
+              'primary-fixed': '#ffe08b',
+              'outline-variant': '#d2c5ab',
+              'secondary-fixed-dim': '#c8c6c5',
+              secondary: '#5f5e5e',
+              'on-primary': '#ffffff',
+              'surface-dim': '#dad9e3',
+              'on-primary-container': '#6f5700',
+              'on-secondary-container': '#656464',
+              'on-tertiary-container': '#595a5b',
+              outline: '#80765f',
+              'inverse-primary': '#f1c100',
+              'surface-container': '#eeedf7',
+              'inverse-on-surface': '#f1effa',
+              'on-error-container': '#93000a',
+              'tertiary-container': '#d2d2d3',
+              'on-secondary': '#ffffff',
+              'surface-container-high': '#e8e7f1',
+              'primary-fixed-dim': '#f1c100',
+              'on-primary-fixed': '#241a00',
+              background: '#fbf8ff',
+              surface: '#fbf8ff',
+              'on-secondary-fixed-variant': '#474646',
+              'on-surface-variant': '#4e4632',
+              'surface-container-lowest': '#ffffff',
+              'on-secondary-fixed': '#1c1b1b',
+              'tertiary-fixed': '#e2e2e3',
+              'on-tertiary-fixed': '#1a1c1d',
+              'on-background': '#1a1b22',
+              'inverse-surface': '#2f3038',
+              error: '#ba1a1a',
+              'error-container': '#ffdad6',
+              'secondary-fixed': '#e5e2e1',
+              'on-surface': '#1a1b22',
+              'on-tertiary-fixed-variant': '#454748',
+              'surface-variant': '#e3e1ec',
+              'surface-tint': '#745b00',
+              'primary-container': '#ffcc00',
+            },
+            borderRadius: {
+              DEFAULT: '0.25rem',
+              lg: '0.5rem',
+              xl: '0.75rem',
+              full: '9999px',
+            },
+            spacing: {
+              'space-lg': '1rem',
+              'space-xs': '0.25rem',
+              'space-md': '0.75rem',
+              'space-xl': '1.5rem',
+              gutter: '1rem',
+              margin: '1rem',
+              'space-sm': '0.5rem',
+            },
+            fontFamily: {
+              'headline-md': ['Inter'],
+              'label-pill': ['Inter'],
+              'body-md': ['Inter'],
+              'body-lg': ['Inter'],
+              'body-sm': ['Inter'],
+              'label-lg': ['Inter'],
+              'label-md': ['Inter'],
+              'headline-sm': ['Inter'],
+              'headline-lg': ['Inter'],
+              'display-currency': ['Inter'],
+            },
+            fontSize: {
+              'headline-md': [
+                '20px',
+                {
+                  lineHeight: '28px',
+                  letterSpacing: '-0.01em',
+                  fontWeight: '700',
+                },
+              ],
+              'label-pill': [
+                '11px',
+                {
+                  lineHeight: '14px',
+                  letterSpacing: '0.03em',
+                  fontWeight: '700',
+                },
+              ],
+              'body-md': ['14px', { lineHeight: '20px', fontWeight: '400' }],
+              'body-lg': ['16px', { lineHeight: '24px', fontWeight: '500' }],
+              'body-sm': ['12px', { lineHeight: '16px', fontWeight: '400' }],
+              'label-lg': [
+                '14px',
+                {
+                  lineHeight: '20px',
+                  letterSpacing: '0.01em',
+                  fontWeight: '600',
+                },
+              ],
+              'label-md': [
+                '12px',
+                {
+                  lineHeight: '16px',
+                  letterSpacing: '0.02em',
+                  fontWeight: '600',
+                },
+              ],
+              'headline-sm': [
+                '18px',
+                { lineHeight: '24px', fontWeight: '600' },
+              ],
+              'headline-lg': [
+                '24px',
+                {
+                  lineHeight: '32px',
+                  letterSpacing: '-0.015em',
+                  fontWeight: '700',
+                },
+              ],
+              'display-currency': [
+                '26px',
+                {
+                  lineHeight: '32px',
+                  letterSpacing: '-0.02em',
+                  fontWeight: '700',
+                },
+              ],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      @layer base {
+        html,
+        body {
+          width: 100%;
+          margin: 0;
+          padding: 0;
+        }
+        body {
+          overscroll-behavior-y: none;
+        }
+        .pb-safe {
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        .pt-safe {
+          padding-top: env(safe-area-inset-top, 0px);
+        }
+        main > :first-child {
+          margin-top: 0 !important;
+        }
+        main > :last-child {
+          margin-bottom: 0 !important;
+        }
+      }
+      ::-webkit-scrollbar {
+        display: none;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen"
+    style="opacity: 1"
+  >
+    <header
+      class="fixed top-0 w-full z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"
+    >
+      <div
+        class="h-16 px-4 sm:px-6 flex items-center justify-between max-w-2xl lg:max-w-3xl mx-auto w-full"
+      >
+        <div class="flex items-center gap-space-sm">
+          <img
+            alt="Logo UTFRide"
+            class="h-8 w-auto object-contain"
+            src="../logo.png"
+          /><span
+            class="font-headline-sm text-headline-sm text-on-surface tracking-tight font-bold"
+            >UTFRide</span
+          >
+        </div>
+        <div class="flex items-center gap-space-md">
+          <span
+            class="hidden xs:inline-block font-label-md text-label-md text-on-surface-variant font-medium"
+            >Buscar Caronas</span
+          ><a
+            class="flex items-center justify-center p-0.5 rounded-full hover:opacity-90 active:scale-95 transition-all"
+            data-path="perfil"
+            href="./1._landing_page_visitante.html"
+            ><img
+              alt="Profile"
+              class="w-8 h-8 rounded-full object-cover"
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDKC8HBOkLE7EvieuqoVrCwtb4ixVRhaqQGNv855IzmUIrANFiQdQngReaGnVWXcMjBgRDNgSoEzdI6fwhCyTcAhqs79IJ54PolaJlZVxTXJfOfX7KADiqjaAcSamGPlrhfjtZR2caBqf7W_AQHL9wcxc6k2u1EWo4SEKr02BTRmzFF0HPto49OPsT0Y-VxUdMvP00T2Vf_Cmw326hgEIe1CArLwqAREaIOoSm_0n83nxXp5m4TkaPE"
+          /></a>
+        </div>
+      </div>
+    </header>
+    <main
+      class="flex-1 w-full bg-surface pt-16 px-4 sm:px-6 flex flex-col"
+      style="min-height: 100vh; height: auto; padding-bottom: 24px"
+    >
+      <div
+        class="flex flex-col w-full max-w-md mx-auto space-y-space-lg pb-space-sm"
+      >
+        <div
+          class="flex flex-col items-center justify-center pt-space-md text-center"
+        >
+          <div class="w-full flex items-center justify-center mb-space-md">
+            <img
+              alt="UTFRide Caronas UTFPR"
+              class="h-16 w-auto object-contain"
+              src="../logo.png"
+            />
+          </div>
+          <span
+            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary-fixed text-on-primary-fixed font-label-pill text-label-pill shadow-sm mb-space-sm"
+          >
+            <span class="material-symbols-outlined text-[14px]">school</span>
+            Acesso Acadêmico Exclusivo
+          </span>
+          <h2 class="font-headline-lg text-headline-lg text-on-surface">
+            Acesse sua conta
+          </h2>
+          <p class="font-body-md text-body-md text-secondary mt-1">
+            Informe seu e-mail institucional da UTFPR
+          </p>
+        </div>
+        <div
+          class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm space-y-space-md"
+        >
+          <div class="flex flex-col space-y-1.5">
+            <label
+              class="font-label-md text-label-md text-on-surface flex items-center justify-between"
+              for="email-input"
+            >
+              <span class="">E-mail Institucional</span>
+              <span class="text-secondary font-body-sm text-body-sm"
+                >@alunos.utfpr.edu.br</span
+              >
+            </label>
+            <div class="relative flex items-center">
+              <span
+                class="material-symbols-outlined absolute left-3 text-secondary text-[20px] pointer-events-none"
+                >alternate_email</span
+              >
+              <input
+                class="w-full h-12 pl-10 pr-4 bg-surface-container-low rounded-lg font-body-md text-body-md text-on-surface placeholder:text-secondary/60 focus:bg-surface-container-lowest focus:outline-none focus:ring-0 shadow-inner transition-all"
+                id="email-input"
+                placeholder="aluno@alunos.utfpr.edu.br"
+                type="email"
+                value="lucas.silva@alunos.utfpr.edu.br"
+              />
+            </div>
+          </div>
+          <div class="flex flex-col space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label
+                class="font-label-md text-label-md text-on-surface"
+                for="password-input"
+                >Senha do Portal</label
+              >
+              <button
+                class="font-label-md text-label-md text-primary font-semibold hover:underline"
+                onclick="toggleForgotInfo()"
+                type="button"
+              >
+                Esqueci minha senha
+              </button>
+            </div>
+            <div class="relative flex items-center">
+              <span
+                class="material-symbols-outlined absolute left-3 text-secondary text-[20px] pointer-events-none"
+                >lock</span
+              >
+              <input
+                class="w-full h-12 pl-10 pr-12 bg-surface-container-low rounded-lg font-body-md text-body-md text-on-surface placeholder:text-secondary/60 focus:bg-surface-container-lowest focus:outline-none focus:ring-0 shadow-inner transition-all"
+                id="password-input"
+                placeholder="••••••••••••"
+                type="password"
+                value="minhasenha123"
+              />
+              <button
+                aria-label="Alternar visibilidade de senha"
+                class="absolute right-2 w-8 h-8 flex items-center justify-center rounded-full text-secondary hover:text-on-surface transition-colors"
+                id="toggle-password-btn"
+                onclick="togglePasswordVisibility()"
+                type="button"
+              >
+                <span
+                  class="material-symbols-outlined text-[20px]"
+                  id="password-eye-icon"
+                  >visibility</span
+                >
+              </button>
+            </div>
+          </div>
+          <div class="pt-space-xs">
+            <a
+              class="w-full h-[52px] rounded-[16px] bg-primary-container text-on-primary-fixed font-label-lg text-label-lg font-bold shadow-md hover:brightness-95 active:scale-[0.99] flex items-center justify-center gap-2 transition-all"
+              href="./4._buscar_caronas_home.html"
+            >
+              <span class="">Entrar</span>
+              <span class="material-symbols-outlined text-[20px]"
+                >arrow_forward</span
+              >
+            </a>
+          </div>
+          <div class="pt-space-xs text-center">
+            <p class="font-body-md text-body-md text-secondary">
+              Ainda não tem conta?
+              <a
+                class="font-label-md text-label-md text-primary font-bold hover:underline"
+                href="./2._cadastro_de_aluno.html"
+                >Cadastre-se com seu e-mail UTFPR</a
+              >
+            </p>
+          </div>
+        </div>
+        <div
+          class="bg-surface-container-low rounded-xl p-space-md shadow-sm space-y-space-sm"
+        >
+          <div class="flex items-center justify-between">
+            <span
+              class="font-label-md text-label-md text-secondary flex items-center gap-1.5"
+            >
+              <span class="material-symbols-outlined text-[18px]"
+                >bug_report</span
+              >
+              Simulação de Estados de Validação
+            </span>
+            <span
+              class="font-label-pill text-label-pill px-2 py-0.5 rounded-full bg-surface-container-highest text-secondary font-bold"
+              >RN07 Demo</span
+            >
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              class="py-2.5 px-3 rounded-lg bg-surface-container-highest text-on-surface font-label-md text-label-md hover:bg-error-container hover:text-on-error-container active:scale-95 transition-all text-center flex items-center justify-center gap-1"
+              onclick="showState('error')"
+              type="button"
+            >
+              <span class="material-symbols-outlined text-[16px]"
+                >error_outline</span
+              >
+              Erro de Senha
+            </button>
+            <button
+              class="py-2.5 px-3 rounded-lg bg-surface-container-highest text-on-surface font-label-md text-label-md hover:bg-error-container hover:text-on-error-container active:scale-95 transition-all text-center flex items-center justify-center gap-1"
+              onclick="showState('suspended')"
+              type="button"
+            >
+              <span class="material-symbols-outlined text-[16px]">gavel</span>
+              Conta Suspensa
+            </button>
+          </div>
+        </div>
+        <div
+          class="hidden rounded-xl bg-error-container p-space-md shadow-md animate-fade-in"
+          id="state-error-card"
+        >
+          <div class="flex items-start gap-space-sm">
+            <div
+              class="w-8 h-8 rounded-full bg-on-error flex items-center justify-center text-error shrink-0 shadow-sm"
+            >
+              <span class="material-symbols-outlined text-[20px]">warning</span>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between">
+                <h4
+                  class="font-label-lg text-label-lg font-bold text-on-error-container"
+                >
+                  Falha na Autenticação
+                </h4>
+                <button
+                  class="text-on-error-container/70 hover:text-on-error-container"
+                  onclick="dismissState('state-error-card')"
+                  type="button"
+                >
+                  <span class="material-symbols-outlined text-[18px]"
+                    >close</span
+                  >
+                </button>
+              </div>
+              <p
+                class="font-body-md text-body-md text-on-error-container mt-0.5"
+              >
+                E-mail ou senha incorretos.
+              </p>
+              <p
+                class="font-body-sm text-body-sm text-on-error-container/80 mt-1"
+              >
+                Por questões de segurança, verifique suas credenciais do portal
+                acadêmico e tente novamente.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div
+          class="rounded-xl bg-error text-on-error p-space-lg shadow-xl relative overflow-hidden animate-fade-in"
+          id="state-suspended-card"
+        >
+          <div
+            class="absolute -right-4 -bottom-4 w-28 h-28 rounded-full bg-on-error/10 pointer-events-none flex items-center justify-center"
+          >
+            <span class="material-symbols-outlined text-[72px] text-on-error/15"
+              >gavel</span
+            >
+          </div>
+          <div class="relative z-10 flex flex-col space-y-space-sm">
+            <div class="flex items-center justify-between">
+              <span
+                class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-on-error/20 font-label-pill text-label-pill tracking-wide font-bold"
+              >
+                <span class="material-symbols-outlined text-[14px]"
+                  >shield_lock</span
+                >
+                REGRA RN07 • BLOQUEIO ADMINISTRATIVO
+              </span>
+              <button
+                class="text-on-error/80 hover:text-on-error p-1"
+                onclick="dismissState('state-suspended-card')"
+                type="button"
+              >
+                <span class="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+            <div class="flex items-start gap-space-sm">
+              <div
+                class="w-10 h-10 rounded-full bg-on-error text-error flex items-center justify-center shrink-0 shadow-md"
+              >
+                <span class="material-symbols-outlined text-[24px]">block</span>
+              </div>
+              <div>
+                <h4
+                  class="font-headline-sm text-headline-sm text-on-error font-bold leading-tight"
+                >
+                  Conta Suspensa
+                </h4>
+                <p
+                  class="font-body-md text-body-md text-on-error/95 mt-1 leading-relaxed"
+                >
+                  Sua conta foi suspensa pelo Suporte. Se você acredita que
+                  houve um equívoco, entre em contato pelo canal de suporte
+                  institucional.
+                </p>
+              </div>
+            </div>
+            <div
+              class="bg-black/15 rounded-lg p-space-sm mt-1 flex flex-col gap-1 text-on-error/90"
+            >
+              <div
+                class="flex items-center justify-between font-label-md text-label-md"
+              >
+                <span class="text-on-error/70">Protocolo:</span>
+                <span class="font-mono font-bold tracking-wider"
+                  >#UTF-SUSP-8492</span
+                >
+              </div>
+              <div
+                class="flex items-center justify-between font-label-md text-label-md"
+              >
+                <span class="text-on-error/70">Data do Registro:</span>
+                <span class="">Hoje, 09:42</span>
+              </div>
+            </div>
+            <div class="pt-space-xs flex flex-col sm:flex-row gap-2">
+              <a
+                class="h-11 px-4 rounded-lg bg-surface-container-lowest text-on-surface font-label-md text-label-md font-bold flex items-center justify-center gap-1.5 shadow hover:bg-surface-bright active:scale-95 transition-all text-center"
+                href="mailto:suporte-caronas@utfpr.edu.br?subject=Recurso%20de%20Suspensão%20RN07%20-%20Conta%20UTFPR"
+              >
+                <span class="material-symbols-outlined text-[18px] text-error"
+                  >support_agent</span
+                >
+                Abrir Recurso Institucional
+              </a>
+              <button
+                class="h-11 px-4 rounded-lg bg-on-error/15 text-on-error font-label-md text-label-md font-semibold flex items-center justify-center gap-1 hover:bg-on-error/25 active:scale-95 transition-all"
+                onclick="
+                  alert(
+                    'Diretrizes de Convivência UTFRide: Respeito a horários, segurança veicular e conformidade com código disciplinar da UTFPR.',
+                  )
+                "
+                type="button"
+              >
+                <span class="material-symbols-outlined text-[18px]"
+                  >policy</span
+                >
+                Termos de Uso
+              </button>
+            </div>
+          </div>
+        </div>
+        <div
+          class="p-space-md rounded-xl bg-surface-container flex items-center gap-space-sm text-secondary"
+        >
+          <span
+            class="material-symbols-outlined text-[24px] text-primary shrink-0"
+            >verified_user</span
+          >
+          <p class="font-body-sm text-body-sm leading-snug">
+            O UTFRide é de uso exclusivo de discentes, docentes e servidores com
+            autenticação validada pelo domínio UTFPR.
+          </p>
+        </div>
+      </div>
+      <script>
+        function togglePasswordVisibility() {
+          const input = document.getElementById('password-input');
+          const icon = document.getElementById('password-eye-icon');
+          if (!input || !icon) return;
+
+          if (input.type === 'password') {
+            input.type = 'text';
+            icon.textContent = 'visibility_off';
+          } else {
+            input.type = 'password';
+            icon.textContent = 'visibility';
+          }
+        }
+
+        function showState(type) {
+          const errCard = document.getElementById('state-error-card');
+          const suspCard = document.getElementById('state-suspended-card');
+
+          if (type === 'error') {
+            errCard.classList.remove('hidden');
+            suspCard.classList.add('hidden');
+          } else if (type === 'suspended') {
+            suspCard.classList.remove('hidden');
+            errCard.classList.add('hidden');
+          }
+        }
+
+        function dismissState(id) {
+          const el = document.getElementById(id);
+          if (el) el.classList.add('hidden');
+        }
+
+        function triggerLoginSimulation() {
+          const email = document.getElementById('email-input').value.trim();
+          if (!email.endsWith('utfpr.edu.br')) {
+            showState('error');
+          } else {
+            showState('suspended');
+          }
+        }
+
+        function toggleForgotInfo() {
+          alert(
+            'As instruções de redefinição serão enviadas para o seu e-mail institucional cadastrado na base acadêmica.',
+          );
+        }
+      </script>
+    </main>
+
+    <div
+      id="snapdom-measure-slot"
+      aria-hidden="true"
+      style="
+        position: absolute;
+        left: -99999px;
+        top: 0px;
+        width: 0px;
+        height: 0px;
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+        contain: size layout style;
+      "
+    ></div>
+  </body>
+</html>

@@ -1,0 +1,387 @@
+<!DOCTYPE html><html class="light" lang="pt-BR" ><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"><meta content="mobile_tab" name="shell-type"><title>UTFRide</title><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "primary": "#745b00", "tertiary": "#5d5e60", "surface-container-low": "#f4f2fd", "secondary-container": "#e5e2e1", "on-primary-fixed-variant": "#584400", "on-error": "#ffffff", "on-tertiary": "#ffffff", "surface-bright": "#fbf8ff", "tertiary-fixed-dim": "#c6c6c7", "surface-container-highest": "#e3e1ec", "primary-fixed": "#ffe08b", "outline-variant": "#d2c5ab", "secondary-fixed-dim": "#c8c6c5", "secondary": "#5f5e5e", "on-primary": "#ffffff", "surface-dim": "#dad9e3", "on-primary-container": "#6f5700", "on-secondary-container": "#656464", "on-tertiary-container": "#595a5b", "outline": "#80765f", "inverse-primary": "#f1c100", "surface-container": "#eeedf7", "inverse-on-surface": "#f1effa", "on-error-container": "#93000a", "tertiary-container": "#d2d2d3", "on-secondary": "#ffffff", "surface-container-high": "#e8e7f1", "primary-fixed-dim": "#f1c100", "on-primary-fixed": "#241a00", "background": "#fbf8ff", "surface": "#fbf8ff", "on-secondary-fixed-variant": "#474646", "on-surface-variant": "#4e4632", "surface-container-lowest": "#ffffff", "on-secondary-fixed": "#1c1b1b", "tertiary-fixed": "#e2e2e3", "on-tertiary-fixed": "#1a1c1d", "on-background": "#1a1b22", "inverse-surface": "#2f3038", "error": "#ba1a1a", "error-container": "#ffdad6", "secondary-fixed": "#e5e2e1", "on-surface": "#1a1b22", "on-tertiary-fixed-variant": "#454748", "surface-variant": "#e3e1ec", "surface-tint": "#745b00", "primary-container": "#ffcc00" }, borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, spacing: { "space-lg": "1rem", "space-xs": "0.25rem", "space-md": "0.75rem", "space-xl": "1.5rem", "gutter": "1rem", "margin": "1rem", "space-sm": "0.5rem" }, fontFamily: { "headline-md": ["Inter"], "label-pill": ["Inter"], "body-md": ["Inter"], "body-lg": ["Inter"], "body-sm": ["Inter"], "label-lg": ["Inter"], "label-md": ["Inter"], "headline-sm": ["Inter"], "headline-lg": ["Inter"], "display-currency": ["Inter"] }, fontSize: { "headline-md": ["20px", { "lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "700" }], "label-pill": ["11px", { "lineHeight": "14px", "letterSpacing": "0.03em", "fontWeight": "700" }], "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }], "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "500" }], "body-sm": ["12px", { "lineHeight": "16px", "fontWeight": "400" }], "label-lg": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600" }], "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600" }], "headline-sm": ["18px", { "lineHeight": "24px", "fontWeight": "600" }], "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.015em", "fontWeight": "700" }], "display-currency": ["26px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700" }] } } } }</script><style>@layer base { html, body { width: 100%; margin: 0; padding: 0; } body { overscroll-behavior-y: none; } .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); } .pt-safe { padding-top: env(safe-area-inset-top, 0px); } main > :first-child { margin-top: 0 !important; } main > :last-child { margin-bottom: 0 !important; } } ::-webkit-scrollbar { display: none; }</style><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen" style="min-height: 100%; height: auto; overflow: hidden auto;"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 px-4 sm:px-6 flex items-center justify-between max-w-2xl lg:max-w-3xl mx-auto w-full"><div class="flex items-center gap-space-sm"><img alt="Logo UTFRide" class="h-8 w-auto object-contain" src="../logo.png"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight font-bold">UTFRide</span></div><div class="flex items-center gap-space-md"><span class="hidden xs:inline-block font-label-md text-label-md text-on-surface-variant font-medium">Minhas Viagens</span><a class="flex items-center justify-center p-0.5 rounded-full hover:opacity-90 active:scale-95 transition-all" data-path="perfil" href="./1._landing_page_visitante.html"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDKC8HBOkLE7EvieuqoVrCwtb4ixVRhaqQGNv855IzmUIrANFiQdQngReaGnVWXcMjBgRDNgSoEzdI6fwhCyTcAhqs79IJ54PolaJlZVxTXJfOfX7KADiqjaAcSamGPlrhfjtZR2caBqf7W_AQHL9wcxc6k2u1EWo4SEKr02BTRmzFF0HPto49OPsT0Y-VxUdMvP00T2Vf_Cmw326hgEIe1CArLwqAREaIOoSm_0n83nxXp5m4TkaPE"></a></div></div></header><main class="flex-1 w-full bg-surface pt-16 pb-20 px-4 sm:px-6 flex flex-col" style="min-height: 100vh; height: auto; overflow-y: visible; padding-bottom: 80px;"><div class="flex flex-col w-full pb-4 max-w-lg lg:max-w-2xl mx-auto">
+<div class="flex flex-col gap-space-sm mb-space-lg">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-2.5 h-6 bg-primary-container rounded-full"></div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface">Minhas Viagens</h1>
+</div>
+<span class="px-space-md py-1 rounded-full bg-surface-container-high font-label-md text-label-md text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-primary">school</span>
+        Passageiro
+      </span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Acompanhe suas solicitações, caronas confirmadas e avaliações de percurso UTFPR.</p>
+</div>
+<!-- Segmented Control (Tabs) -->
+<div class="bg-surface-container p-1 rounded-xl flex items-center justify-between gap-1 mb-space-lg shadow-sm">
+<button class="flex-1 py-2.5 px-2 rounded-lg font-label-md text-label-md transition-all flex items-center justify-center gap-1 bg-surface-container-lowest text-on-surface shadow-sm font-bold" id="tab-btn-pending" onclick="switchTripTab('pending')">
+<span class="">Pendentes</span>
+<span class="px-1.5 py-0.5 rounded-full text-[10px] bg-primary-container text-on-primary-fixed font-bold leading-none">1</span>
+</button>
+<button class="flex-1 py-2.5 px-2 rounded-lg font-label-md text-label-md transition-all flex items-center justify-center gap-1 text-secondary hover:text-on-surface font-semibold" id="tab-btn-confirmed" onclick="switchTripTab('confirmed')">
+<span class="">Confirmadas</span>
+<span class="px-1.5 py-0.5 rounded-full text-[10px] bg-surface-container-highest text-on-surface-variant font-bold leading-none">2</span>
+</button>
+<button class="flex-1 py-2.5 px-2 rounded-lg font-label-md text-label-md transition-all flex items-center justify-center gap-1 text-secondary hover:text-on-surface font-semibold" id="tab-btn-completed" onclick="switchTripTab('completed')">
+<span class="">Concluídas</span>
+</button>
+</div>
+<!-- TAB 1: PENDENTES -->
+<div class="flex flex-col gap-space-md" id="panel-pending">
+<!-- Card Pendente -->
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md">
+<!-- Header do Card -->
+<div class="flex items-start justify-between gap-2">
+<div class="flex items-center gap-space-md">
+<div class="relative">
+<img class="w-12 h-12 rounded-full object-cover" data-alt="Student profile portrait of Gabriel Silva wearing a backpack outdoors at university campus with soft natural golden sunlight and warm friendly smile" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD-DBPDaozkzDlyNa6QZiH-a_W2W4jWfhJzadyJ4c9TcC6Bniit01w7uD-MIbHMdAwTkSWTivT8tJwKlRXaKp8Wv7q9B9ZTgrEF9tmsbl0xIb5vs6d14IMmrea3KN3BtOBUQkuDdXWT5CKFWNPTmf_yjR5rtwRgdreXPDBvFzP_cUCCbboL6Gq3El8bjWQECrsqLUywKEdmGC2UzV9rLMTCCDZQpQIRzgM8nb8reFHSCSubRodmS3Ke">
+<span class="absolute -bottom-1 -right-1 bg-surface-container-lowest rounded-full p-0.5 shadow-sm">
+<span class="material-symbols-outlined text-primary text-[16px] block">verified</span>
+</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="font-headline-sm text-headline-sm text-on-surface">Gabriel Silva</span>
+<span class="px-1.5 py-0.5 rounded bg-surface-container-high font-label-pill text-label-pill text-on-surface-variant font-bold">DACOM</span>
+</div>
+<div class="flex items-center gap-1 text-secondary">
+<span class="material-symbols-outlined text-[15px] text-primary" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">4.92</span>
+<span class="font-body-sm text-body-sm text-secondary">(48 caronas)</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-label-pill text-label-pill text-secondary">VALOR</span>
+<span class="font-display-currency text-display-currency text-on-surface">R$ 7,50</span>
+</div>
+</div>
+<!-- Badge de Status Pendente -->
+<div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-container text-on-primary-container">
+<span class="material-symbols-outlined text-[18px] text-primary animate-pulse">hourglass_top</span>
+<span class="font-label-md text-label-md font-semibold text-primary">Aguardando resposta do motorista</span>
+</div>
+<!-- Waypoint Timeline -->
+<div class="bg-surface-container-low p-space-md rounded-lg flex flex-col gap-2">
+<div class="flex items-start gap-space-md">
+<div class="flex flex-col items-center pt-1">
+<span class="w-3 h-3 rounded-full bg-primary-container"></span>
+<span class="w-0.5 h-7 bg-outline-variant"></span>
+<span class="w-3 h-3 rounded-sm bg-on-background"></span>
+</div>
+<div class="flex-1 flex flex-col justify-between h-14">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Praça Rui Barbosa, Centro</span>
+<span class="font-body-sm text-body-sm text-secondary">Embarque às 07:15</span>
+</div>
+<span class="font-label-pill text-label-pill px-2 py-0.5 rounded bg-surface-container-highest text-on-surface-variant">Terça-feira</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-bold">UTFPR - Câmpus Curitiba (Sede Centro)</span>
+<span class="font-body-sm text-body-sm text-secondary">07:35</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Informações Complementares -->
+<div class="flex items-center justify-between py-1 px-1 text-secondary font-body-sm text-body-sm">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px]">directions_car</span>
+<span class="">Chevrolet Onix • Prata</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px]">airline_seat_recline_normal</span>
+<span class="">1 vaga solicitada</span>
+</div>
+</div>
+<!-- Ação de Cancelamento -->
+<div class="pt-1 flex flex-col gap-2">
+<button class="w-full h-12 rounded-lg bg-surface-container-high text-error font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 hover:bg-error-container hover:text-on-error-container transition-all active:scale-[0.99]" onclick="simulateCancelRequest()">
+<span class="material-symbols-outlined text-[18px]">close</span>
+          Cancelar solicitação de vaga
+        </button>
+<span class="text-center font-body-sm text-body-sm text-secondary">Você pode cancelar sem penalidades até a confirmação.</span>
+</div>
+</div>
+</div>
+<!-- TAB 2: CONFIRMADAS -->
+<div class="hidden flex flex-col gap-space-md" id="panel-confirmed">
+<!-- Card Confirmado 1 -->
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md">
+<!-- Status Badge Top -->
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-1 rounded-full bg-surface-container-high text-on-primary-fixed-variant font-label-pill text-label-pill flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-primary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+          Confirmada
+        </span>
+<span class="px-2 py-0.5 rounded font-label-pill text-label-pill bg-primary-container text-on-primary-fixed font-bold">Hoje</span>
+</div>
+<!-- Info Motorista -->
+<div class="flex items-center justify-between gap-2">
+<div class="flex items-center gap-space-md">
+<div class="relative">
+<img class="w-12 h-12 rounded-full object-cover" data-alt="University female student driver portrait of Larissa Costa sitting in a modern car, smiling warmly with campus trees in blurred background, natural daytime lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAix--75tNsI9LM44A2MQjRb4GKWjxBC7bXjlZvxeFdw_Ojj2zvtk7ZwsXTHTFoumj0z_YpFF6v93mRHCqyAIh99c3Qd6MgyZsZoVaTTf-oBUD8H7y7YQU1_A7z9ed8Oz_zZDVSbdRsLixkveSplyA8ZNwX5MJVEhUavTbWq1MDQ0H9S5ZPPuse7t8xX8i9j-hb2wQq_IY9YDAo_r7UCFtc_Yetik_j0D5jBa6Z1RoVGBstoTKgSgg7">
+<span class="absolute -bottom-1 -right-1 bg-surface-container-lowest rounded-full p-0.5 shadow-sm">
+<span class="material-symbols-outlined text-primary text-[16px] block">verified</span>
+</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="font-headline-sm text-headline-sm text-on-surface">Larissa Costa</span>
+<span class="px-1.5 py-0.5 rounded bg-surface-container-high font-label-pill text-label-pill text-on-surface-variant font-bold">DAELN</span>
+</div>
+<div class="flex items-center gap-1 text-secondary">
+<span class="material-symbols-outlined text-[15px] text-primary" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">4.98</span>
+<span class="font-body-sm text-body-sm text-secondary">• Hyundai HB20 Branco</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-label-pill text-label-pill text-secondary">VALOR PAGO</span>
+<span class="font-display-currency text-display-currency text-on-surface">R$ 8,00</span>
+</div>
+</div>
+<!-- Rota -->
+<div class="bg-surface-container-low p-space-md rounded-lg flex flex-col gap-2">
+<div class="flex items-start gap-space-md">
+<div class="flex flex-col items-center pt-1">
+<span class="w-3 h-3 rounded-full bg-primary-container"></span>
+<span class="w-0.5 h-7 bg-outline-variant"></span>
+<span class="w-3 h-3 rounded-sm bg-on-background"></span>
+</div>
+<div class="flex-1 flex flex-col justify-between h-14">
+<div class="flex items-center justify-between">
+<div>
+<span class="font-label-md text-label-md text-on-surface font-semibold">Shopping Pátio Batel</span>
+<span class="block font-body-sm text-body-sm text-secondary">Saída pontual: 17:30</span>
+</div>
+</div>
+<div class="flex items-center justify-between">
+<div>
+<span class="font-label-md text-label-md text-on-surface font-bold">UTFPR - Câmpus Neoville</span>
+<span class="block font-body-sm text-body-sm text-secondary">Chegada estimada: 18:05</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Contato Desbloqueado -->
+<div class="p-space-md rounded-xl bg-surface-container flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-fixed">
+<span class="material-symbols-outlined text-[18px]">chat</span>
+</span>
+<div class="flex flex-col">
+<span class="font-label-pill text-label-pill text-secondary">CONTATO DIRETO</span>
+<span class="font-label-md text-label-md text-on-surface font-bold">WhatsApp: (41) 98765-1122</span>
+</div>
+</div>
+<span class="px-2 py-0.5 rounded bg-surface-container-highest font-label-pill text-label-pill text-on-surface-variant font-semibold">Desbloqueado</span>
+</div>
+<a class="w-full h-12 rounded-lg bg-primary-container text-on-primary-fixed font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 shadow-sm hover:opacity-95 active:scale-[0.99] transition-all" href="https://wa.me/5541987651122" target="_blank">
+<span class="material-symbols-outlined text-[20px]">send</span>
+          Conversar com motorista
+        </a>
+</div>
+</div>
+<!-- Card Confirmado 2 (Secundário) -->
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-1 rounded-full bg-surface-container-high text-on-primary-fixed-variant font-label-pill text-label-pill flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px] text-primary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+          Confirmada
+        </span>
+<span class="px-2 py-0.5 rounded font-label-pill text-label-pill bg-surface-container-highest text-on-surface-variant font-bold">Amanhã • 06:45</span>
+</div>
+<div class="flex items-center justify-between gap-2">
+<div class="flex items-center gap-space-md">
+<img class="w-12 h-12 rounded-full object-cover" data-alt="Student driver portrait of Lucas Martins wearing glasses and casual jacket smiling inside university library entrance" src="https://lh3.googleusercontent.com/aida-public/AB6AXuClmN-YWee8me6Cw52DdVtNz6C9SpJAmsnc47NZufxw4HmueGzepKPLFXM4IYhOmuCeQlNJZ6cl3PA09YJ_E3gdAorOhajQ-j8xFNx24ZeMWmKO6eWJSyrYiCvwr80UF71CzIdPE8zKi6YrNzAgQxLC0QNheSLPx-Hm9iuX4vE4rzPb-DRfwDCcy3443KvIFlINWxjg25Hjtb5rBBby8odX-8HEu0tqUENKN_qFZXHPUdFsUGlNfwOe">
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Lucas Martins</span>
+<span class="font-body-sm text-body-sm text-secondary">Terminal Portão → UTFPR Ecoville</span>
+</div>
+</div>
+<span class="font-display-currency text-display-currency text-on-surface">R$ 6,00</span>
+</div>
+<a class="w-full h-11 rounded-lg bg-surface-container-highest text-on-surface font-label-md text-label-md font-bold flex items-center justify-center gap-2 hover:bg-secondary-container transition-all" href="https://wa.me/5541999990000" target="_blank">
+<span class="material-symbols-outlined text-[18px]">chat</span>
+        WhatsApp: (41) 99123-4455
+      </a>
+</div>
+</div>
+<!-- TAB 3: CONCLUÍDAS / HISTÓRICO -->
+<div class="hidden flex flex-col gap-space-md" id="panel-completed">
+<!-- Card Concluída 1: Para Avaliar -->
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-1 rounded-full bg-surface-container-high text-secondary font-label-pill text-label-pill flex items-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[14px]">done_all</span>
+          Concluída
+        </span>
+<span class="font-body-sm text-body-sm text-secondary">Quinta-feira passada</span>
+</div>
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-space-md">
+<img class="w-12 h-12 rounded-full object-cover" data-alt="Portrait of student driver Matheus Lima standing next to his grey sedan at university parking lot in sunny afternoon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCJNQMqov_q6s_AGoEEwWFPLF7GdNf-_CYqfrynxEqq4hrIdZEERQy7AoIxl3gy_xgtdmhS1BugOwlzysfnA2HnRtJFxwzmc8xsnRhHdb8oY_InWbJkPtfoQf-ag9X_weMp43DuQe3uxQoMEbZ54Hvz2a28kWUxd6UsAlDnvBAl1NZZZHSd17JEzMlaQ_N_XS2u0iuCYgwLj_IAgRGga1ihd8qsSO-Ekv4Xr2fLqCVviYSznOJP7EpZ">
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Matheus Lima</span>
+<span class="font-body-sm text-body-sm text-secondary">UTFPR Centro → Jardim das Américas</span>
+<span class="font-label-pill text-label-pill text-primary font-bold mt-0.5">R$ 6,50 pago via Pix</span>
+</div>
+</div>
+</div>
+<!-- Box de Avaliação Rápida -->
+<div class="p-space-md rounded-xl bg-surface-container-low flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-bold">Como foi a carona com Matheus?</span>
+<span class="font-label-pill text-label-pill text-secondary">Pendente</span>
+</div>
+<div class="flex items-center justify-center gap-3 py-1">
+<button class="w-9 h-9 rounded-full bg-surface-container-lowest shadow-sm flex items-center justify-center text-primary-container hover:scale-110 active:scale-95 transition-all" onclick="rateDriver(1)">
+<span class="material-symbols-outlined text-[24px]" style="font-variation-settings: 'FILL' 1;">star</span>
+</button>
+<button class="w-9 h-9 rounded-full bg-surface-container-lowest shadow-sm flex items-center justify-center text-primary-container hover:scale-110 active:scale-95 transition-all" onclick="rateDriver(2)">
+<span class="material-symbols-outlined text-[24px]" style="font-variation-settings: 'FILL' 1;">star</span>
+</button>
+<button class="w-9 h-9 rounded-full bg-surface-container-lowest shadow-sm flex items-center justify-center text-primary-container hover:scale-110 active:scale-95 transition-all" onclick="rateDriver(3)">
+<span class="material-symbols-outlined text-[24px]" style="font-variation-settings: 'FILL' 1;">star</span>
+</button>
+<button class="w-9 h-9 rounded-full bg-surface-container-lowest shadow-sm flex items-center justify-center text-primary-container hover:scale-110 active:scale-95 transition-all" onclick="rateDriver(4)">
+<span class="material-symbols-outlined text-[24px]" style="font-variation-settings: 'FILL' 1;">star</span>
+</button>
+<button class="w-9 h-9 rounded-full bg-surface-container-lowest shadow-sm flex items-center justify-center text-primary-container hover:scale-110 active:scale-95 transition-all" onclick="rateDriver(5)">
+<span class="material-symbols-outlined text-[24px]" style="font-variation-settings: 'FILL' 1;">star</span>
+</button>
+</div>
+<button class="w-full h-11 rounded-lg bg-primary-container text-on-primary-fixed font-label-md text-label-md font-bold flex items-center justify-center gap-2 hover:opacity-95 active:scale-[0.99] transition-all" id="btn-eval" onclick="window.location.href='./10._avaliar_participantes.html'">
+<span class="material-symbols-outlined text-[18px]">rate_review</span>
+          Avaliar Motorista
+        </button>
+<a class="w-full h-11 rounded-lg bg-error-container text-on-error-container font-label-md text-label-md font-bold flex items-center justify-center gap-2 hover:opacity-95 active:scale-[0.99] transition-all" href="./11._den_ncia_ao_suporte.html">
+<span class="material-symbols-outlined text-[18px]">flag</span>
+          Denunciar motorista
+        </a>
+</div>
+</div>
+<!-- Card Concluída 2: Já Avaliado -->
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md opacity-90">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface-variant font-label-pill text-label-pill flex items-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[14px]">check</span>
+          Concluída • Avaliado 5.0 ★
+        </span>
+<span class="font-body-sm text-body-sm text-secondary">Terça-feira passada</span>
+</div>
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-space-md">
+<img class="w-12 h-12 rounded-full object-cover" data-alt="Portrait of smiling female student Camila Rocha wearing glasses and stylish scarf on university avenue walkway" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDx8SkLu33ZtzUMHPIW3BXVlTp9PKCxszB0zdOYMmyH0_gCFE2p7q-QP9WBMAPn8qLXHY_6tLtIhwpEHOUkiZIhKTSTEA0ZpCYjozjKjIfMDp7_VsxVVJLWWBn6opJivkU7ZCgMtIAeOPkQUdrBOLPeK8x2K1k2IoTejS7qgqCaa_nfUsWy4EWiVWR3hykgjm1W4QzYFLPvQ1zvyVSCO4I8ZJxfMl9s7E3cossF3C-QgzY6Yi-KDxmQ">
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Camila Rocha</span>
+<span class="font-body-sm text-body-sm text-secondary">Água Verde → UTFPR Ecoville</span>
+<div class="flex items-center gap-1 mt-1 text-primary">
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[14px]" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="font-label-pill text-label-pill text-secondary ml-1 font-medium">"Super pontual e direção tranquila!"</span>
+</div>
+</div>
+</div>
+<span class="font-label-lg text-label-lg font-bold text-secondary">R$ 5,00</span>
+</div>
+</div>
+</div>
+<!-- ESTADO VAZIO DEMONSTRATIVO (Alternável para fins de protótipo) -->
+<div class="mt-space-xl pt-space-lg flex flex-col items-center">
+<button class="px-3 py-1.5 rounded-full bg-surface-container font-label-pill text-label-pill text-secondary hover:text-on-surface transition-all mb-4 flex items-center gap-1" onclick="toggleEmptyState()">
+<span class="material-symbols-outlined text-[14px]">visibility</span>
+      Alternar visualização do Estado Vazio
+    </button>
+<div class="hidden w-full bg-surface-container-lowest rounded-2xl p-space-xl shadow-sm text-center flex flex-col items-center gap-space-md" id="demo-empty-state">
+<!-- Ilustração sutil de carro/calendário -->
+<div class="w-20 h-20 rounded-full bg-surface-container flex items-center justify-center relative">
+<svg class="w-10 h-10 text-secondary" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" viewBox="0 0 24 24">
+<rect height="18" rx="2" ry="2" width="18" x="3" y="4"></rect>
+<line x1="16" x2="16" y1="2" y2="6"></line>
+<line x1="8" x2="8" y1="2" y2="6"></line>
+<line x1="3" x2="21" y1="10" y2="10"></line>
+<circle cx="8" cy="16" fill="currentColor" r="1.5"></circle>
+<path d="M12 16h4"></path>
+</svg>
+<span class="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary-container flex items-center justify-center text-on-primary-fixed shadow-sm">
+<span class="material-symbols-outlined text-[14px]">search</span>
+</span>
+</div>
+<div class="flex flex-col gap-1 max-w-xs">
+<h3 class="font-headline-md text-headline-md text-on-surface">Nenhuma viagem encontrada</h3>
+<p class="font-body-md text-body-md text-secondary">Quando você solicitar ou confirmar caronas, elas aparecerão aqui.</p>
+</div>
+<a class="mt-2 w-full h-12 rounded-lg bg-primary-container text-on-primary-fixed font-label-lg text-label-lg font-bold flex items-center justify-center gap-2 shadow-sm hover:opacity-95 active:scale-[0.99] transition-all" data-path="buscar-caronas" href="./4._buscar_caronas_home.html">
+<span class="material-symbols-outlined text-[20px]">explore</span>
+        Explorar caronas disponíveis
+      </a>
+</div>
+</div>
+</div>
+<script>
+  function switchTripTab(tabName) {
+    const tabs = ['pending', 'confirmed', 'completed'];
+    tabs.forEach(t => {
+      const btn = document.getElementById('tab-btn-' + t);
+      const panel = document.getElementById('panel-' + t);
+      if (t === tabName) {
+        btn.className = "flex-1 py-2.5 px-2 rounded-lg font-label-md text-label-md transition-all flex items-center justify-center gap-1 bg-surface-container-lowest text-on-surface shadow-sm font-bold";
+        panel.classList.remove('hidden');
+      } else {
+        btn.className = "flex-1 py-2.5 px-2 rounded-lg font-label-md text-label-md transition-all flex items-center justify-center gap-1 text-secondary hover:text-on-surface font-semibold";
+        panel.classList.add('hidden');
+      }
+    });
+  }
+
+  function simulateCancelRequest() {
+    if (confirm("Deseja realmente cancelar sua solicitação com Gabriel Silva? A vaga será liberada imediatamente.")) {
+      const panelPending = document.getElementById('panel-pending');
+      panelPending.innerHTML = `
+        <div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm text-center flex flex-col items-center gap-space-sm">
+          <span class="material-symbols-outlined text-tertiary text-[32px]">check_circle</span>
+          <span class="font-label-lg text-label-lg text-on-surface font-bold">Solicitação cancelada</span>
+          <span class="font-body-sm text-body-sm text-secondary">Nenhuma cobrança foi efetuada no seu perfil.</span>
+        </div>
+      `;
+      const badge = document.querySelector('#tab-btn-pending span:nth-child(2)');
+      if (badge) badge.innerText = "0";
+    }
+  }
+
+  function rateDriver(stars) {
+    const btnEval = document.getElementById('btn-eval');
+    if (btnEval) {
+      btnEval.innerHTML = `<span class="material-symbols-outlined text-[18px]">done</span> Confirmar nota ` + stars + `.0 ★`;
+    }
+  }
+
+  function openEvaluationModal() {
+    const btnEval = document.getElementById('btn-eval');
+    btnEval.innerText = "Avaliação enviada com sucesso!";
+    btnEval.classList.remove('bg-primary-container', 'text-on-primary-fixed');
+    btnEval.classList.add('bg-surface-container-high', 'text-on-surface-variant');
+  }
+
+  function toggleEmptyState() {
+    const el = document.getElementById('demo-empty-state');
+    el.classList.toggle('hidden');
+  }
+</script></main><nav class="fixed bottom-0 w-full z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-4px_16px_rgba(0,0,0,0.06)]" data-active-classes="text-on-surface font-bold [&amp;&gt;span.active-dot]:opacity-100"><div class="flex items-center justify-around h-16 px-space-xs max-w-2xl lg:max-w-3xl mx-auto w-full"><a class="flex flex-col items-center justify-center min-w-[64px] h-12 text-secondary hover:text-on-surface transition-colors" data-path="buscar-caronas" href="./4._buscar_caronas_home.html"><span class="material-symbols-outlined text-[24px]">search</span><span class="font-label-pill text-label-pill mt-0.5">Buscar</span><span class="active-dot w-1.5 h-1.5 rounded-full bg-primary-container mt-0.5 opacity-0 transition-opacity"></span></a><a class="flex flex-col items-center justify-center min-w-[64px] h-12 text-secondary hover:text-on-surface transition-colors" data-path="oferecer-carona" href="./6._oferecer_carona_motorista.html"><span class="material-symbols-outlined text-[24px]">add_circle</span><span class="font-label-pill text-label-pill mt-0.5">Oferecer</span><span class="active-dot w-1.5 h-1.5 rounded-full bg-primary-container mt-0.5 opacity-0 transition-opacity"></span></a><a class="flex flex-col items-center justify-center min-w-[64px] h-12 text-secondary hover:text-on-surface transition-colors" data-path="minhas-ofertas" href="./7._minhas_ofertas_e_gerenciar_solicita_es.html"><span class="material-symbols-outlined text-[24px]">local_offer</span><span class="font-label-pill text-label-pill mt-0.5">Ofertas</span><span class="active-dot w-1.5 h-1.5 rounded-full bg-primary-container mt-0.5 opacity-0 transition-opacity"></span></a><a aria-current="page" class="flex flex-col items-center justify-center min-w-[64px] h-12 transition-colors text-on-surface font-bold [&amp;&gt;span.active-dot]:opacity-100" data-path="minhas-viagens" href="./8._minhas_viagens_passageiro.html"><span class="material-symbols-outlined text-[24px]">calendar_month</span><span class="font-label-pill text-label-pill mt-0.5">Viagens</span><span class="active-dot w-1.5 h-1.5 rounded-full bg-primary-container mt-0.5 opacity-0 transition-opacity"></span></a><a class="flex flex-col items-center justify-center min-w-[64px] h-12 text-secondary hover:text-on-surface transition-colors" data-path="perfil-do-aluno" href="./12._perfil_do_aluno.html"><span class="material-symbols-outlined text-[24px]">person</span><span class="font-label-pill text-label-pill mt-0.5">Perfil</span><span class="active-dot w-1.5 h-1.5 rounded-full bg-primary-container mt-0.5 opacity-0 transition-opacity"></span></a></div></nav>
+
+</body></html>

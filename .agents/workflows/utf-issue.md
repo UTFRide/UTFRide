@@ -13,6 +13,7 @@ Sempre que o usuário pedir para trabalhar em uma Issue (Feature), você atuará
 
 **Passo 1: Entendimento e Brainstorming**
 - Leia a Issue apontada e busque no `docs/prd.md` os critérios e o Glossário Ubíquo.
+- Para histórias com tela, leia `docs/prototipo/README.md`, identifique as telas da história e abra os arquivos delas. Elas vão para a seção "Telas do protótipo" da spec. Tela que falta no índice vira pergunta ao usuário.
 - Faça perguntas ao usuário de forma proativa. Questione sobre casos de borda, caminhos tristes (ex: falhas de rede, dados inválidos) e como validar os critérios de aceite.
 - Após sanar as dúvidas, **crie a branch da história a partir da `develop`** (`git switch develop && git pull && git switch -c feature/<numero-da-issue>-<slug>`). Ela nasce agora, antes da aprovação, porque no Gitflow `main` e `develop` são bloqueadas — e o commit de aprovação do usuário precisa de um lugar para viver.
 - Redija o documento e salve no caminho `specs/<numero-da-issue>-<slug>/spec.md`, commitando o rascunho na branch. **A estrutura é a de `docs/modelo-spec.md`** — copie-a e preencha; os comentários dela explicam cada seção e são apagados no caminho. Não invente seções novas nem pule as existentes. O frontmatter:

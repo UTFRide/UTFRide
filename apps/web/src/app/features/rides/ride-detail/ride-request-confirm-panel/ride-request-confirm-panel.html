@@ -1,0 +1,72 @@
+@let offer = ride();
+<section
+  aria-labelledby="ride-request-confirmation-heading"
+  class="fixed inset-x-0 bottom-(--rides-navigation-height) z-30 rounded-t-xl border border-borda bg-superficie p-space-lg pt-space-sm shadow-lg max-lg:flex max-lg:max-h-[calc(min(100%,100dvh)-var(--rides-header-height)-var(--rides-navigation-height))] max-lg:flex-col max-lg:px-0 max-lg:has-[>[aria-expanded=true]]:pb-0 lg:static lg:rounded-xl lg:pt-space-lg"
+>
+  <button
+    #handle
+    type="button"
+    class="mx-space-lg flex h-space-xl shrink-0 touch-none cursor-grab items-center justify-center rounded-xl focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 active:cursor-grabbing lg:hidden"
+    aria-controls="ride-request-confirmation-content"
+    [attr.aria-expanded]="!collapsed()"
+    [attr.aria-label]="collapsed() ? 'Expandir solicitação de vaga' : 'Recolher solicitação de vaga'"
+    (click)="toggleCollapsed($event)"
+    (pointerdown)="startDrag($event, handle)"
+    (pointerup)="finishDrag($event, handle)"
+    (pointercancel)="cancelDrag($event)"
+    (lostpointercapture)="cancelDrag($event)"
+  >
+    <span class="h-space-xs w-space-xl rounded-full bg-trilho" aria-hidden="true"></span>
+  </button>
+  <div
+    id="ride-request-confirmation-content"
+    class="min-h-0 max-lg:overflow-y-auto max-lg:overscroll-y-contain max-lg:px-space-lg lg:block"
+    [class.hidden]="collapsed()"
+  >
+    <div
+      class="mx-auto max-w-2xl space-y-space-md max-lg:pt-space-sm max-lg:pb-space-lg max-lg:wrap-anywhere"
+    >
+      <div class="flex items-start justify-between gap-space-md">
+        <div>
+          <h2 #heading id="ride-request-confirmation-heading" tabindex="-1" class="text-headline-sm">
+            Solicitar vaga nesta carona?
+          </h2>
+          <p class="mt-space-xs text-body-sm text-texto-suave">
+            1 passageiro • {{ offer.origin }} → {{ offer.destination }}
+          </p>
+        </div>
+        <div class="shrink-0 text-right">
+          <p class="text-label-pill text-texto-suave uppercase">Total</p>
+          <p class="text-headline-sm">{{ offer.pricePerSeat | currencyBrl }}</p>
+        </div>
+      </div>
+
+      @if (errorMessage(); as message) {
+        <p role="alert" class="rounded-xl bg-perigo-fundo p-space-md text-body-md">{{ message }}</p>
+      }
+
+      <button
+        type="button"
+        class="w-full rounded-xl bg-primaria px-space-lg py-space-md text-label-lg text-texto hover:bg-primaria-hover focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:bg-desabilitado disabled:text-texto-suave"
+        [disabled]="submitting()"
+        (click)="confirmed.emit()"
+      >
+        @if (submitting()) {
+          Enviando solicitação…
+        } @else if (errorMessage()) {
+          Tentar novamente
+        } @else {
+          Confirmar solicitação de vaga
+        }
+      </button>
+      <button
+        type="button"
+        class="w-full rounded-xl p-space-sm text-label-lg text-texto hover:bg-fundo focus-visible:ring-2 focus-visible:ring-texto focus-visible:ring-offset-2 disabled:bg-desabilitado disabled:text-texto-suave"
+        [disabled]="submitting()"
+        (click)="dismissed.emit()"
+      >
+        Desistir
+      </button>
+    </div>
+  </div>
+</section>
